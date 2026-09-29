@@ -115,6 +115,7 @@ class PaperSimulationResult(Base):
     failure_reason: Mapped[str | None] = mapped_column(String(128))
     failure_leg: Mapped[int | None] = mapped_column(Integer)
     opportunity_lifetime_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    remaining_lifetime_ms: Mapped[int | None] = mapped_column(BigInteger)
     outlived_opportunity: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     max_book_age_ms: Mapped[int | None] = mapped_column(BigInteger)
     legs: Mapped[list] = mapped_column(JSON, nullable=False)

@@ -28,7 +28,8 @@ def row(latency: int, completed: bool, profit: float | None) -> PaperSimulationR
         failure_reason=None if completed else "insufficient_liquidity",
         failure_leg=None if completed else 2,
         opportunity_lifetime_ms=200,
-        outlived_opportunity=latency * 3 > 200,
+        remaining_lifetime_ms=100,
+        outlived_opportunity=latency * 3 > 100,
         max_book_age_ms=10,
         legs=[],
     )
@@ -50,3 +51,11 @@ def test_summary_reports_fill_failure_and_profit_by_latency() -> None:
     assert fast["failure_rate_pct"] == 50.0
     assert fast["failure_reasons"] == {"insufficient_liquidity": 1}
     assert fast["avg_simulated_profit"] == 1.0
+    assert fast["avg_remaining_lifetime_ms"] == 100.0
+    assert fast["simulated_profitable"] == 1
+    assert fast["simulated_profitable_rate_pct"] == 50.0
+    assert fast["outlived_opportunity_count"] == 0
+
+    slow = summary["latency_scenarios"]["100"]
+    assert slow["outlived_opportunity_count"] == 1
+    assert slow["outlived_opportunity_rate_pct"] == 100.0

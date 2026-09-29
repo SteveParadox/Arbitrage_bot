@@ -76,6 +76,10 @@ To avoid materializing a full deep-book copy for every update, each symbol store
 checkpoints. A random historical lookup restores the nearest checkpoint and replays only the
 remaining deltas.
 
+Large experiments are also processed in opportunity chunks. Only the symbols and market-event
+range needed for the current chunk are loaded, so a 10,000-opportunity run does not require an
+entire day of every relevant order book to sit in memory at once.
+
 Default checkpoint interval:
 
 ```text
@@ -113,8 +117,9 @@ For every opportunity × latency scenario the simulator records:
 - per-leg adverse slippage versus the detected average price;
 - aggregate adverse/favorable price drift from the three delayed leg prices, excluding fees;
 - expected-vs-simulated profit error;
-- opportunity lifetime;
-- whether the three-leg sequence lasted longer than the observed opportunity window;
+- total opportunity-window lifetime;
+- lifetime remaining when that specific detection occurred;
+- whether the three-leg sequence lasted longer than the lifetime remaining at detection;
 - maximum age of any book used.
 
 Aggregate metrics per latency include:
@@ -127,7 +132,10 @@ Aggregate metrics per latency include:
 - average/total simulated profit;
 - average execution drift;
 - average opportunity lifetime;
-- outlived-opportunity count;
+- average lifetime remaining at detection;
+- outlived-opportunity count/rate;
+- simulated-profitable count/rate;
+- average expected-vs-simulated profit error;
 - failure-reason distribution.
 
 ## Run thousands of opportunities

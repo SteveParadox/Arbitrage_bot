@@ -155,3 +155,22 @@ def test_symbol_replay_applies_snapshot_and_delta_at_requested_time() -> None:
     assert after.best_bid == 100.5
     assert after.best_ask == 101.0
     assert after.bids[0] == (100.5, 1.0)
+
+
+def test_missing_symbol_history_is_a_simulation_failure() -> None:
+    replays = {
+        "BTCUSDT": replay("BTCUSDT", [(1_000, 99.0, 100.0)]),
+        "ETHUSDT": replay("ETHUSDT", [(1_000, 21.0, 22.0)]),
+    }
+
+    result = simulate_route(
+        scan(),
+        replays,
+        latency_ms=25,
+        fee_bps_per_leg=(Decimal("10"), Decimal("10"), Decimal("10")),
+        max_book_age_ms=100,
+    )
+
+    assert result.completed is False
+    assert result.failure_reason == "missing_book_history"
+    assert result.failure_leg == 2

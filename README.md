@@ -57,7 +57,9 @@ t0 + 3L
 ```
 
 using the archived book at each timestamp. Fees are applied between legs, partial liquidity causes
-a failed simulation, and stale historical books are rejected.
+a failed simulation, and stale historical books are rejected. Large runs load history in bounded
+opportunity chunks so thousands of candidates do not require the full experiment's book archive in
+memory at once.
 
 Capture market data while scanning, ingest it, then replay thousands of opportunities:
 

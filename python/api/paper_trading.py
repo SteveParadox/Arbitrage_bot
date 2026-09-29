@@ -82,6 +82,7 @@ def get_failures(
             "failure_leg": row.failure_leg,
             "fill_ratio": float(row.fill_ratio),
             "opportunity_lifetime_ms": row.opportunity_lifetime_ms,
+            "remaining_lifetime_ms": row.remaining_lifetime_ms,
         }
         for row in rows
     ]

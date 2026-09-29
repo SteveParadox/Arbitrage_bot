@@ -56,6 +56,12 @@ def parse_args() -> argparse.Namespace:
         default=int(config.get("checkpoint_interval", 100)),
     )
     parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=int(config.get("opportunity_chunk_size", 500)),
+        help="Number of opportunities whose market history is loaded at once.",
+    )
+    parser.add_argument(
         "--profitability-config",
         type=Path,
         default=repo_root / "shared" / "config" / "profitability.json",
@@ -131,6 +137,12 @@ def _result_row(
         if window is not None
         else int(observation.opportunity_duration_ms or 0)
     )
+    remaining_lifetime_ms = None
+    if window is not None:
+        end = window.ended_at or window.last_seen_at
+        end_ms = int(end.timestamp() * 1000)
+        remaining_lifetime_ms = max(0, end_ms - observation.scan_timestamp_ms)
+
     total_execution_time_ms = latency_ms * 3
 
     return PaperSimulationResult(
@@ -156,7 +168,11 @@ def _result_row(
         failure_reason=outcome.failure_reason,
         failure_leg=outcome.failure_leg,
         opportunity_lifetime_ms=lifetime_ms,
-        outlived_opportunity=lifetime_ms > 0 and total_execution_time_ms > lifetime_ms,
+        remaining_lifetime_ms=remaining_lifetime_ms,
+        outlived_opportunity=(
+            remaining_lifetime_ms is not None
+            and total_execution_time_ms > remaining_lifetime_ms
+        ),
         max_book_age_ms=outcome.max_book_age_ms,
         legs=list(outcome.legs),
     )
@@ -187,8 +203,25 @@ def _summary(results: list[PaperSimulationResult]) -> dict[str, Any]:
             if row.execution_drift_bps is not None
         ]
         lifetimes = [row.opportunity_lifetime_ms for row in rows]
+        remaining_lifetimes = [
+            row.remaining_lifetime_ms
+            for row in rows
+            if row.remaining_lifetime_ms is not None
+        ]
+        expectation_errors = [
+            float(row.expectation_error)
+            for row in completed
+            if row.expectation_error is not None
+        ]
+        fill_ratios = [float(row.fill_ratio) for row in rows]
+        profitable = [
+            row
+            for row in completed
+            if row.simulated_profit is not None and row.simulated_profit > 0
+        ]
         attempts = len(rows)
         fills = len(completed)
+        outlived = sum(row.outlived_opportunity for row in rows)
 
         scenarios[str(latency)] = {
             "latency_ms": latency,
@@ -201,8 +234,14 @@ def _summary(results: list[PaperSimulationResult]) -> dict[str, Any]:
             "total_expected_profit": round(sum(expected), 8),
             "total_simulated_profit": round(sum(simulated), 8),
             "avg_execution_drift_bps": _avg(slippage),
+            "avg_expectation_error": _avg(expectation_errors),
+            "avg_fill_ratio": _avg(fill_ratios),
             "avg_opportunity_lifetime_ms": _avg(lifetimes),
-            "outlived_opportunity_count": sum(row.outlived_opportunity for row in rows),
+            "avg_remaining_lifetime_ms": _avg(remaining_lifetimes),
+            "simulated_profitable": len(profitable),
+            "simulated_profitable_rate_pct": _pct(len(profitable), attempts),
+            "outlived_opportunity_count": outlived,
+            "outlived_opportunity_rate_pct": _pct(outlived, attempts),
             "failure_reasons": dict(sorted(failures.items())),
         }
 
@@ -228,6 +267,7 @@ def run_simulation(
     latencies: tuple[int, ...],
     max_book_age_ms: int,
     checkpoint_interval: int,
+    chunk_size: int,
     profitability_config: Path,
     include_rejected: bool,
 ) -> PaperSimulationRun:
@@ -239,6 +279,8 @@ def run_simulation(
     )
     if not opportunities:
         raise RuntimeError("no eligible opportunities found for the requested period")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than zero")
 
     fee_config = ProfitabilityConfig.from_path(profitability_config)
     fee_bps = tuple(fee_config.fee_bps_per_leg)
@@ -247,20 +289,6 @@ def run_simulation(
 
     start_ms = min(row.scan_timestamp_ms for row, _ in opportunities)
     end_ms = max(row.scan_timestamp_ms for row, _ in opportunities) + max(latencies) * 3
-    symbols = _required_symbols(opportunities)
-    replays = load_symbol_replays(
-        session,
-        symbols,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        checkpoint_interval=checkpoint_interval,
-    )
-
-    missing_symbols = sorted(symbols - set(replays))
-    if missing_symbols:
-        raise RuntimeError(
-            "book archive has no replayable history for: " + ", ".join(missing_symbols)
-        )
 
     run = PaperSimulationRun(
         id=str(uuid4()),
@@ -275,6 +303,7 @@ def run_simulation(
             "latencies_ms": list(latencies),
             "max_book_age_ms": max_book_age_ms,
             "checkpoint_interval": checkpoint_interval,
+            "opportunity_chunk_size": chunk_size,
             "include_rejected": include_rejected,
             "fee_profile": fee_config.fee_profile,
             "fee_bps_per_leg": [str(value) for value in fee_bps],
@@ -286,26 +315,41 @@ def run_simulation(
     session.flush()
 
     result_rows: list[PaperSimulationResult] = []
-    for observation, window in opportunities:
-        expected_profit = (
-            Decimal(observation.net_profit) if observation.net_profit is not None else None
+    for start in range(0, len(opportunities), chunk_size):
+        chunk = opportunities[start : start + chunk_size]
+        chunk_start_ms = min(row.scan_timestamp_ms for row, _ in chunk)
+        chunk_end_ms = max(row.scan_timestamp_ms for row, _ in chunk) + max(latencies) * 3
+        symbols = _required_symbols(chunk)
+        replays = load_symbol_replays(
+            session,
+            symbols,
+            start_ms=chunk_start_ms,
+            end_ms=chunk_end_ms,
+            checkpoint_interval=checkpoint_interval,
         )
-        for latency_ms in latencies:
-            outcome = simulate_route(
-                observation.raw_scan,
-                replays,
-                latency_ms=latency_ms,
-                fee_bps_per_leg=(fee_bps[0], fee_bps[1], fee_bps[2]),
-                max_book_age_ms=max_book_age_ms,
-                rounding_loss_bps=fee_config.rounding_loss_bps,
-                expected_profit=expected_profit,
-            )
-            row = _result_row(run.id, observation, window, latency_ms, outcome)
-            session.add(row)
-            result_rows.append(row)
 
-            if len(result_rows) % 1_000 == 0:
-                session.flush()
+        for observation, window in chunk:
+            expected_profit = (
+                Decimal(observation.net_profit)
+                if observation.net_profit is not None
+                else None
+            )
+            for latency_ms in latencies:
+                outcome = simulate_route(
+                    observation.raw_scan,
+                    replays,
+                    latency_ms=latency_ms,
+                    fee_bps_per_leg=(fee_bps[0], fee_bps[1], fee_bps[2]),
+                    max_book_age_ms=max_book_age_ms,
+                    rounding_loss_bps=fee_config.rounding_loss_bps,
+                    expected_profit=expected_profit,
+                )
+                row = _result_row(run.id, observation, window, latency_ms, outcome)
+                session.add(row)
+                result_rows.append(row)
+
+                if len(result_rows) % 1_000 == 0:
+                    session.flush()
 
     run.summary = _summary(result_rows)
     run.completed_at = datetime.now(UTC)
@@ -327,6 +371,7 @@ def main() -> int:
             latencies=latencies,
             max_book_age_ms=args.max_book_age_ms,
             checkpoint_interval=args.checkpoint_interval,
+            chunk_size=args.chunk_size,
             profitability_config=args.profitability_config,
             include_rejected=args.include_rejected,
         )
