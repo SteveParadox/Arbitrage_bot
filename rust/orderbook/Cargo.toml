@@ -4,4 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+ordered-float = "4"
 serde.workspace = true
+thiserror = "2"

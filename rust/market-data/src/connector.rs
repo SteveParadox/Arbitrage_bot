@@ -2,6 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use anyhow::{anyhow, Context, Result};
 use futures_util::{SinkExt, StreamExt};
+use orderbook::{BookUpdate, OrderBookEngine, PriceLevel};
 use serde_json::json;
 use tokio::{
     sync::mpsc,
@@ -13,10 +14,9 @@ use tracing::{info, warn};
 use crate::{
     config::Config,
     model::{
-        InstrumentMetadata, InstrumentsResponse, MarketDataEvent, NormalizedTrade, OrderbookData,
-        StatusEvent, TickerData, TickerUpdate, TradeData, WsEnvelope,
+        InstrumentMetadata, InstrumentsResponse, MarketDataEvent, NormalizedQuote, NormalizedTrade,
+        OrderbookData, StatusEvent, TickerData, TickerUpdate, TradeData, WsEnvelope,
     },
-    orderbook::OrderbookStore,
 };
 
 pub async fn run(config: Config, sender: mpsc::Sender<MarketDataEvent>) -> Result<()> {
@@ -101,7 +101,7 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     stale_check.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
     let mut last_market_data = Instant::now();
-    let mut books = OrderbookStore::default();
+    let mut books = OrderBookEngine::default();
     let mut ticker_cache: HashMap<String, (Option<f64>, Option<f64>, Option<f64>)> = HashMap::new();
 
     loop {
@@ -163,7 +163,7 @@ fn subscription_topics(config: &Config) -> Vec<String> {
 
 async fn handle_text(
     text: &str,
-    books: &mut OrderbookStore,
+    books: &mut OrderBookEngine,
     ticker_cache: &mut HashMap<String, (Option<f64>, Option<f64>, Option<f64>)>,
     sender: &mpsc::Sender<MarketDataEvent>,
 ) -> Result<bool> {
@@ -190,9 +190,34 @@ async fn handle_text(
 
     if topic.starts_with("orderbook.") {
         let data: OrderbookData = serde_json::from_value(data)?;
-        let kind = envelope.message_type.as_deref().unwrap_or("snapshot");
-        if let Some(quote) = books.apply(kind, timestamp, data)? {
-            sender.send(MarketDataEvent::Quote(quote)).await?;
+        let symbol = data.symbol.clone();
+        let is_snapshot =
+            envelope.message_type.as_deref() == Some("snapshot") || data.update_id == 1;
+
+        let bids = parse_levels(&symbol, data.bids)?;
+        let asks = parse_levels(&symbol, data.asks)?;
+
+        books.apply(BookUpdate {
+            symbol: symbol.clone(),
+            bids,
+            asks,
+            timestamp,
+            update_id: data.update_id,
+            sequence: data.seq,
+            is_snapshot,
+        })?;
+
+        if let Some(book) = books.get(&symbol) {
+            if let (Some(bid), Some(ask)) = (book.best_bid(), book.best_ask()) {
+                sender
+                    .send(MarketDataEvent::Quote(NormalizedQuote {
+                        symbol,
+                        bid: bid.price,
+                        ask: ask.price,
+                        timestamp: book.timestamp(),
+                    }))
+                    .await?;
+            }
         }
         return Ok(true);
     }
@@ -236,6 +261,22 @@ async fn handle_text(
     }
 
     Ok(false)
+}
+
+fn parse_levels(symbol: &str, levels: Vec<[String; 2]>) -> Result<Vec<PriceLevel>> {
+    levels
+        .into_iter()
+        .map(|[price, quantity]| {
+            Ok(PriceLevel {
+                price: price
+                    .parse::<f64>()
+                    .with_context(|| format!("invalid order-book price for {symbol}"))?,
+                quantity: quantity
+                    .parse::<f64>()
+                    .with_context(|| format!("invalid order-book quantity for {symbol}"))?,
+            })
+        })
+        .collect()
 }
 
 fn merge_number(slot: &mut Option<f64>, value: Option<&str>) -> Result<()> {
@@ -367,5 +408,17 @@ mod tests {
         assert!(topics.contains(&"orderbook.50.BTCUSDT".to_string()));
         assert!(topics.contains(&"publicTrade.ETHUSDT".to_string()));
         assert!(topics.contains(&"tickers.BTCUSDT".to_string()));
+    }
+
+    #[test]
+    fn parses_bybit_levels() {
+        let levels = parse_levels(
+            "BTCUSDT",
+            vec![["68250.1".to_string(), "0.25".to_string()]],
+        )
+        .unwrap();
+
+        assert_eq!(levels[0].price, 68250.1);
+        assert_eq!(levels[0].quantity, 0.25);
     }
 }

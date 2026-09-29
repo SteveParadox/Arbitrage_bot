@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/execution-estimate.schema.json",
+  "title": "ExecutionEstimate",
+  "type": "object",
+  "required": [
+    "symbol",
+    "side",
+    "filled_base_quantity",
+    "filled_quote_quantity",
+    "levels_consumed",
+    "complete",
+    "timestamp",
+    "update_id",
+    "sequence"
+  ],
+  "properties": {
+    "symbol": { "type": "string" },
+    "side": { "enum": ["buy", "sell"] },
+    "requested_base_quantity": { "type": ["number", "null"] },
+    "requested_quote_quantity": { "type": ["number", "null"] },
+    "filled_base_quantity": { "type": "number", "minimum": 0 },
+    "filled_quote_quantity": { "type": "number", "minimum": 0 },
+    "average_execution_price": { "type": ["number", "null"] },
+    "best_price": { "type": ["number", "null"] },
+    "worst_price": { "type": ["number", "null"] },
+    "slippage_bps": { "type": ["number", "null"] },
+    "levels_consumed": { "type": "integer", "minimum": 0 },
+    "complete": { "type": "boolean" },
+    "timestamp": { "type": "integer", "minimum": 0 },
+    "update_id": { "type": "integer", "minimum": 0 },
+    "sequence": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}
