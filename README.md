@@ -31,37 +31,45 @@ to `shared/config/triangles.json`. Rust validates and loads those routes.
 
 ### Phase 5: Arbitrage scanner
 
-The Rust scanner indexes routes by symbol. Every relevant order-book update therefore scans only
-the affected routes.
+The Rust scanner indexes routes by symbol and recalculates only affected triangles on each
+order-book update. Every gross route evaluation is journaled.
 
-Each three-leg path uses the actual Phase 3 executable-price calculations:
+### Phase 6: Fee and profitability engine
 
-```text
-configured start amount
-        |
-        v
-leg 1 actual fill output
-        |
-        v
-leg 2 actual fill output
-        |
-        v
-leg 3 actual fill output
-        |
-        v
-gross final amount / P&L
-```
+Python defines the reference financial model and Rust mirrors it in the live scanner.
 
-The scanner records profitable, unprofitable, missing-book, and insufficient-liquidity evaluations
-as append-only NDJSON.
-
-Default scanner notional:
+For each completed route:
 
 ```text
-USDT = 450
+gross profit
+- compounded Bybit spot fees
+- extra slippage allowance
+- rounding-loss allowance
+- latency buffer
+- safety margin
+= expected net profit
 ```
 
-Configure it in `shared/config/scanner.json`.
+The reference configuration is:
+
+```text
+shared/config/profitability.json
+```
+
+and defaults to three 10 bps spot-taker fees plus configurable execution buffers.
+
+The Phase 3 order-book walk already includes visible depth slippage. Phase 6's slippage allowance
+is additional adverse execution beyond the current snapshot, avoiding double-counting.
+
+Python/Rust parity uses shared exact-decimal fixtures:
+
+```bash
+python scripts/check_profitability_parity.py
+```
+
+See `docs/PROFITABILITY.md`.
+
+## Live scanner
 
 Generate current USDT triangles:
 
@@ -70,7 +78,7 @@ cd python
 python -m strategy.triangle_discovery --start-assets USDT
 ```
 
-Then run the live Rust pipeline from `rust/`:
+Then run from `rust/`:
 
 ```bash
 cargo run -p market-data | cargo run -p scanner --bin scan-live
@@ -82,18 +90,15 @@ Scan evidence is appended to:
 data/scans/arbitrage_scans.ndjson
 ```
 
-See `docs/SCANNER.md` for the record format and event flow.
-
 ## Security
 
-Bybit credentials are never hardcoded. The implemented scanner is observational only.
-Live trading remains disabled:
+Bybit credentials are never hardcoded. Live trading remains disabled:
 
 ```env
 ARB_LIVE_TRADING_ENABLED=false
 ```
 
-Phase 5 does not submit orders and scan records explicitly report `execution_enabled: false`.
+Phase 6 calculates expected profitability only. It does not submit orders.
 
 ## Testing
 
@@ -106,9 +111,12 @@ cd ../rust
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
+
+cd ..
+python scripts/check_profitability_parity.py
 ```
 
 ## Current status
 
-Phase 5 event-driven gross arbitrage scanning and journaling are implemented.
+Phase 6 fee-aware expected-net profitability and Python/Rust parity are implemented.
 **No trade execution is enabled.**

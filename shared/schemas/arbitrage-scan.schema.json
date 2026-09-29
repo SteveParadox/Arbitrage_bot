@@ -32,6 +32,12 @@
     "gross_return_pct": { "type": ["number", "null"] },
     "gross_return_bps": { "type": ["number", "null"] },
     "gross_profitable": { "type": ["boolean", "null"] },
+    "expected_net_profit": { "type": ["number", "null"] },
+    "expected_net_return_pct": { "type": ["number", "null"] },
+    "expected_net_return_bps": { "type": ["number", "null"] },
+    "expected_final_amount": { "type": ["number", "null"] },
+    "net_profitable": { "type": ["boolean", "null"] },
+    "profitability": { "type": ["object", "null"] },
     "status": {
       "enum": [
         "complete",
@@ -63,7 +69,7 @@
         ]
       }
     },
-    "fees_included": { "const": false },
+    "fees_included": { "type": "boolean" },
     "execution_enabled": { "const": false }
   },
   "additionalProperties": false

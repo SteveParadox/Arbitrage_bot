@@ -1,8 +1,14 @@
 mod engine;
+mod profitability;
 mod recorder;
 
 pub use engine::{
     ArbitrageScanRecord, ArbitrageScanner, LegScan, ScanStatus, ScannerSettings,
+};
+pub use profitability::{
+    load_profitability_config, parse_decimal, CanonicalProfitabilityResult,
+    ProfitabilityBreakdown, ProfitabilityConfig, ProfitabilityConfigFile, ProfitabilityError,
+    ProfitabilityResult,
 };
 pub use recorder::NdjsonRecorder;
 

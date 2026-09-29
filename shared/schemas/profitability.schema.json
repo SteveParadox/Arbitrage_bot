@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/profitability.schema.json",
+  "title": "ProfitabilityConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "fee_profile",
+    "fee_bps_per_leg",
+    "expected_slippage_bps",
+    "rounding_loss_bps",
+    "latency_buffer_bps",
+    "safety_margin_bps"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "fee_profile": { "type": "string", "minLength": 1 },
+    "fee_bps_per_leg": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "string" }
+    },
+    "expected_slippage_bps": { "type": "string" },
+    "rounding_loss_bps": { "type": "string" },
+    "latency_buffer_bps": { "type": "string" },
+    "safety_margin_bps": { "type": "string" }
+  },
+  "additionalProperties": false
+}

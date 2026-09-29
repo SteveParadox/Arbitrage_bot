@@ -3,5 +3,6 @@
   "start_amounts": {
     "USDT": 450.0
   },
-  "record_path": "data/scans/arbitrage_scans.ndjson"
+  "record_path": "data/scans/arbitrage_scans.ndjson",
+  "profitability_config_path": "shared/config/profitability.json"
 }

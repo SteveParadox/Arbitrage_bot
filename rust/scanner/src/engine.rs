@@ -4,13 +4,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use orderbook::{BookUpdate, ExecutionEstimate, OrderBookEngine, OrderBookError};
 use serde::{Deserialize, Serialize};
 
-use crate::{TradeSide, TriangleConfig, TriangleRoute};
+use crate::{
+    ProfitabilityBreakdown, ProfitabilityConfig, TradeSide, TriangleConfig, TriangleRoute,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ScannerSettings {
     pub version: u32,
     pub start_amounts: HashMap<String, f64>,
     pub record_path: String,
+    pub profitability_config_path: String,
 }
 
 impl ScannerSettings {
@@ -31,6 +34,9 @@ impl ScannerSettings {
         }
         if self.record_path.trim().is_empty() {
             return Err("scanner record_path must not be empty".to_string());
+        }
+        if self.profitability_config_path.trim().is_empty() {
+            return Err("scanner profitability_config_path must not be empty".to_string());
         }
         Ok(())
     }
@@ -75,6 +81,12 @@ pub struct ArbitrageScanRecord {
     pub gross_return_pct: Option<f64>,
     pub gross_return_bps: Option<f64>,
     pub gross_profitable: Option<bool>,
+    pub expected_net_profit: Option<f64>,
+    pub expected_net_return_pct: Option<f64>,
+    pub expected_net_return_bps: Option<f64>,
+    pub expected_final_amount: Option<f64>,
+    pub net_profitable: Option<bool>,
+    pub profitability: Option<ProfitabilityBreakdown>,
     pub status: ScanStatus,
     pub reason: Option<String>,
     pub oldest_book_timestamp: Option<u64>,
@@ -91,12 +103,18 @@ pub struct ArbitrageScanner {
     route_indexes_by_symbol: HashMap<String, Vec<usize>>,
     books: OrderBookEngine,
     start_amounts: HashMap<String, f64>,
+    profitability: ProfitabilityConfig,
 }
 
 impl ArbitrageScanner {
-    pub fn new(config: TriangleConfig, settings: ScannerSettings) -> Result<Self, String> {
+    pub fn new(
+        config: TriangleConfig,
+        settings: ScannerSettings,
+        profitability: ProfitabilityConfig,
+    ) -> Result<Self, String> {
         config.validate().map_err(|error| error.to_string())?;
         settings.validate()?;
+        profitability.validate().map_err(|error| error.to_string())?;
 
         let mut route_indexes_by_symbol: HashMap<String, Vec<usize>> = HashMap::new();
         for (route_index, route) in config.routes.iter().enumerate() {
@@ -122,6 +140,7 @@ impl ArbitrageScanner {
                 .into_iter()
                 .map(|(asset, amount)| (asset.to_uppercase(), amount))
                 .collect(),
+            profitability,
         })
     }
 
@@ -275,6 +294,33 @@ impl ArbitrageScanner {
         let gross_return_pct = (gross_profit / start_amount) * 100.0;
         let gross_return_bps = (gross_profit / start_amount) * 10_000.0;
 
+        let profitability = match self.profitability.evaluate_f64(start_amount, amount) {
+            Ok(result) => result,
+            Err(error) => {
+                let mut record = base_record(
+                    route,
+                    scan_timestamp,
+                    trigger_symbol,
+                    trigger_timestamp,
+                    trigger_update_id,
+                    trigger_sequence,
+                    Some(start_amount),
+                    ScanStatus::CalculationError,
+                    Some(format!("profitability calculation failed: {error}")),
+                );
+                record.final_amount = Some(amount);
+                record.gross_profit = Some(gross_profit);
+                record.gross_return_pct = Some(gross_return_pct);
+                record.gross_return_bps = Some(gross_return_bps);
+                record.gross_profitable = Some(gross_profit > 0.0);
+                record.legs = leg_scans;
+                apply_book_timestamp_stats(&mut record, &book_timestamps);
+                return record;
+            }
+        };
+
+        let breakdown = profitability.breakdown();
+
         let mut record = base_record(
             route,
             scan_timestamp,
@@ -291,6 +337,13 @@ impl ArbitrageScanner {
         record.gross_return_pct = Some(gross_return_pct);
         record.gross_return_bps = Some(gross_return_bps);
         record.gross_profitable = Some(gross_profit > 0.0);
+        record.expected_net_profit = Some(breakdown.expected_net_profit);
+        record.expected_net_return_pct = Some(breakdown.expected_net_return_pct);
+        record.expected_net_return_bps = Some(breakdown.expected_net_return_bps);
+        record.expected_final_amount = Some(breakdown.expected_final_amount);
+        record.net_profitable = Some(breakdown.net_profitable);
+        record.fees_included = true;
+        record.profitability = Some(breakdown);
         record.legs = leg_scans;
         apply_book_timestamp_stats(&mut record, &book_timestamps);
         record
@@ -323,6 +376,12 @@ fn base_record(
         gross_return_pct: None,
         gross_return_bps: None,
         gross_profitable: None,
+        expected_net_profit: None,
+        expected_net_return_pct: None,
+        expected_net_return_bps: None,
+        expected_final_amount: None,
+        net_profitable: None,
+        profitability: None,
         status,
         reason,
         oldest_book_timestamp: None,
@@ -360,7 +419,9 @@ mod tests {
     use orderbook::{BookUpdate, PriceLevel};
 
     use super::*;
-    use crate::{TriangleLeg, TriangleSource};
+    use crate::{
+        ProfitabilityConfigFile, TriangleLeg, TriangleSource,
+    };
 
     fn config() -> TriangleConfig {
         TriangleConfig {
@@ -416,6 +477,20 @@ mod tests {
         }
     }
 
+    fn profitability() -> ProfitabilityConfig {
+        ProfitabilityConfigFile {
+            version: 1,
+            fee_profile: "bybit_spot_vip0_reference".into(),
+            fee_bps_per_leg: vec!["10".into(), "10".into(), "10".into()],
+            expected_slippage_bps: "5".into(),
+            rounding_loss_bps: "0".into(),
+            latency_buffer_bps: "3".into(),
+            safety_margin_bps: "5".into(),
+        }
+        .try_into()
+        .unwrap()
+    }
+
     fn scanner() -> ArbitrageScanner {
         ArbitrageScanner::new(
             config(),
@@ -423,7 +498,9 @@ mod tests {
                 version: 1,
                 start_amounts: HashMap::from([("USDT".to_string(), 450.0)]),
                 record_path: "ignored.ndjson".into(),
+                profitability_config_path: "ignored.json".into(),
             },
+            profitability(),
         )
         .unwrap()
     }
@@ -470,10 +547,11 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].status, ScanStatus::MissingBook);
         assert!(records[0].reason.as_deref().unwrap().contains("ETHBTC"));
+        assert!(!records[0].fees_included);
     }
 
     #[test]
-    fn calculates_depth_aware_gross_return_across_three_legs() {
+    fn calculates_net_profit_after_cost_model() {
         let mut scanner = scanner();
         scanner
             .on_book_update(snapshot("BTCUSDT", 99.0, 10.0, 100.0, 10.0, 1))
@@ -490,13 +568,15 @@ mod tests {
         assert_eq!(record.start_amount, Some(450.0));
         assert!((record.final_amount.unwrap() - 1890.0).abs() < 1e-9);
         assert!((record.gross_profit.unwrap() - 1440.0).abs() < 1e-9);
+        assert!(record.expected_net_profit.unwrap() < record.gross_profit.unwrap());
         assert_eq!(record.legs.len(), 3);
-        assert!(!record.fees_included);
+        assert!(record.fees_included);
+        assert!(record.profitability.is_some());
         assert!(!record.execution_enabled);
     }
 
     #[test]
-    fn records_insufficient_depth_instead_of_inventing_liquidity() {
+    fn records_insufficient_depth_without_net_profitability() {
         let mut scanner = scanner();
         scanner
             .on_book_update(snapshot("BTCUSDT", 99.0, 1.0, 100.0, 1.0, 1))
@@ -515,5 +595,7 @@ mod tests {
         assert_eq!(records[0].status, ScanStatus::InsufficientLiquidity);
         assert_eq!(records[0].legs.len(), 1);
         assert!(!records[0].legs[0].complete);
+        assert!(records[0].expected_net_profit.is_none());
+        assert!(!records[0].fees_included);
     }
 }

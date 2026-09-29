@@ -7,7 +7,8 @@ use std::{
 use anyhow::{Context, Result};
 use orderbook::BookUpdate;
 use scanner::{
-    load_triangle_config, ArbitrageScanner, NdjsonRecorder, ScannerSettings,
+    load_profitability_config, load_triangle_config, ArbitrageScanner, NdjsonRecorder,
+    ScannerSettings,
 };
 
 fn main() -> Result<()> {
@@ -21,8 +22,13 @@ fn main() -> Result<()> {
 
     let triangle_config = load_triangle_config(&triangle_path)?;
     let scanner_settings = load_scanner_settings(&scanner_config_path)?;
+    let profitability_path = std::env::var("ARB_PROFITABILITY_CONFIG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| resolve_path(&repo_root, &scanner_settings.profitability_config_path));
+    let profitability = load_profitability_config(&profitability_path)?;
+
     let record_path = resolve_path(&repo_root, &scanner_settings.record_path);
-    let mut scanner = ArbitrageScanner::new(triangle_config, scanner_settings)
+    let mut scanner = ArbitrageScanner::new(triangle_config, scanner_settings, profitability)
         .map_err(anyhow::Error::msg)?;
     let mut recorder = NdjsonRecorder::open(&record_path)?;
 

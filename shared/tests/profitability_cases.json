@@ -1,0 +1,186 @@
+[
+  {
+    "name": "reference_061_percent_gross",
+    "input": {
+      "start_amount": "450",
+      "gross_final_amount": "452.745",
+      "config": {
+        "version": 1,
+        "fee_profile": "bybit_spot_vip0_reference",
+        "fee_bps_per_leg": [
+          "10",
+          "10",
+          "10"
+        ],
+        "expected_slippage_bps": "5",
+        "rounding_loss_bps": "0",
+        "latency_buffer_bps": "3",
+        "safety_margin_bps": "5"
+      }
+    },
+    "expected": {
+      "start_amount": "450.00000000",
+      "gross_final_amount": "452.74500000",
+      "gross_profit": "2.74500000",
+      "gross_return_bps": "61.00000000",
+      "gross_return_pct": "0.61000000",
+      "fee_multiplier": "0.99700300",
+      "nominal_fee_bps": "30.00000000",
+      "fee_amount": "1.35687722",
+      "fee_bps_on_start": "30.15282706",
+      "expected_slippage_bps": "5.00000000",
+      "expected_slippage_amount": "0.22500000",
+      "rounding_loss_bps": "0.00000000",
+      "rounding_loss_amount": "0.00000000",
+      "latency_buffer_bps": "3.00000000",
+      "latency_buffer_amount": "0.13500000",
+      "safety_margin_bps": "5.00000000",
+      "safety_margin_amount": "0.22500000",
+      "total_cost_amount": "1.94187722",
+      "total_cost_bps": "43.15282706",
+      "expected_net_profit": "0.80312278",
+      "expected_net_return_bps": "17.84717294",
+      "expected_net_return_pct": "0.17847173",
+      "expected_final_amount": "450.80312278",
+      "net_profitable": true
+    }
+  },
+  {
+    "name": "gross_positive_net_negative",
+    "input": {
+      "start_amount": "500",
+      "gross_final_amount": "500.5",
+      "config": {
+        "version": 1,
+        "fee_profile": "custom_vip",
+        "fee_bps_per_leg": [
+          "8",
+          "8",
+          "8"
+        ],
+        "expected_slippage_bps": "2.5",
+        "rounding_loss_bps": "1.25",
+        "latency_buffer_bps": "4",
+        "safety_margin_bps": "6"
+      }
+    },
+    "expected": {
+      "start_amount": "500.00000000",
+      "gross_final_amount": "500.50000000",
+      "gross_profit": "0.50000000",
+      "gross_return_bps": "10.00000000",
+      "gross_return_pct": "0.10000000",
+      "fee_multiplier": "0.99760192",
+      "nominal_fee_bps": "24.00000000",
+      "fee_amount": "1.20023930",
+      "fee_bps_on_start": "24.00478593",
+      "expected_slippage_bps": "2.50000000",
+      "expected_slippage_amount": "0.12500000",
+      "rounding_loss_bps": "1.25000000",
+      "rounding_loss_amount": "0.06250000",
+      "latency_buffer_bps": "4.00000000",
+      "latency_buffer_amount": "0.20000000",
+      "safety_margin_bps": "6.00000000",
+      "safety_margin_amount": "0.30000000",
+      "total_cost_amount": "1.88773930",
+      "total_cost_bps": "37.75478593",
+      "expected_net_profit": "-1.38773930",
+      "expected_net_return_bps": "-27.75478593",
+      "expected_net_return_pct": "-0.27754786",
+      "expected_final_amount": "498.61226070",
+      "net_profitable": false
+    }
+  },
+  {
+    "name": "gross_loss_with_rounding_allowance",
+    "input": {
+      "start_amount": "400",
+      "gross_final_amount": "399.2",
+      "config": {
+        "version": 1,
+        "fee_profile": "bybit_spot_vip0_reference",
+        "fee_bps_per_leg": [
+          "10",
+          "10",
+          "10"
+        ],
+        "expected_slippage_bps": "5",
+        "rounding_loss_bps": "2",
+        "latency_buffer_bps": "3",
+        "safety_margin_bps": "5"
+      }
+    },
+    "expected": {
+      "start_amount": "400.00000000",
+      "gross_final_amount": "399.20000000",
+      "gross_profit": "-0.80000000",
+      "gross_return_bps": "-20.00000000",
+      "gross_return_pct": "-0.20000000",
+      "fee_multiplier": "0.99700300",
+      "nominal_fee_bps": "30.00000000",
+      "fee_amount": "1.19640280",
+      "fee_bps_on_start": "29.91006998",
+      "expected_slippage_bps": "5.00000000",
+      "expected_slippage_amount": "0.20000000",
+      "rounding_loss_bps": "2.00000000",
+      "rounding_loss_amount": "0.08000000",
+      "latency_buffer_bps": "3.00000000",
+      "latency_buffer_amount": "0.12000000",
+      "safety_margin_bps": "5.00000000",
+      "safety_margin_amount": "0.20000000",
+      "total_cost_amount": "1.79640280",
+      "total_cost_bps": "44.91006998",
+      "expected_net_profit": "-2.59640280",
+      "expected_net_return_bps": "-64.91006998",
+      "expected_net_return_pct": "-0.64910070",
+      "expected_final_amount": "397.40359720",
+      "net_profitable": false
+    }
+  },
+  {
+    "name": "lower_fee_high_edge",
+    "input": {
+      "start_amount": "1000",
+      "gross_final_amount": "1012.5",
+      "config": {
+        "version": 1,
+        "fee_profile": "custom_low_fee",
+        "fee_bps_per_leg": [
+          "4.5",
+          "4.5",
+          "4.5"
+        ],
+        "expected_slippage_bps": "7",
+        "rounding_loss_bps": "0.5",
+        "latency_buffer_bps": "2",
+        "safety_margin_bps": "4"
+      }
+    },
+    "expected": {
+      "start_amount": "1000.00000000",
+      "gross_final_amount": "1012.50000000",
+      "gross_profit": "12.50000000",
+      "gross_return_bps": "125.00000000",
+      "gross_return_pct": "1.25000000",
+      "fee_multiplier": "0.99865061",
+      "nominal_fee_bps": "13.50000000",
+      "fee_amount": "1.36626000",
+      "fee_bps_on_start": "13.66259999",
+      "expected_slippage_bps": "7.00000000",
+      "expected_slippage_amount": "0.70000000",
+      "rounding_loss_bps": "0.50000000",
+      "rounding_loss_amount": "0.05000000",
+      "latency_buffer_bps": "2.00000000",
+      "latency_buffer_amount": "0.20000000",
+      "safety_margin_bps": "4.00000000",
+      "safety_margin_amount": "0.40000000",
+      "total_cost_amount": "2.71626000",
+      "total_cost_bps": "27.16259999",
+      "expected_net_profit": "9.78374000",
+      "expected_net_return_bps": "97.83740001",
+      "expected_net_return_pct": "0.97837400",
+      "expected_final_amount": "1009.78374000",
+      "net_profitable": true
+    }
+  }
+]

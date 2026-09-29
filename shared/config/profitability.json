@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "fee_profile": "bybit_spot_vip0_reference",
+  "fee_bps_per_leg": ["10", "10", "10"],
+  "expected_slippage_bps": "5",
+  "rounding_loss_bps": "0",
+  "latency_buffer_bps": "3",
+  "safety_margin_bps": "5"
+}

@@ -56,7 +56,8 @@ The scanner computes:
 - gross return basis points;
 - whether the gross result is positive.
 
-This phase intentionally excludes fees. Every record contains `fees_included: false`.
+Phase 6 now applies the configured fee and profitability model after a route completes. Complete
+records include expected net P&L and set `fees_included: true`; incomplete scans keep it false.
 
 ## Failure evidence
 
@@ -141,3 +142,12 @@ The scanner contains no order-placement call. Every record explicitly contains:
   "execution_enabled": false
 }
 ```
+
+
+## Net profitability
+
+Completed route records include a `profitability` breakdown and top-level expected-net fields.
+The model is configured in `shared/config/profitability.json`.
+
+See `docs/PROFITABILITY.md` for fee compounding, extra slippage, rounding, latency, safety margin,
+and Python/Rust parity tests.

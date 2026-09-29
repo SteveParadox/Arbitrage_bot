@@ -10,6 +10,7 @@ orderbook = { path = "../orderbook" }
 serde.workspace = true
 serde_json = "1"
 thiserror = "2"
+rust_decimal = "1"
 
 [[bin]]
 name = "validate-triangles"
@@ -18,3 +19,7 @@ path = "src/bin/validate_triangles.rs"
 [[bin]]
 name = "scan-live"
 path = "src/bin/scan_live.rs"
+
+[[bin]]
+name = "profitability-fixture"
+path = "src/bin/profitability_fixture.rs"
