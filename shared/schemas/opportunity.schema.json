@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/opportunity.schema.json",
+  "title": "ArbitrageOpportunity",
+  "type": "object",
+  "required": ["exchange", "symbol", "buy_price", "sell_price", "observed_at"],
+  "properties": {
+    "exchange": { "type": "string" },
+    "symbol": { "type": "string" },
+    "buy_price": { "type": "number", "exclusiveMinimum": 0 },
+    "sell_price": { "type": "number", "exclusiveMinimum": 0 },
+    "observed_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

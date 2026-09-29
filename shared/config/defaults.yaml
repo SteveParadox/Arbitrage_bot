@@ -1,0 +1,5 @@
+environment: development
+log_level: INFO
+live_trading_enabled: false
+bybit:
+  testnet: true
