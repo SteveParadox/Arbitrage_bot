@@ -208,7 +208,15 @@ async fn handle_text(
         };
         books.apply(update.clone())?;
         sender
-            .send(MarketDataEvent::OrderBook(update))
+            .send(MarketDataEvent::OrderBook {
+                symbol: update.symbol,
+                bids: update.bids,
+                asks: update.asks,
+                timestamp: update.timestamp,
+                update_id: update.update_id,
+                sequence: update.sequence,
+                is_snapshot: update.is_snapshot,
+            })
             .await?;
 
         if let Some(book) = books.get(&symbol) {
