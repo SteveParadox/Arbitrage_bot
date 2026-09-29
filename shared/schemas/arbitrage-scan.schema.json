@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/arbitrage-scan.schema.json",
+  "title": "ArbitrageScanRecord",
+  "type": "object",
+  "required": [
+    "scan_timestamp",
+    "trigger_symbol",
+    "trigger_timestamp",
+    "trigger_update_id",
+    "trigger_sequence",
+    "route_id",
+    "triangle_id",
+    "start_asset",
+    "status",
+    "legs",
+    "fees_included",
+    "execution_enabled"
+  ],
+  "properties": {
+    "scan_timestamp": { "type": "integer", "minimum": 0 },
+    "trigger_symbol": { "type": "string" },
+    "trigger_timestamp": { "type": "integer", "minimum": 0 },
+    "trigger_update_id": { "type": "integer", "minimum": 0 },
+    "trigger_sequence": { "type": "integer", "minimum": 0 },
+    "route_id": { "type": "string" },
+    "triangle_id": { "type": "string" },
+    "start_asset": { "type": "string" },
+    "start_amount": { "type": ["number", "null"] },
+    "final_amount": { "type": ["number", "null"] },
+    "gross_profit": { "type": ["number", "null"] },
+    "gross_return_pct": { "type": ["number", "null"] },
+    "gross_return_bps": { "type": ["number", "null"] },
+    "gross_profitable": { "type": ["boolean", "null"] },
+    "status": {
+      "enum": [
+        "complete",
+        "missing_book",
+        "insufficient_liquidity",
+        "start_amount_not_configured",
+        "calculation_error"
+      ]
+    },
+    "reason": { "type": ["string", "null"] },
+    "oldest_book_timestamp": { "type": ["integer", "null"] },
+    "newest_book_timestamp": { "type": ["integer", "null"] },
+    "book_timestamp_skew_ms": { "type": ["integer", "null"] },
+    "legs": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "leg_index",
+          "symbol",
+          "side",
+          "input_asset",
+          "output_asset",
+          "input_amount",
+          "output_amount",
+          "complete",
+          "execution"
+        ]
+      }
+    },
+    "fees_included": { "const": false },
+    "execution_enabled": { "const": false }
+  },
+  "additionalProperties": false
+}

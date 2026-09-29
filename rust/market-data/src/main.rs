@@ -14,6 +14,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "INFO".to_string())
         .to_lowercase();
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new(format!("market_data={default_level},{default_level}"))),

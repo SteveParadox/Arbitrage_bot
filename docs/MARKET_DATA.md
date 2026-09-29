@@ -59,3 +59,12 @@ Set environment variables in your shell or deployment service. Rust does not rea
 ## No trading
 
 This phase uses public market-data endpoints only. It does not call the Bybit private WebSocket, WebSocket order-entry endpoint, or order REST endpoints.
+
+
+## Scanner stream
+
+Order-book snapshots and deltas are also emitted as normalized `order_book` events. This lets the
+Phase 5 scanner rebuild the same local books from the public data stream.
+
+Application logs are written to stderr while market-data events are written to stdout, so the
+stream can be piped safely into another process.

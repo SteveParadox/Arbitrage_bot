@@ -1,8 +1,10 @@
+use orderbook::BookUpdate;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MarketDataEvent {
+    OrderBook(BookUpdate),
     Quote(NormalizedQuote),
     Trade(NormalizedTrade),
     Instrument(InstrumentMetadata),
@@ -147,4 +149,36 @@ pub(crate) struct PriceFilter {
 pub(crate) struct LotSizeFilter {
     pub qty_step: Option<String>,
     pub min_order_qty: Option<String>,
+}
+
+
+#[cfg(test)]
+mod tests {
+    use orderbook::{BookUpdate, PriceLevel};
+
+    use super::*;
+
+    #[test]
+    fn serializes_order_book_event_for_scanner_pipe() {
+        let event = MarketDataEvent::OrderBook(BookUpdate {
+            symbol: "BTCUSDT".to_string(),
+            bids: vec![PriceLevel {
+                price: 68_250.1,
+                quantity: 0.5,
+            }],
+            asks: vec![PriceLevel {
+                price: 68_250.2,
+                quantity: 0.4,
+            }],
+            timestamp: 1_790_549_000_000,
+            update_id: 10,
+            sequence: 20,
+            is_snapshot: true,
+        });
+
+        let value = serde_json::to_value(event).unwrap();
+        assert_eq!(value["type"], "order_book");
+        assert_eq!(value["symbol"], "BTCUSDT");
+        assert_eq!(value["sequence"], 20);
+    }
 }

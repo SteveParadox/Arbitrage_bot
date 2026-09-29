@@ -26,48 +26,74 @@ an entire order fills at the best bid or ask.
 
 ### Phase 4: Triangle discovery
 
-Python now builds the Bybit spot asset graph and discovers every fully connected 3-asset cycle.
+Python discovers valid Bybit spot three-asset cycles and writes explicit BUY/SELL route semantics
+to `shared/config/triangles.json`. Rust validates and loads those routes.
 
-For each leg:
+### Phase 5: Arbitrage scanner
+
+The Rust scanner indexes routes by symbol. Every relevant order-book update therefore scans only
+the affected routes.
+
+Each three-leg path uses the actual Phase 3 executable-price calculations:
 
 ```text
-base -> quote = SELL
-quote -> base = BUY
+configured start amount
+        |
+        v
+leg 1 actual fill output
+        |
+        v
+leg 2 actual fill output
+        |
+        v
+leg 3 actual fill output
+        |
+        v
+gross final amount / P&L
 ```
 
-Every starting asset and both directions are retained by default, or routes can be filtered to a
-capital asset such as USDT.
+The scanner records profitable, unprofitable, missing-book, and insufficient-liquidity evaluations
+as append-only NDJSON.
 
-Generate the route configuration:
+Default scanner notional:
+
+```text
+USDT = 450
+```
+
+Configure it in `shared/config/scanner.json`.
+
+Generate current USDT triangles:
 
 ```bash
 cd python
 python -m strategy.triangle_discovery --start-assets USDT
 ```
 
-The generated file is:
-
-```text
-shared/config/triangles.json
-```
-
-Rust's `scanner` crate loads and structurally validates that file:
+Then run the live Rust pipeline from `rust/`:
 
 ```bash
-cd rust
-cargo run -p scanner --bin validate-triangles
+cargo run -p market-data | cargo run -p scanner --bin scan-live
 ```
 
-See `docs/TRIANGLE_DISCOVERY.md` for the route model.
+Scan evidence is appended to:
+
+```text
+data/scans/arbitrage_scans.ndjson
+```
+
+See `docs/SCANNER.md` for the record format and event flow.
 
 ## Security
 
-Bybit credentials are never hardcoded. Phases 2 through 4 use public market information only.
+Bybit credentials are never hardcoded. The implemented scanner is observational only.
 Live trading remains disabled:
 
 ```env
 ARB_LIVE_TRADING_ENABLED=false
 ```
+
+Phase 5 does not submit orders and scan records explicitly report `execution_enabled: false`.
 
 ## Testing
 
@@ -84,5 +110,5 @@ cargo test --workspace
 
 ## Current status
 
-Phase 4 structural triangle discovery and Rust route loading are implemented.
+Phase 5 event-driven gross arbitrage scanning and journaling are implemented.
 **No trade execution is enabled.**

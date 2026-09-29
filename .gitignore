@@ -21,3 +21,5 @@ frontend/dist/
 *.pfx
 credentials.*
 secrets.*
+
+data/scans/*.ndjson

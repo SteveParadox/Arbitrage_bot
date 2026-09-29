@@ -1,3 +1,11 @@
+mod engine;
+mod recorder;
+
+pub use engine::{
+    ArbitrageScanRecord, ArbitrageScanner, LegScan, ScanStatus, ScannerSettings,
+};
+pub use recorder::NdjsonRecorder;
+
 use std::{
     collections::{BTreeSet, HashSet},
     fs,

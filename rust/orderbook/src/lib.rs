@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, HashMap};
 
 use ordered_float::OrderedFloat;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct PriceLevel {
     pub price: f64,
     pub quantity: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BookUpdate {
     pub symbol: String,
     pub bids: Vec<PriceLevel>,

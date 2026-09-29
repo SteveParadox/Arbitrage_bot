@@ -6,3 +6,6 @@ bybit:
 triangles:
   config_path: shared/config/triangles.json
   start_assets: []
+scanner:
+  config_path: shared/config/scanner.json
+  record_path: data/scans/arbitrage_scans.ndjson

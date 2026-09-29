@@ -197,7 +197,7 @@ async fn handle_text(
         let bids = parse_levels(&symbol, data.bids)?;
         let asks = parse_levels(&symbol, data.asks)?;
 
-        books.apply(BookUpdate {
+        let update = BookUpdate {
             symbol: symbol.clone(),
             bids,
             asks,
@@ -205,7 +205,11 @@ async fn handle_text(
             update_id: data.update_id,
             sequence: data.seq,
             is_snapshot,
-        })?;
+        };
+        books.apply(update.clone())?;
+        sender
+            .send(MarketDataEvent::OrderBook(update))
+            .await?;
 
         if let Some(book) = books.get(&symbol) {
             if let (Some(bid), Some(ask)) = (book.best_bid(), book.best_ask()) {

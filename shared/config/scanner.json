@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "start_amounts": {
+    "USDT": 450.0
+  },
+  "record_path": "data/scans/arbitrage_scans.ndjson"
+}
