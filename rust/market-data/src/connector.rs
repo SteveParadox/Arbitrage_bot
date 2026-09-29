@@ -20,7 +20,30 @@ use crate::{
 };
 
 pub async fn run(config: Config, sender: mpsc::Sender<MarketDataEvent>) -> Result<()> {
-    fetch_and_emit_instruments(&config, &sender).await?;
+    let mut metadata_delay = config.reconnect_min;
+    loop {
+        match fetch_and_emit_instruments(&config, &sender).await {
+            Ok(()) => break,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    retry_ms = metadata_delay.as_millis(),
+                    "instrument metadata load failed"
+                );
+                emit_status(
+                    &sender,
+                    "metadata_retry",
+                    format!(
+                        "instrument metadata unavailable: {error}; retrying in {} ms",
+                        metadata_delay.as_millis()
+                    ),
+                )
+                .await;
+                time::sleep(metadata_delay).await;
+                metadata_delay = (metadata_delay * 2).min(config.reconnect_max);
+            }
+        }
+    }
 
     let mut delay = config.reconnect_min;
     loop {
@@ -63,7 +86,12 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
         .await
         .context("failed to send subscription request")?;
 
-    emit_status(sender, "connected", format!("subscribed to {} topics", topics.len())).await;
+    emit_status(
+        sender,
+        "connected",
+        format!("subscribed to {} topics", topics.len()),
+    )
+    .await;
 
     let mut heartbeat = time::interval(config.heartbeat_interval);
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
@@ -227,7 +255,10 @@ async fn fetch_and_emit_instruments(
 
     for symbol in &config.symbols {
         let response = client
-            .get(format!("{}/v5/market/instruments-info", config.rest_base_url()))
+            .get(format!(
+                "{}/v5/market/instruments-info",
+                config.rest_base_url()
+            ))
             .query(&[
                 ("category", config.category.as_str()),
                 ("symbol", symbol.as_str()),
@@ -289,7 +320,11 @@ async fn fetch_and_emit_instruments(
 
 fn parse_optional(value: Option<&str>) -> Result<Option<f64>> {
     value
-        .map(|value| value.parse::<f64>().context("invalid instrument numeric field"))
+        .map(|value| {
+            value
+                .parse::<f64>()
+                .context("invalid instrument numeric field")
+        })
         .transpose()
 }
 

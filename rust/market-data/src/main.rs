@@ -1,3 +1,5 @@
+use std::env;
+
 use anyhow::Result;
 use market_data::{config::Config, connector, model::MarketDataEvent};
 use tokio::sync::mpsc;
@@ -8,10 +10,13 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
+    let default_level = env::var("ARB_LOG_LEVEL")
+        .unwrap_or_else(|_| "INFO".to_string())
+        .to_lowercase();
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("market_data=info,info")),
+                .unwrap_or_else(|_| EnvFilter::new(format!("market_data={default_level},{default_level}"))),
         )
         .json()
         .init();

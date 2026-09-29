@@ -64,15 +64,36 @@ impl Config {
             bail!("unsupported BYBIT_ORDERBOOK_DEPTH={orderbook_depth}; use 1, 50, 200, or 1000");
         }
 
+        let heartbeat_seconds = parse_u64("BYBIT_HEARTBEAT_SECONDS", 20)?;
+        let stale_seconds = parse_u64("BYBIT_STALE_AFTER_SECONDS", 10)?;
+        let reconnect_min_ms = parse_u64("BYBIT_RECONNECT_MIN_MS", 500)?;
+        let reconnect_max_seconds = parse_u64("BYBIT_RECONNECT_MAX_SECONDS", 30)?;
+
+        if heartbeat_seconds == 0 {
+            bail!("BYBIT_HEARTBEAT_SECONDS must be greater than zero");
+        }
+        if stale_seconds == 0 {
+            bail!("BYBIT_STALE_AFTER_SECONDS must be greater than zero");
+        }
+        if reconnect_min_ms == 0 || reconnect_max_seconds == 0 {
+            bail!("reconnect intervals must be greater than zero");
+        }
+
+        let reconnect_min = Duration::from_millis(reconnect_min_ms);
+        let reconnect_max = Duration::from_secs(reconnect_max_seconds);
+        if reconnect_min > reconnect_max {
+            bail!("BYBIT_RECONNECT_MIN_MS must not exceed BYBIT_RECONNECT_MAX_SECONDS");
+        }
+
         Ok(Self {
             testnet,
             category,
             symbols,
             orderbook_depth,
-            heartbeat_interval: Duration::from_secs(parse_u64("BYBIT_HEARTBEAT_SECONDS", 20)?),
-            stale_after: Duration::from_secs(parse_u64("BYBIT_STALE_AFTER_SECONDS", 10)?),
-            reconnect_min: Duration::from_millis(parse_u64("BYBIT_RECONNECT_MIN_MS", 500)?),
-            reconnect_max: Duration::from_secs(parse_u64("BYBIT_RECONNECT_MAX_SECONDS", 30)?),
+            heartbeat_interval: Duration::from_secs(heartbeat_seconds),
+            stale_after: Duration::from_secs(stale_seconds),
+            reconnect_min,
+            reconnect_max,
         })
     }
 
