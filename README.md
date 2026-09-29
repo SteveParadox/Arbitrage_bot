@@ -35,27 +35,54 @@ arbitrage-bot/
 └── README.md
 ```
 
-## Phase 1 goals
+## Phase 1: Foundation
 
-The foundation phase establishes:
+The foundation establishes environment configuration, structured logging, coding standards, Docker development, CI, tests, and secret handling.
 
-- environment-variable based configuration;
-- structured logging;
-- coding and formatting standards;
-- Docker development setup;
-- CI checks for Python, Rust, and TypeScript;
-- API-key and secret handling rules;
-- starter health endpoints and test scaffolding.
+## Phase 2: Bybit market data
+
+The Rust `market-data` service now consumes Bybit V5 public feeds for:
+
+- order books;
+- best bid / ask;
+- public trades;
+- ticker updates;
+- instrument metadata.
+
+It maintains local books from snapshots/deltas, validates sequence monotonicity, sends heartbeats, detects stale data, and reconnects with bounded exponential backoff.
+
+Run it with:
+
+```bash
+cd rust
+cargo run -p market-data
+```
+
+Default configuration uses Bybit testnet, `linear`, `BTCUSDT,ETHUSDT`, and depth 50. See `docs/MARKET_DATA.md` and `.env.example`.
+
+The service emits newline-delimited normalized JSON. Example:
+
+```json
+{
+  "type": "quote",
+  "symbol": "BTCUSDT",
+  "bid": 68250.1,
+  "ask": 68250.2,
+  "timestamp": 1790549000000
+}
+```
 
 ## Security
 
 **Never commit exchange credentials.** Bybit API keys, secrets, signing keys, account IDs, and other credentials must come from environment variables or a secrets manager.
 
-1. Copy `.env.example` to `.env` locally.
-2. Add real credentials only to `.env` or your deployment platform's secret store.
-3. `.env`, private keys, credentials, and common secret artifacts are excluded by `.gitignore`.
-4. CI uses GitHub Actions secrets where credentials are ever required.
-5. Start with Bybit testnet credentials. Live trading should remain disabled until explicit risk controls and operational safeguards are implemented.
+Phase 2 requires no API key because it uses public market data only. API credential variables remain placeholders for later private/trading phases.
+
+Live trading remains disabled:
+
+```env
+ARB_LIVE_TRADING_ENABLED=false
+```
 
 ## Local development
 
@@ -69,12 +96,6 @@ python -m venv .venv
 pip install -e ".[dev]"
 pytest
 ruff check .
-```
-
-Run the API:
-
-```bash
-uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Rust
@@ -101,20 +122,13 @@ cp .env.example .env
 docker compose -f docker/docker-compose.yml up --build
 ```
 
-## Configuration conventions
-
-Environment variables use the `ARB_` prefix for application-level settings and `BYBIT_` for exchange credentials.
-
-Sensitive values are never logged. Configuration parsing should fail fast when required production values are absent.
-
 ## Coding standards
 
 - Python: Ruff, pytest, type hints, Black-compatible formatting.
 - Rust: rustfmt, Clippy with warnings denied, unit/integration tests.
 - TypeScript: strict TypeScript, ESLint, React best practices.
-- Commits: concise imperative messages, ideally Conventional Commits.
 - Pull requests: CI must pass before merge.
 
 ## Current status
 
-Phase 1 scaffold only. No production trading logic is enabled.
+Phase 2 market-data ingestion implemented. **No trading is enabled.**
