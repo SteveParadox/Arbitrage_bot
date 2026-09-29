@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     arb_api_port: int = 8000
     arb_live_trading_enabled: bool = False
 
+    arb_database_url: str = (
+        "postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage"
+    )
+    arb_opportunity_min_net_bps: float = 0.0
+    arb_opportunity_max_gap_ms: int = 2_000
+    arb_opportunity_batch_size: int = 250
+
     bybit_testnet: bool = True
     bybit_api_key: str = ""
     bybit_api_secret: str = ""
@@ -25,6 +32,9 @@ class Settings(BaseSettings):
             "arb_env": self.arb_env,
             "arb_log_level": self.arb_log_level,
             "arb_live_trading_enabled": self.arb_live_trading_enabled,
+            "arb_database_configured": bool(self.arb_database_url),
+            "arb_opportunity_min_net_bps": self.arb_opportunity_min_net_bps,
+            "arb_opportunity_max_gap_ms": self.arb_opportunity_max_gap_ms,
             "bybit_testnet": self.bybit_testnet,
             "bybit_api_key_configured": bool(self.bybit_api_key),
             "bybit_api_secret_configured": bool(self.bybit_api_secret),

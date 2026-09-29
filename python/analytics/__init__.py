@@ -1,1 +1,1 @@
-"""Analytics package."""
+"""Opportunity persistence and analytics package."""

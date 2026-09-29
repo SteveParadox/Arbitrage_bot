@@ -4,101 +4,91 @@ A multi-language monorepo for researching, simulating, monitoring, and eventuall
 
 ## Architecture
 
-- **Python**: strategy research, simulation, analytics, orchestration, and APIs.
-- **Rust**: latency-sensitive market data, order-book processing, scanning, execution, and risk controls.
+- **Python**: strategy research, persistence, analytics, orchestration, and APIs.
+- **Rust**: latency-sensitive market data, order books, scanning, execution, and risk controls.
+- **PostgreSQL**: full-fidelity opportunity history and analytics.
 - **TypeScript + React**: operational dashboard and frontend.
 
 ## Implemented phases
 
 ### Phase 1: Foundation
-
 Environment configuration, logging, Docker, CI, tests, coding standards, and secret handling.
 
 ### Phase 2: Bybit market data
-
-Rust consumes Bybit V5 public order books, trades, tickers, and instrument metadata with
-heartbeat, reconnection, stale-feed detection, and sequence validation.
+Rust consumes public Bybit V5 feeds with reconnect, heartbeat, stale-data, and sequence controls.
 
 ### Phase 3: Local order-book engine
-
-Rust maintains per-symbol books and calculates depth-aware executable prices rather than assuming
-an entire order fills at the best bid or ask.
+Rust maintains depth and calculates executable rather than decorative prices.
 
 ### Phase 4: Triangle discovery
-
-Python discovers valid Bybit spot three-asset cycles and writes explicit BUY/SELL route semantics
-to `shared/config/triangles.json`. Rust validates and loads those routes.
+Python discovers valid spot triangles and Rust validates the route file.
 
 ### Phase 5: Arbitrage scanner
-
-The Rust scanner indexes routes by symbol and recalculates only affected triangles on each
-order-book update. Every gross route evaluation is journaled.
+Rust recalculates only triangles affected by an order-book update and records every scan.
 
 ### Phase 6: Fee and profitability engine
+Python defines the financial reference model and Rust mirrors it, including fees and execution
+allowances with cross-language parity tests.
 
-Python defines the reference financial model and Rust mirrors it in the live scanner.
+### Phase 7: Opportunity database and analytics
 
-For each completed route:
+Every detected scan can now be streamed into PostgreSQL.
 
-```text
-gross profit
-- compounded Bybit spot fees
-- extra slippage allowance
-- rounding-loss allowance
-- latency buffer
-- safety margin
-= expected net profit
-```
-
-The reference configuration is:
+The analytics funnel separates:
 
 ```text
-shared/config/profitability.json
+detected -> executable -> accepted
 ```
 
-and defaults to three 10 bps spot-taker fees plus configurable execution buffers.
+where accepted means the route was fully executable and passed the configured expected-net
+threshold. It does **not** mean an order was submitted.
 
-The Phase 3 order-book walk already includes visible depth slippage. Phase 6's slippage allowance
-is additional adverse execution beyond the current snapshot, avoiding double-counting.
+PostgreSQL records gross edge, fees, slippage allowance, rounding allowance, latency buffer,
+safety margin, net edge, liquidity, rejection reason, raw scan evidence, and continuous
+opportunity duration.
 
-Python/Rust parity uses shared exact-decimal fixtures:
+Start PostgreSQL and migrate:
 
 ```bash
-python scripts/check_profitability_parity.py
+docker compose -f docker/docker-compose.yml up -d postgres
+cd python
+alembic upgrade head
 ```
 
-See `docs/PROFITABILITY.md`.
+Live pipeline:
 
-## Live scanner
+```bash
+cd rust
+cargo run -p market-data \
+  | cargo run -p scanner --bin scan-live \
+  | (cd ../python && python -m analytics.opportunity_ingest)
+```
 
-Generate current USDT triangles:
+Backfill an existing journal:
 
 ```bash
 cd python
-python -m strategy.triangle_discovery --start-assets USDT
+python -m analytics.opportunity_ingest --file ../data/scans/arbitrage_scans.ndjson
 ```
 
-Then run from `rust/`:
-
-```bash
-cargo run -p market-data | cargo run -p scanner --bin scan-live
-```
-
-Scan evidence is appended to:
+Analytics endpoints:
 
 ```text
-data/scans/arbitrage_scans.ndjson
+GET /analytics/opportunities/summary
+GET /analytics/opportunities/rejections
+GET /analytics/opportunities/triangles
 ```
+
+See `docs/OPPORTUNITY_ANALYTICS.md`.
 
 ## Security
 
-Bybit credentials are never hardcoded. Live trading remains disabled:
+Bybit credentials and PostgreSQL production credentials must come from environment variables or a
+secrets manager. Live trading remains disabled:
 
 ```env
 ARB_LIVE_TRADING_ENABLED=false
 ```
-
-Phase 6 calculates expected profitability only. It does not submit orders.
 
 ## Testing
 
@@ -118,5 +108,5 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 6 fee-aware expected-net profitability and Python/Rust parity are implemented.
+Phase 7 PostgreSQL opportunity persistence and funnel analytics are implemented.
 **No trade execution is enabled.**
