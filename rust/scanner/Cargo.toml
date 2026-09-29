@@ -2,6 +2,7 @@
 name = "scanner"
 version.workspace = true
 edition.workspace = true
+autobins = false
 
 [dependencies]
 anyhow.workspace = true
