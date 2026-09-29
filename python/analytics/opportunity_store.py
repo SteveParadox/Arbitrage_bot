@@ -188,13 +188,14 @@ class OpportunityStore:
         duration_ms = 0
         active = self._active_windows.get(route_id)
 
-        if decision.accepted:
-            if active is not None:
-                gap_ms = int((detected_at - active.last_seen_at).total_seconds() * 1000)
-                if gap_ms > self.max_continuity_gap_ms:
-                    self._close_window(active, active.last_seen_at, "continuity_gap")
-                    active = None
+        if active is not None:
+            gap_ms = int((detected_at - active.last_seen_at).total_seconds() * 1000)
+            if gap_ms > self.max_continuity_gap_ms:
+                self._close_window(active, active.last_seen_at, "continuity_gap")
+                self._active_windows.pop(route_id, None)
+                active = None
 
+        if decision.accepted:
             if active is None:
                 active = ActiveWindow(
                     id=str(uuid4()),
@@ -384,7 +385,7 @@ def analytics_summary(session: Session, hours: int = 24) -> dict[str, Any]:
             func.count(OpportunityWindow.id),
             func.avg(OpportunityWindow.duration_ms),
             func.max(OpportunityWindow.duration_ms),
-        ).where(OpportunityWindow.started_at >= since)
+        ).where(OpportunityWindow.last_seen_at >= since)
     ).one()
 
     detected = int(totals.detected or 0)

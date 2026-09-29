@@ -100,5 +100,7 @@ def test_postgres_funnel_and_deduplication() -> None:
         assert summary["executable"] == 2
         assert summary["accepted"] == 1
         assert summary["rejected"] == 1
+        assert summary["opportunity_windows"] == 1
+        assert summary["max_window_duration_ms"] == 500
 
     Base.metadata.drop_all(engine)
