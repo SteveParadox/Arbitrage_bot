@@ -23,3 +23,5 @@ credentials.*
 secrets.*
 
 data/scans/*.ndjson
+
+data/market/*.ndjson

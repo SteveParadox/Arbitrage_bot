@@ -4,9 +4,9 @@ A multi-language monorepo for researching, simulating, monitoring, and eventuall
 
 ## Architecture
 
-- **Python**: strategy research, persistence, analytics, orchestration, and APIs.
+- **Python**: strategy research, persistence, analytics, paper simulation, orchestration, and APIs.
 - **Rust**: latency-sensitive market data, order books, scanning, execution, and risk controls.
-- **PostgreSQL**: full-fidelity opportunity history and analytics.
+- **PostgreSQL**: opportunity history, archived order-book events, and simulation results.
 - **TypeScript + React**: operational dashboard and frontend.
 
 ## Implemented phases
@@ -27,59 +27,61 @@ Python discovers valid spot triangles and Rust validates the route file.
 Rust recalculates only triangles affected by an order-book update and records every scan.
 
 ### Phase 6: Fee and profitability engine
-Python defines the financial reference model and Rust mirrors it, including fees and execution
-allowances with cross-language parity tests.
+Python defines the financial reference model and Rust mirrors it with shared parity fixtures.
 
 ### Phase 7: Opportunity database and analytics
+PostgreSQL records every detected route evaluation and separates detected, executable, and
+accepted opportunities.
 
-Every detected scan can now be streamed into PostgreSQL.
+### Phase 8: Paper trading simulator
 
-The analytics funnel separates:
+Python now replays opportunities against historical order-book states after configurable execution
+delays.
+
+Default latency scenarios:
 
 ```text
-detected -> executable -> accepted
+25 ms
+50 ms
+100 ms
+200 ms
+500 ms
 ```
 
-where accepted means the route was fully executable and passed the configured expected-net
-threshold. It does **not** mean an order was submitted.
+The three legs execute at:
 
-PostgreSQL records gross edge, fees, slippage allowance, rounding allowance, latency buffer,
-safety margin, net edge, liquidity, rejection reason, raw scan evidence, and continuous
-opportunity duration.
-
-Start PostgreSQL and migrate:
-
-```bash
-docker compose -f docker/docker-compose.yml up -d postgres
-cd python
-alembic upgrade head
+```text
+t0 + L
+t0 + 2L
+t0 + 3L
 ```
 
-Live pipeline:
+using the archived book at each timestamp. Fees are applied between legs, partial liquidity causes
+a failed simulation, and stale historical books are rejected.
+
+Capture market data while scanning, ingest it, then replay thousands of opportunities:
 
 ```bash
+# Capture while scanning
 cd rust
 cargo run -p market-data \
+  | tee ../data/market/market_data.ndjson \
   | cargo run -p scanner --bin scan-live \
   | (cd ../python && python -m analytics.opportunity_ingest)
+
+# Archive captured order books
+cd ../python
+python -m simulator.book_ingest --file ../data/market/market_data.ndjson
+
+# Simulate 10k opportunities across five latency assumptions
+alembic upgrade head
+python -m simulator.paper_trade --hours 24 --limit 10000
 ```
 
-Backfill an existing journal:
+Metrics include expected profit, simulated profit, fill rate, failure rate, opportunity lifetime,
+execution drift/slippage, and failure reasons.
 
-```bash
-cd python
-python -m analytics.opportunity_ingest --file ../data/scans/arbitrage_scans.ndjson
-```
-
-Analytics endpoints:
-
-```text
-GET /analytics/opportunities/summary
-GET /analytics/opportunities/rejections
-GET /analytics/opportunities/triangles
-```
-
-See `docs/OPPORTUNITY_ANALYTICS.md`.
+See `docs/PAPER_TRADING.md`.
 
 ## Security
 
@@ -89,6 +91,8 @@ secrets manager. Live trading remains disabled:
 ```env
 ARB_LIVE_TRADING_ENABLED=false
 ```
+
+Phase 8 performs historical simulation only.
 
 ## Testing
 
@@ -108,5 +112,5 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 7 PostgreSQL opportunity persistence and funnel analytics are implemented.
+Phase 8 historical paper execution replay is implemented.
 **No trade execution is enabled.**

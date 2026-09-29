@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "latencies_ms": [25, 50, 100, 200, 500],
+  "max_book_age_ms": 1000,
+  "checkpoint_interval": 100,
+  "default_hours": 24,
+  "default_opportunity_limit": 10000,
+  "accepted_only": true
+}

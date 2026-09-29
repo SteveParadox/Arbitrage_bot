@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from analytics.db import Base
 from analytics.opportunity_store import OpportunityStore, analytics_summary
+from simulator import models as simulator_models  # noqa: F401
 
 
 DATABASE_URL = os.getenv("TEST_DATABASE_URL")

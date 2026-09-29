@@ -88,4 +88,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
+      - run: alembic upgrade head
       - run: pytest tests/test_opportunity_postgres.py

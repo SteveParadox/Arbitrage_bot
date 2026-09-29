@@ -13,7 +13,6 @@ from sqlalchemy import (
     JSON,
     Numeric,
     String,
-    Text,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
