@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "exchange": "bybit",
+  "market": "spot",
+  "generated_at": null,
+  "source": {
+    "endpoint": "https://api.bybit.com/v5/market/instruments-info",
+    "category": "spot",
+    "status": "Trading",
+    "testnet": false
+  },
+  "start_assets": [],
+  "instrument_count": 0,
+  "triangle_count": 0,
+  "route_count": 0,
+  "routes": []
+}

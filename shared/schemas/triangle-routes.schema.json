@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/triangle-routes.schema.json",
+  "title": "TriangleRouteConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "exchange",
+    "market",
+    "generated_at",
+    "source",
+    "start_assets",
+    "instrument_count",
+    "triangle_count",
+    "route_count",
+    "routes"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "exchange": { "const": "bybit" },
+    "market": { "const": "spot" },
+    "generated_at": { "type": ["string", "null"] },
+    "source": {
+      "type": "object",
+      "required": ["endpoint", "category", "status", "testnet"],
+      "properties": {
+        "endpoint": { "type": "string" },
+        "category": { "const": "spot" },
+        "status": { "const": "Trading" },
+        "testnet": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "start_assets": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "instrument_count": { "type": "integer", "minimum": 0 },
+    "triangle_count": { "type": "integer", "minimum": 0 },
+    "route_count": { "type": "integer", "minimum": 0 },
+    "routes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/route" }
+    }
+  },
+  "$defs": {
+    "leg": {
+      "type": "object",
+      "required": [
+        "symbol",
+        "from_asset",
+        "to_asset",
+        "side",
+        "base_asset",
+        "quote_asset"
+      ],
+      "properties": {
+        "symbol": { "type": "string" },
+        "from_asset": { "type": "string" },
+        "to_asset": { "type": "string" },
+        "side": { "enum": ["BUY", "SELL"] },
+        "base_asset": { "type": "string" },
+        "quote_asset": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "required": [
+        "id",
+        "triangle_id",
+        "start_asset",
+        "assets",
+        "pair1",
+        "pair2",
+        "pair3",
+        "legs"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "triangle_id": { "type": "string" },
+        "start_asset": { "type": "string" },
+        "assets": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "string" }
+        },
+        "pair1": { "type": "string" },
+        "pair2": { "type": "string" },
+        "pair3": { "type": "string" },
+        "legs": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/leg" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

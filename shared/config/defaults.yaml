@@ -3,3 +3,6 @@ log_level: INFO
 live_trading_enabled: false
 bybit:
   testnet: true
+triangles:
+  config_path: shared/config/triangles.json
+  start_assets: []
