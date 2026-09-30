@@ -16,8 +16,12 @@ impl NdjsonRecorder {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("failed to create scan record directory {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "failed to create scan record directory {}",
+                    parent.display()
+                )
+            })?;
         }
 
         let file = OpenOptions::new()

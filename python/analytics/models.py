@@ -14,6 +14,7 @@ from sqlalchemy import (
     Numeric,
     String,
     func,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,8 +35,10 @@ class OpportunityWindow(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    duration_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    duration_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    observation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
     max_net_edge_bps: Mapped[Decimal | None] = mapped_column(BPS)
     max_net_profit: Mapped[Decimal | None] = mapped_column(MONEY)
     close_reason: Mapped[str | None] = mapped_column(String(128))
@@ -100,7 +103,9 @@ class OpportunityObservation(Base):
 
     available_liquidity: Mapped[Decimal | None] = mapped_column(MONEY)
     available_liquidity_ratio: Mapped[Decimal | None] = mapped_column(RATIO)
-    opportunity_duration_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    opportunity_duration_ms: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
 
     scanner_status: Mapped[str] = mapped_column(String(64), nullable=False)
     executable: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -108,7 +113,9 @@ class OpportunityObservation(Base):
     rejection_reason: Mapped[str | None] = mapped_column(String(128))
     gross_profitable: Mapped[bool | None] = mapped_column(Boolean)
     net_profitable: Mapped[bool | None] = mapped_column(Boolean)
-    fees_included: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    fees_included: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     book_timestamp_skew_ms: Mapped[int | None] = mapped_column(BigInteger)
 
     raw_scan: Mapped[dict] = mapped_column(JSON, nullable=False)

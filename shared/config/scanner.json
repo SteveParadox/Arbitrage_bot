@@ -1,5 +1,7 @@
 {
   "version": 1,
+  "max_book_age_ms": 1000,
+  "max_book_skew_ms": 100,
   "start_amounts": {
     "USDT": 450.0
   },

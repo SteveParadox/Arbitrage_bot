@@ -159,7 +159,6 @@ pub(crate) struct LotSizeFilter {
     pub min_order_qty: Option<String>,
 }
 
-
 #[cfg(test)]
 mod tests {
     use orderbook::PriceLevel;

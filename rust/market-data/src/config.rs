@@ -37,14 +37,16 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let testnet = parse_bool("BYBIT_TESTNET", true)?;
         let category = match env::var("BYBIT_MARKET_CATEGORY")
-            .unwrap_or_else(|_| "linear".to_string())
+            .unwrap_or_else(|_| "spot".to_string())
             .to_lowercase()
             .as_str()
         {
             "spot" => Category::Spot,
             "linear" => Category::Linear,
             "inverse" => Category::Inverse,
-            other => bail!("unsupported BYBIT_MARKET_CATEGORY={other}; use spot, linear, or inverse"),
+            other => {
+                bail!("unsupported BYBIT_MARKET_CATEGORY={other}; use spot, linear, or inverse")
+            }
         };
 
         let symbols = env::var("BYBIT_MARKET_SYMBOLS")

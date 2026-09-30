@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -17,7 +18,10 @@ from analytics.models import OpportunityObservation, OpportunityWindow
 def _decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
-    return Decimal(str(value))
+    result = Decimal(str(value))
+    if not result.is_finite():
+        raise ValueError("financial numbers must be finite")
+    return result
 
 
 def _detected_at(scan: dict[str, Any]) -> datetime:
@@ -82,12 +86,29 @@ class OpportunityDecision:
 
 
 def classify_scan(scan: dict[str, Any], min_net_edge_bps: Decimal) -> OpportunityDecision:
+    if not isinstance(scan, dict):
+        raise ValueError("scan must be a JSON object")
+    json.dumps(scan, allow_nan=False)
     status = str(scan.get("status", ""))
     legs = scan.get("legs") or []
+    if not isinstance(legs, list) or any(not isinstance(leg, dict) for leg in legs):
+        raise ValueError("scan legs must be objects")
+    for leg in legs:
+        if not isinstance(leg.get("execution", {}), dict):
+            raise ValueError("leg execution must be an object")
+    for field in ("fees_included", "net_profitable"):
+        if scan.get(field) is not None and not isinstance(scan[field], bool):
+            raise ValueError(f"{field} must be boolean")
+    start = _decimal(scan.get("start_amount"))
+    final = _decimal(scan.get("final_amount"))
+    if start is not None and start <= 0:
+        raise ValueError("starting capital must be positive")
+    if final is not None and final < 0:
+        raise ValueError("final amount cannot be negative")
     executable = (
         status == "complete"
         and len(legs) == 3
-        and all(bool(leg.get("complete")) for leg in legs)
+        and all(leg.get("complete") is True for leg in legs)
         and scan.get("start_amount") is not None
         and scan.get("final_amount") is not None
     )
@@ -100,6 +121,8 @@ def classify_scan(scan: dict[str, Any], min_net_edge_bps: Decimal) -> Opportunit
             "insufficient_liquidity": "insufficient_liquidity",
             "start_amount_not_configured": "start_amount_not_configured",
             "calculation_error": "calculation_error",
+            "stale_book": "stale_book",
+            "book_timestamp_skew": "book_timestamp_skew",
         }.get(status, "incomplete_route")
         return OpportunityDecision(
             executable=False,
@@ -153,11 +176,12 @@ class OpportunityStore:
         self.session = session
         self.min_net_edge_bps = min_net_edge_bps
         self.max_continuity_gap_ms = max_continuity_gap_ms
-        self._active_windows = self._load_active_windows()
 
-    def _load_active_windows(self) -> dict[str, ActiveWindow]:
+    def _load_active_windows(self, route_id: str) -> dict[str, ActiveWindow]:
         rows = self.session.scalars(
-            select(OpportunityWindow).where(OpportunityWindow.ended_at.is_(None))
+            select(OpportunityWindow).where(
+                OpportunityWindow.ended_at.is_(None), OpportunityWindow.route_id == route_id
+            ).execution_options(populate_existing=True)
         ).all()
         return {
             row.route_id: ActiveWindow(
@@ -184,15 +208,34 @@ class OpportunityStore:
         net_edge = _decimal(scan.get("expected_net_return_bps"))
         net_profit = _decimal(scan.get("expected_net_profit"))
 
+        # Validate all fields before writes; deduplicate before touching windows.
+        values = self._observation_values(scan, decision, detected_at, None, 0)
+        # Serialize ledger writers across a transaction. This deliberately favors
+        # correctness over throughput until a partitioned ingestion design exists.
+        self.session.execute(select(func.pg_advisory_xact_lock(0x4152424C)))
+        inserted_id = self.session.execute(
+            insert(OpportunityObservation).values(**values)
+            .on_conflict_do_nothing(index_elements=["observation_key"])
+            .returning(OpportunityObservation.id)
+        ).scalar_one_or_none()
+        if inserted_id is None:
+            return False
+        latest = self.session.scalar(select(func.max(OpportunityObservation.detected_at)).where(
+            OpportunityObservation.route_id == route_id
+        ))
+        if latest is not None and detected_at < latest:
+            # Keep late observations in the funnel without rewriting known windows.
+            # Historical window reconstruction must be a separate ordered rebuild.
+            return True
+
         window_id: str | None = None
         duration_ms = 0
-        active = self._active_windows.get(route_id)
+        active = self._load_active_windows(route_id).get(route_id)
 
         if active is not None:
             gap_ms = int((detected_at - active.last_seen_at).total_seconds() * 1000)
             if gap_ms > self.max_continuity_gap_ms:
                 self._close_window(active, active.last_seen_at, "continuity_gap")
-                self._active_windows.pop(route_id, None)
                 active = None
 
         if decision.accepted:
@@ -215,23 +258,6 @@ class OpportunityStore:
             )
             window_id = active.id
 
-        values = self._observation_values(
-            scan,
-            decision,
-            detected_at,
-            window_id,
-            duration_ms,
-        )
-        statement = (
-            insert(OpportunityObservation)
-            .values(**values)
-            .on_conflict_do_nothing(index_elements=["observation_key"])
-            .returning(OpportunityObservation.id)
-        )
-        inserted_id = self.session.execute(statement).scalar_one_or_none()
-        if inserted_id is None:
-            return False
-
         if decision.accepted and active is not None:
             active.last_seen_at = detected_at
             active.duration_ms = duration_ms
@@ -239,10 +265,11 @@ class OpportunityStore:
             active.max_net_edge_bps = _max_decimal(active.max_net_edge_bps, net_edge)
             active.max_net_profit = _max_decimal(active.max_net_profit, net_profit)
             self._upsert_window(active)
-            self._active_windows[route_id] = active
+            self.session.execute(update(OpportunityObservation).where(
+                OpportunityObservation.id == inserted_id
+            ).values(opportunity_window_id=window_id, opportunity_duration_ms=duration_ms))
         elif active is not None:
             self._close_window(active, detected_at, decision.rejection_reason or "rejected")
-            self._active_windows.pop(route_id, None)
 
         return True
 
@@ -341,7 +368,7 @@ class OpportunityStore:
             update(OpportunityWindow)
             .where(OpportunityWindow.id == active.id)
             .values(
-                last_seen_at=max(active.last_seen_at, ended_at),
+                last_seen_at=active.last_seen_at,
                 ended_at=ended_at,
                 duration_ms=duration_ms,
                 close_reason=reason,

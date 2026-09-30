@@ -144,10 +144,7 @@ impl TryFrom<ProfitabilityConfigFile> for ProfitabilityConfig {
                 &raw.expected_slippage_bps,
             )?,
             rounding_loss_bps: parse_decimal("rounding_loss_bps", &raw.rounding_loss_bps)?,
-            latency_buffer_bps: parse_decimal(
-                "latency_buffer_bps",
-                &raw.latency_buffer_bps,
-            )?,
+            latency_buffer_bps: parse_decimal("latency_buffer_bps", &raw.latency_buffer_bps)?,
             safety_margin_bps: parse_decimal("safety_margin_bps", &raw.safety_margin_bps)?,
         };
         config.validate()?;
@@ -174,16 +171,12 @@ impl ProfitabilityConfig {
             ));
         }
 
-        for value in self
-            .fee_bps_per_leg
-            .iter()
-            .chain([
-                &self.expected_slippage_bps,
-                &self.rounding_loss_bps,
-                &self.latency_buffer_bps,
-                &self.safety_margin_bps,
-            ])
-        {
+        for value in self.fee_bps_per_leg.iter().chain([
+            &self.expected_slippage_bps,
+            &self.rounding_loss_bps,
+            &self.latency_buffer_bps,
+            &self.safety_margin_bps,
+        ]) {
             if *value < Decimal::ZERO {
                 return Err(ProfitabilityError::InvalidConfig(
                     "profitability cost assumptions must be non-negative".to_string(),
@@ -245,8 +238,7 @@ impl ProfitabilityConfig {
             + safety_margin_amount;
         let total_cost_bps = (total_cost_amount / start_amount) * bps_denominator();
         let expected_net_profit = gross_profit - total_cost_amount;
-        let expected_net_return_bps =
-            (expected_net_profit / start_amount) * bps_denominator();
+        let expected_net_return_bps = (expected_net_profit / start_amount) * bps_denominator();
         let expected_net_return_pct = expected_net_return_bps / Decimal::new(100, 0);
         let expected_final_amount = start_amount + expected_net_profit;
 
@@ -414,10 +406,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.canonical().gross_return_pct, "0.61000000");
-        assert_eq!(
-            result.canonical().expected_net_return_pct,
-            "0.17847173"
-        );
+        assert_eq!(result.canonical().expected_net_return_pct, "0.17847173");
         assert!(result.net_profitable);
     }
 }

@@ -12,12 +12,14 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{info, warn};
 
 use crate::{
-    config::{Category, Config},
+    config::Config,
     model::{
         InstrumentMetadata, InstrumentsResponse, MarketDataEvent, NormalizedQuote, NormalizedTrade,
         OrderbookData, StatusEvent, TickerData, TickerUpdate, TradeData, WsEnvelope,
     },
 };
+
+type TickerCache = HashMap<String, (Option<f64>, Option<f64>, Option<f64>)>;
 
 pub async fn run(config: Config, sender: mpsc::Sender<MarketDataEvent>) -> Result<()> {
     let mut metadata_delay = config.reconnect_min;
@@ -74,18 +76,9 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
 
     let topics = subscription_topics(config);
     validate_subscription_topics(&topics)?;
-    let batches = subscription_batches(config, &topics);
-    for (index, batch) in batches.iter().enumerate() {
+    for request in subscription_requests(&topics) {
         write
-            .send(Message::Text(
-                json!({
-                    "op": "subscribe",
-                    "args": batch,
-                    "req_id": format!("market-data-subscribe-{index}")
-                })
-                .to_string()
-                .into(),
-            ))
+            .send(Message::Text(request.to_string().into()))
             .await
             .context("failed to send subscription request")?;
     }
@@ -93,11 +86,7 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     emit_status(
         sender,
         "connected",
-        format!(
-            "submitted {} subscription requests for {} topics",
-            batches.len(),
-            topics.len()
-        ),
+        format!("requested {} topics; awaiting snapshots", topics.len()),
     )
     .await;
 
@@ -108,22 +97,27 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     let mut stale_check = time::interval(stale_check_every);
     stale_check.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
-    let mut last_market_data = Instant::now();
+    let mut book_receipts: HashMap<String, Instant> = config
+        .symbols
+        .iter()
+        .map(|symbol| (symbol.clone(), Instant::now()))
+        .collect();
     let mut books = OrderBookEngine::default();
-    let mut ticker_cache: HashMap<String, (Option<f64>, Option<f64>, Option<f64>)> = HashMap::new();
+    let mut ticker_cache = TickerCache::new();
 
     loop {
         tokio::select! {
             _ = heartbeat.tick() => {
                 write.send(Message::Text(
-                    json!({"op": "ping", "req_id": "market-data-heartbeat"}).to_string().into()
+                    json!({"op": "ping", "req_id": "market-data-heartbeat"}).to_string()
                 )).await.context("failed to send heartbeat")?;
             }
             _ = stale_check.tick() => {
-                if last_market_data.elapsed() > config.stale_after {
+                if let Some((symbol, received)) = book_receipts.iter()
+                    .find(|(_, received)| received.elapsed() > config.stale_after) {
                     return Err(anyhow!(
-                        "stale market data: no market event for {} ms",
-                        last_market_data.elapsed().as_millis()
+                        "stale order book {symbol}: no book event for {} ms",
+                        received.elapsed().as_millis()
                     ));
                 }
             }
@@ -131,15 +125,13 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
                 let message = message.ok_or_else(|| anyhow!("websocket stream closed"))??;
                 match message {
                     Message::Text(text) => {
-                        let observed_market_data = handle_text(
+                        handle_text(
                             text.as_ref(),
                             &mut books,
                             &mut ticker_cache,
+                            &mut book_receipts,
                             sender,
                         ).await?;
-                        if observed_market_data {
-                            last_market_data = Instant::now();
-                        }
                     }
                     Message::Ping(payload) => {
                         write.send(Message::Pong(payload)).await?;
@@ -182,25 +174,23 @@ fn validate_subscription_topics(topics: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn subscription_batches<'a>(
-    config: &Config,
-    topics: &'a [String],
-) -> Vec<&'a [String]> {
-    if topics.is_empty() {
-        return Vec::new();
-    }
-
-    let batch_size = match config.category {
-        Category::Spot => 10,
-        Category::Linear | Category::Inverse => topics.len(),
-    };
-    topics.chunks(batch_size).collect()
+fn subscription_requests(topics: &[String]) -> Vec<serde_json::Value> {
+    topics
+        .chunks(10)
+        .enumerate()
+        .map(|(index, chunk)| {
+            json!({
+                "op": "subscribe", "args": chunk, "req_id": format!("market-data-{index}")
+            })
+        })
+        .collect()
 }
 
 async fn handle_text(
     text: &str,
     books: &mut OrderBookEngine,
-    ticker_cache: &mut HashMap<String, (Option<f64>, Option<f64>, Option<f64>)>,
+    ticker_cache: &mut TickerCache,
+    book_receipts: &mut HashMap<String, Instant>,
     sender: &mpsc::Sender<MarketDataEvent>,
 ) -> Result<bool> {
     let envelope: WsEnvelope =
@@ -219,7 +209,9 @@ async fn handle_text(
     let Some(topic) = envelope.topic.as_deref() else {
         return Ok(false);
     };
-    let timestamp = envelope.ts.unwrap_or_else(now_ms);
+    let timestamp = envelope
+        .ts
+        .ok_or_else(|| anyhow!("topic message missing timestamp"))?;
     let data = envelope
         .data
         .ok_or_else(|| anyhow!("topic message missing data: {topic}"))?;
@@ -227,6 +219,9 @@ async fn handle_text(
     if topic.starts_with("orderbook.") {
         let data: OrderbookData = serde_json::from_value(data)?;
         let symbol = data.symbol.clone();
+        if !topic.ends_with(&format!(".{symbol}")) || !book_receipts.contains_key(&symbol) {
+            return Err(anyhow!("unexpected order book symbol/topic"));
+        }
         let is_snapshot =
             envelope.message_type.as_deref() == Some("snapshot") || data.update_id == 1;
 
@@ -243,6 +238,7 @@ async fn handle_text(
             is_snapshot,
         };
         books.apply(update.clone())?;
+        book_receipts.insert(symbol.clone(), Instant::now());
         sender
             .send(MarketDataEvent::OrderBook {
                 symbol: update.symbol,
@@ -329,7 +325,11 @@ fn parse_levels(symbol: &str, levels: Vec<[String; 2]>) -> Result<Vec<PriceLevel
 
 fn merge_number(slot: &mut Option<f64>, value: Option<&str>) -> Result<()> {
     if let Some(value) = value {
-        *slot = Some(value.parse::<f64>().context("invalid ticker numeric field")?);
+        *slot = Some(
+            value
+                .parse::<f64>()
+                .context("invalid ticker numeric field")?,
+        );
     }
     Ok(())
 }
@@ -440,6 +440,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn spot_subscriptions_are_batched_at_ten_arguments() {
+        let topics: Vec<String> = (0..31).map(|i| format!("tickers.SYM{i}")).collect();
+        let requests = subscription_requests(&topics);
+        assert_eq!(requests.len(), 4);
+        assert_eq!(requests[0]["args"].as_array().unwrap().len(), 10);
+        assert_eq!(requests[3]["args"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn ticker_activity_cannot_refresh_orderbook_freshness() {
+        let (sender, _receiver) = mpsc::channel(10);
+        let mut books = OrderBookEngine::default();
+        let mut cache = HashMap::new();
+        let old = Instant::now() - Duration::from_secs(20);
+        let mut receipts = HashMap::from([("BTCUSDT".to_string(), old)]);
+        handle_text(r#"{"topic":"tickers.BTCUSDT","ts":1000,"data":{"symbol":"BTCUSDT","lastPrice":"100"}}"#,
+            &mut books, &mut cache, &mut receipts, &sender).await.unwrap();
+        assert_eq!(receipts["BTCUSDT"], old);
+        assert!(handle_text(
+            r#"{"topic":"orderbook.50.BTCUSDT","data":{}}"#,
+            &mut books,
+            &mut cache,
+            &mut receipts,
+            &sender
+        )
+        .await
+        .is_err());
+    }
+
+    #[test]
     fn builds_all_topics_per_symbol() {
         let config = Config {
             testnet: true,
@@ -474,39 +504,13 @@ mod tests {
             reconnect_min: Duration::from_millis(500),
             reconnect_max: Duration::from_secs(30),
         };
-
-        let topics = subscription_topics(&config);
         assert_eq!(
-            topics,
+            subscription_topics(&config),
             vec![
                 "orderbook.50.BTCUSDT".to_string(),
                 "orderbook.50.ETHUSDT".to_string(),
             ]
         );
-    }
-
-    #[test]
-    fn chunks_spot_subscriptions_to_ten_args() {
-        let config = Config {
-            testnet: false,
-            category: crate::config::Category::Spot,
-            symbols: (0..8)
-                .map(|index| format!("S{index}USDT"))
-                .collect(),
-            orderbook_depth: 50,
-            subscribe_trades: true,
-            subscribe_tickers: true,
-            heartbeat_interval: Duration::from_secs(20),
-            stale_after: Duration::from_secs(10),
-            reconnect_min: Duration::from_millis(500),
-            reconnect_max: Duration::from_secs(30),
-        };
-
-        let topics = subscription_topics(&config);
-        let batches = subscription_batches(&config, &topics);
-        assert_eq!(topics.len(), 24);
-        assert_eq!(batches.len(), 3);
-        assert!(batches.iter().all(|batch| batch.len() <= 10));
     }
 
     #[test]
@@ -517,11 +521,8 @@ mod tests {
 
     #[test]
     fn parses_bybit_levels() {
-        let levels = parse_levels(
-            "BTCUSDT",
-            vec![["68250.1".to_string(), "0.25".to_string()]],
-        )
-        .unwrap();
+        let levels =
+            parse_levels("BTCUSDT", vec![["68250.1".to_string(), "0.25".to_string()]]).unwrap();
 
         assert_eq!(levels[0].price, 68250.1);
         assert_eq!(levels[0].quantity, 0.25);

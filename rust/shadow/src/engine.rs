@@ -1004,8 +1004,8 @@ mod tests {
             version: 1,
             base_asset: "USDT".to_string(),
             latency_ms: vec![50, 100, 250],
-            minimum_observations: 1_000,
-            max_pending_observations: 2_000,
+            minimum_observations: 3_000,
+            max_pending_observations: 5_000,
             account_refresh_ms: 1_000,
             sample_tick_ms: 5,
             history_retention_ms: 1_000,
@@ -1118,6 +1118,8 @@ mod tests {
             start_amounts: HashMap::from([("USDT".to_string(), 100.0)]),
             record_path: "unused".to_string(),
             profitability_config_path: "unused".to_string(),
+            max_book_age_ms: 1_000,
+            max_book_skew_ms: 100,
         }
     }
 

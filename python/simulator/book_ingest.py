@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from analytics.db import get_session_factory
 from simulator.models import MarketBookEvent
+from simulator.book_archive import _decode_levels
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,14 +32,30 @@ def parse_args() -> argparse.Namespace:
 
 
 def _book_values(event: dict) -> dict | None:
+    if not isinstance(event, dict):
+        raise ValueError("market event must be an object")
     if event.get("type") != "order_book":
         return None
+    if not isinstance(event.get("is_snapshot"), bool):
+        raise ValueError("is_snapshot must be boolean")
+    if not isinstance(event.get("symbol"), str) or not event["symbol"].strip():
+        raise ValueError("symbol must be nonempty")
+    for field in ("timestamp", "update_id", "sequence"):
+        value = event[field]
+        if type(value) is not int or not 0 <= value < 2**63:
+            raise ValueError(f"{field} must be a nonnegative signed-64-bit integer")
+    if event["update_id"] == 0:
+        raise ValueError("update_id must be positive")
+    for side in ("bids", "asks"):
+        if not isinstance(event.get(side), list):
+            raise ValueError("book sides must be arrays")
+        _decode_levels(event[side])
     return {
         "symbol": str(event["symbol"]),
         "event_timestamp_ms": int(event["timestamp"]),
         "update_id": int(event["update_id"]),
         "sequence": int(event["sequence"]),
-        "is_snapshot": bool(event["is_snapshot"]),
+        "is_snapshot": event["is_snapshot"] or event["update_id"] == 1,
         "bids": event.get("bids") or [],
         "asks": event.get("asks") or [],
     }
@@ -86,7 +103,8 @@ def ingest_stream(
             try:
                 event = json.loads(line)
                 values = _book_values(event)
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError,
+                    IndexError, OverflowError) as error:
                 malformed += 1
                 print(
                     f"ignored malformed market-data line {line_number}: {error}",

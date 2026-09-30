@@ -14,12 +14,29 @@ pub struct ScannerSettings {
     pub start_amounts: HashMap<String, f64>,
     pub record_path: String,
     pub profitability_config_path: String,
+    #[serde(default = "default_max_book_age_ms")]
+    pub max_book_age_ms: u64,
+    #[serde(default = "default_max_book_skew_ms")]
+    pub max_book_skew_ms: u64,
+}
+
+fn default_max_book_age_ms() -> u64 {
+    1_000
+}
+fn default_max_book_skew_ms() -> u64 {
+    100
 }
 
 impl ScannerSettings {
     pub fn validate(&self) -> Result<(), String> {
+        if self.max_book_age_ms == 0 || self.max_book_skew_ms == 0 {
+            return Err("book age and skew limits must be positive".into());
+        }
         if self.version != 1 {
-            return Err(format!("unsupported scanner settings version {}", self.version));
+            return Err(format!(
+                "unsupported scanner settings version {}",
+                self.version
+            ));
         }
         if self.start_amounts.is_empty() {
             return Err("scanner start_amounts must not be empty".to_string());
@@ -29,7 +46,9 @@ impl ScannerSettings {
                 return Err("scanner start asset must not be empty".to_string());
             }
             if !amount.is_finite() || *amount <= 0.0 {
-                return Err(format!("scanner start amount for {asset} must be positive and finite"));
+                return Err(format!(
+                    "scanner start amount for {asset} must be positive and finite"
+                ));
             }
         }
         if self.record_path.trim().is_empty() {
@@ -46,6 +65,8 @@ impl ScannerSettings {
 #[serde(rename_all = "snake_case")]
 pub enum ScanStatus {
     Complete,
+    StaleBook,
+    BookTimestampSkew,
     MissingBook,
     InsufficientLiquidity,
     StartAmountNotConfigured,
@@ -104,6 +125,8 @@ pub struct ArbitrageScanner {
     books: OrderBookEngine,
     start_amounts: HashMap<String, f64>,
     profitability: ProfitabilityConfig,
+    max_book_age_ms: u64,
+    max_book_skew_ms: u64,
 }
 
 impl ArbitrageScanner {
@@ -114,7 +137,9 @@ impl ArbitrageScanner {
     ) -> Result<Self, String> {
         config.validate().map_err(|error| error.to_string())?;
         settings.validate()?;
-        profitability.validate().map_err(|error| error.to_string())?;
+        profitability
+            .validate()
+            .map_err(|error| error.to_string())?;
 
         let mut route_indexes_by_symbol: HashMap<String, Vec<usize>> = HashMap::new();
         for (route_index, route) in config.routes.iter().enumerate() {
@@ -141,13 +166,17 @@ impl ArbitrageScanner {
                 .map(|(asset, amount)| (asset.to_uppercase(), amount))
                 .collect(),
             profitability,
+            max_book_age_ms: settings.max_book_age_ms,
+            max_book_skew_ms: settings.max_book_skew_ms,
         })
     }
 
+    pub fn reset_books(&mut self) {
+        self.books = OrderBookEngine::default();
+    }
+
     pub fn affected_route_count(&self, symbol: &str) -> usize {
-        self.route_indexes_by_symbol
-            .get(symbol)
-            .map_or(0, Vec::len)
+        self.route_indexes_by_symbol.get(symbol).map_or(0, Vec::len)
     }
 
     pub fn on_book_update(
@@ -163,7 +192,10 @@ impl ArbitrageScanner {
             return Ok(Vec::new());
         };
 
-        self.books.apply(update)?;
+        if let Err(error) = self.books.apply(update) {
+            self.reset_books();
+            return Err(error);
+        }
 
         let mut records = Vec::with_capacity(route_indexes.len());
         for &route_index in route_indexes {
@@ -256,6 +288,31 @@ impl ArbitrageScanner {
                 TradeSide::Sell => estimate.filled_quote_quantity,
             };
             book_timestamps.push(estimate.timestamp);
+
+            let stale = estimate.timestamp > scan_timestamp
+                || scan_timestamp.saturating_sub(estimate.timestamp) > self.max_book_age_ms;
+            let skew = book_timestamps.iter().max().unwrap_or(&0)
+                - book_timestamps.iter().min().unwrap_or(&0);
+            if stale || skew > self.max_book_skew_ms {
+                let mut record = base_record(
+                    route,
+                    scan_timestamp,
+                    trigger_symbol,
+                    trigger_timestamp,
+                    trigger_update_id,
+                    trigger_sequence,
+                    Some(start_amount),
+                    if stale {
+                        ScanStatus::StaleBook
+                    } else {
+                        ScanStatus::BookTimestampSkew
+                    },
+                    Some(format!("unusable book timestamps on {}", leg.symbol)),
+                );
+                record.legs = leg_scans;
+                apply_book_timestamp_stats(&mut record, &book_timestamps);
+                return record;
+            }
 
             let complete = estimate.complete;
             leg_scans.push(LegScan {
@@ -350,6 +407,7 @@ impl ArbitrageScanner {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn base_record(
     route: &TriangleRoute,
     scan_timestamp: u64,
@@ -419,9 +477,7 @@ mod tests {
     use orderbook::{BookUpdate, PriceLevel};
 
     use super::*;
-    use crate::{
-        ProfitabilityConfigFile, TriangleLeg, TriangleSource,
-    };
+    use crate::{ProfitabilityConfigFile, TriangleLeg, TriangleSource};
 
     fn config() -> TriangleConfig {
         TriangleConfig {
@@ -499,6 +555,8 @@ mod tests {
                 start_amounts: HashMap::from([("USDT".to_string(), 450.0)]),
                 record_path: "ignored.ndjson".into(),
                 profitability_config_path: "ignored.json".into(),
+                max_book_age_ms: 1_000,
+                max_book_skew_ms: 100,
             },
             profitability(),
         )
@@ -523,7 +581,7 @@ mod tests {
                 price: ask,
                 quantity: ask_qty,
             }],
-            timestamp,
+            timestamp: now_ms().saturating_sub(100) + timestamp,
             update_id: 1,
             sequence: timestamp,
             is_snapshot: true,
@@ -535,6 +593,47 @@ mod tests {
         let scanner = scanner();
         assert_eq!(scanner.affected_route_count("BTCUSDT"), 1);
         assert_eq!(scanner.affected_route_count("SOLUSDT"), 0);
+    }
+
+    #[test]
+    fn stale_or_skewed_books_never_complete() {
+        for stale in [true, false] {
+            let mut scanner = scanner();
+            let mut old = snapshot("BTCUSDT", 99., 10., 100., 10., 1);
+            old.timestamp = now_ms() - if stale { 2_000 } else { 500 };
+            scanner.on_book_update(old).unwrap();
+            scanner
+                .on_book_update(snapshot("ETHBTC", 0.049, 100., 0.05, 100., 2))
+                .unwrap();
+            let scans = scanner
+                .on_book_update(snapshot("ETHUSDT", 21., 100., 22., 100., 3))
+                .unwrap();
+            assert_eq!(
+                scans[0].status,
+                if stale {
+                    ScanStatus::StaleBook
+                } else {
+                    ScanStatus::BookTimestampSkew
+                }
+            );
+            assert!(scans[0].expected_net_profit.is_none());
+        }
+    }
+
+    #[test]
+    fn reset_requires_all_three_new_snapshots() {
+        let mut scanner = scanner();
+        scanner
+            .on_book_update(snapshot("BTCUSDT", 99., 10., 100., 10., 1))
+            .unwrap();
+        scanner
+            .on_book_update(snapshot("ETHBTC", 0.049, 100., 0.05, 100., 2))
+            .unwrap();
+        scanner.reset_books();
+        let scans = scanner
+            .on_book_update(snapshot("ETHUSDT", 21., 100., 22., 100., 3))
+            .unwrap();
+        assert_eq!(scans[0].status, ScanStatus::MissingBook);
     }
 
     #[test]

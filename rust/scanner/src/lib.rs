@@ -2,13 +2,10 @@ mod engine;
 mod profitability;
 mod recorder;
 
-pub use engine::{
-    ArbitrageScanRecord, ArbitrageScanner, LegScan, ScanStatus, ScannerSettings,
-};
+pub use engine::{ArbitrageScanRecord, ArbitrageScanner, LegScan, ScanStatus, ScannerSettings};
 pub use profitability::{
-    load_profitability_config, parse_decimal, CanonicalProfitabilityResult,
-    ProfitabilityBreakdown, ProfitabilityConfig, ProfitabilityConfigFile, ProfitabilityError,
-    ProfitabilityResult,
+    load_profitability_config, parse_decimal, CanonicalProfitabilityResult, ProfitabilityBreakdown,
+    ProfitabilityConfig, ProfitabilityConfigFile, ProfitabilityError, ProfitabilityResult,
 };
 pub use recorder::NdjsonRecorder;
 
@@ -96,6 +93,16 @@ pub enum TriangleConfigError {
 
 impl TriangleConfig {
     pub fn validate(&self) -> Result<(), TriangleConfigError> {
+        if self.exchange != "bybit"
+            || self.market != "spot"
+            || self.source.category != "spot"
+            || self.source.status != "Trading"
+        {
+            return Err(TriangleConfigError::InvalidRoute {
+                route_id: "configuration".into(),
+                reason: "only active Bybit spot routes are supported".into(),
+            });
+        }
         if self.version != 1 {
             return Err(TriangleConfigError::UnsupportedVersion(self.version));
         }
@@ -145,7 +152,9 @@ fn validate_route(route: &TriangleRoute) -> Result<(), TriangleConfigError> {
     };
 
     if route.assets.len() != 4 {
-        return Err(invalid("assets must contain exactly four entries including the return asset"));
+        return Err(invalid(
+            "assets must contain exactly four entries including the return asset",
+        ));
     }
     if route.legs.len() != 3 {
         return Err(invalid("route must contain exactly three legs"));
@@ -161,6 +170,11 @@ fn validate_route(route: &TriangleRoute) -> Result<(), TriangleConfigError> {
     if unique_assets.len() != 3 {
         return Err(invalid("triangle must contain three distinct assets"));
     }
+    let mut canonical_assets = route.assets[..3].to_vec();
+    canonical_assets.sort();
+    if route.id != route.assets.join(">") || route.triangle_id != canonical_assets.join("-") {
+        return Err(invalid("route and triangle identifiers must match assets"));
+    }
 
     let expected_pairs = [&route.pair1, &route.pair2, &route.pair3];
     for (index, leg) in route.legs.iter().enumerate() {
@@ -174,9 +188,7 @@ fn validate_route(route: &TriangleRoute) -> Result<(), TriangleConfigError> {
         match leg.side {
             TradeSide::Sell => {
                 if leg.base_asset != leg.from_asset || leg.quote_asset != leg.to_asset {
-                    return Err(invalid(
-                        "SELL leg must convert base_asset into quote_asset",
-                    ));
+                    return Err(invalid("SELL leg must convert base_asset into quote_asset"));
                 }
             }
             TradeSide::Buy => {
@@ -195,6 +207,16 @@ fn validate_route(route: &TriangleRoute) -> Result<(), TriangleConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_wrong_market_and_forged_route_identity() {
+        let mut config: TriangleConfig = serde_json::from_str(valid_config_json()).unwrap();
+        config.market = "linear".into();
+        assert!(config.validate().is_err());
+        config.market = "spot".into();
+        config.routes[0].id = "another-route".into();
+        assert!(config.validate().is_err());
+    }
 
     fn valid_config_json() -> &'static str {
         r#"{

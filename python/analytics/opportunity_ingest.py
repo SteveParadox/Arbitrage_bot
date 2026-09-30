@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from pathlib import Path
 from typing import TextIO
 
@@ -62,7 +62,7 @@ def ingest_stream(stream: TextIO, batch_size: int) -> tuple[int, int, int]:
 
             try:
                 was_inserted = store.record_scan(scan)
-            except (KeyError, TypeError, ValueError) as error:
+            except (KeyError, TypeError, ValueError, OverflowError, DecimalException) as error:
                 malformed += 1
                 print(
                     f"ignored invalid scan on line {line_number}: {error}",
