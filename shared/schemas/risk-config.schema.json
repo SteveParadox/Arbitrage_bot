@@ -17,25 +17,68 @@
     "api_health_max_age_ms",
     "exchange_health_max_age_ms",
     "approval_ttl_ms",
+    "emergency_max_market_data_age_ms",
     "kill_switch_file",
     "state_file"
   ],
   "properties": {
-    "version": { "const": 1 },
-    "max_market_data_age_ms": { "type": "integer", "minimum": 1 },
-    "min_net_edge_bps": { "type": "string" },
-    "max_slippage_bps": { "type": "string" },
-    "min_liquidity_ratio": { "type": "string" },
-    "max_trade_size": { "type": "string" },
-    "max_total_exposure": { "type": "string" },
-    "max_daily_loss": { "type": "string" },
-    "execution_failure_limit": { "type": "integer", "minimum": 1 },
-    "execution_failure_window_ms": { "type": "integer", "minimum": 1 },
-    "api_health_max_age_ms": { "type": "integer", "minimum": 1 },
-    "exchange_health_max_age_ms": { "type": "integer", "minimum": 1 },
-    "approval_ttl_ms": { "type": "integer", "minimum": 1 },
-    "kill_switch_file": { "type": "string", "minLength": 1 },
-    "state_file": { "type": "string", "minLength": 1 }
+    "version": {
+      "const": 1
+    },
+    "max_market_data_age_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "min_net_edge_bps": {
+      "type": "string"
+    },
+    "max_slippage_bps": {
+      "type": "string"
+    },
+    "min_liquidity_ratio": {
+      "type": "string"
+    },
+    "max_trade_size": {
+      "type": "string"
+    },
+    "max_total_exposure": {
+      "type": "string"
+    },
+    "max_daily_loss": {
+      "type": "string"
+    },
+    "execution_failure_limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "execution_failure_window_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "api_health_max_age_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "exchange_health_max_age_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "approval_ttl_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "kill_switch_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "emergency_max_market_data_age_ms": {
+      "type": "integer",
+      "minimum": 1
+    }
   },
   "additionalProperties": false
 }

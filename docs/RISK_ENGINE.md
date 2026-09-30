@@ -243,3 +243,31 @@ connector in the repository.
 A future execution orchestrator must populate `RiskContext` from real authenticated account,
 balance, exposure, daily-P&L, and health sources immediately before evaluation. Missing or stale
 health/account information must not be substituted with optimistic defaults.
+
+
+## Phase 11 emergency unwind authorization
+
+Phase 11 adds a second approval class:
+
+```text
+RiskApprovalKind::EmergencyUnwind
+```
+
+It exists so an operator kill switch or a latched ordinary circuit breaker does not trap an
+already-open intermediate spot exposure.
+
+Emergency unwind approval is strictly constrained:
+
+- the exposure asset must differ from the route base asset;
+- known exposure notional must be positive;
+- requested unwind notional must not exceed known exposure;
+- API health must be current and healthy;
+- exchange health must be current and healthy;
+- market data must not be newer than local time;
+- market data must be no older than `emergency_max_market_data_age_ms`.
+
+The default emergency freshness ceiling is 2000 ms, compared with 500 ms for opening/continuing
+normal risk.
+
+Emergency approvals bypass the manual kill switch and ordinary latched breakers only for the
+short-lived risk-reducing order token. They do not re-enable ordinary trading.

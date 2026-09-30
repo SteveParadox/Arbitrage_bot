@@ -14,9 +14,10 @@ use tracing::warn;
 use crate::{
     auth::sign_hmac_sha256,
     model::{parse_decimal, terminal_status},
-    BalanceEntry, BalanceSnapshot, CancelAck, ExecutionConfig, ExecutionError, ExecutionFill,
-    ExecutionMode, ExecutionOrderRequest, ExecutionResult, MarketUnit, MonitorResult,
-    OrderExecutionState, OrderSide, OrderType, PlaceOrderAck, PreparedExecution, TimeInForce,
+    BalanceEntry, BalanceSnapshot, CancelAck, ExecutionAttemptError, ExecutionConfig,
+    ExecutionError, ExecutionFill, ExecutionMode, ExecutionOrderRequest, ExecutionResult,
+    ExecutionStage, MarketUnit, MonitorResult, OrderExecutionState, OrderSide, OrderType,
+    PlaceOrderAck, PreparedExecution, TimeInForce,
 };
 
 #[derive(Clone)]
@@ -250,6 +251,17 @@ impl BybitExecutionClient {
         prepared: &PreparedExecution,
         request: &ExecutionOrderRequest,
     ) -> Result<ExecutionResult, ExecutionError> {
+        self.execute_with_risk_tracking_detailed(risk_engine, prepared, request)
+            .await
+            .map_err(|error| error.source)
+    }
+
+    pub async fn execute_with_risk_tracking_detailed(
+        &self,
+        risk_engine: &mut RiskEngine,
+        prepared: &PreparedExecution,
+        request: &ExecutionOrderRequest,
+    ) -> Result<ExecutionResult, ExecutionAttemptError> {
         let place_ack = match self.place_order(risk_engine, prepared, request).await {
             Ok(value) => value,
             Err(error) => {
@@ -257,9 +269,18 @@ impl BybitExecutionClient {
                     self.record_failure(
                         risk_engine,
                         format!("order submission failed: {error}"),
-                    )?;
+                    )
+                    .map_err(|source| ExecutionAttemptError {
+                        stage: ExecutionStage::Submission,
+                        place_ack: None,
+                        source,
+                    })?;
                 }
-                return Err(error);
+                return Err(ExecutionAttemptError {
+                    stage: ExecutionStage::Submission,
+                    place_ack: None,
+                    source: error,
+                });
             }
         };
 
@@ -272,8 +293,17 @@ impl BybitExecutionClient {
                 self.record_failure(
                     risk_engine,
                     format!("order monitoring failed: {error}"),
-                )?;
-                return Err(error);
+                )
+                .map_err(|source| ExecutionAttemptError {
+                    stage: ExecutionStage::Monitoring,
+                    place_ack: Some(place_ack.clone()),
+                    source,
+                })?;
+                return Err(ExecutionAttemptError {
+                    stage: ExecutionStage::Monitoring,
+                    place_ack: Some(place_ack.clone()),
+                    source: error,
+                });
             }
         };
 
@@ -295,8 +325,17 @@ impl BybitExecutionClient {
                     self.record_failure(
                         risk_engine,
                         format!("timeout cancellation failed: {error}"),
-                    )?;
-                    return Err(error);
+                    )
+                    .map_err(|source| ExecutionAttemptError {
+                        stage: ExecutionStage::Cancellation,
+                        place_ack: Some(place_ack.clone()),
+                        source,
+                    })?;
+                    return Err(ExecutionAttemptError {
+                        stage: ExecutionStage::Cancellation,
+                        place_ack: Some(place_ack.clone()),
+                        source: error,
+                    });
                 }
             };
             cancellation = Some(ack);
@@ -313,8 +352,17 @@ impl BybitExecutionClient {
                     self.record_failure(
                         risk_engine,
                         format!("cancel confirmation failed: {error}"),
-                    )?;
-                    return Err(error);
+                    )
+                    .map_err(|source| ExecutionAttemptError {
+                        stage: ExecutionStage::CancelConfirmation,
+                        place_ack: Some(place_ack.clone()),
+                        source,
+                    })?;
+                    return Err(ExecutionAttemptError {
+                        stage: ExecutionStage::CancelConfirmation,
+                        place_ack: Some(place_ack.clone()),
+                        source: error,
+                    });
                 }
             };
         }
@@ -322,7 +370,12 @@ impl BybitExecutionClient {
         if monitor.state.fully_filled && monitor.state.fills_confirmed {
             risk_engine
                 .record_execution_success(current_time_ms())
-                .map_err(risk_state_error)?;
+                .map_err(risk_state_error)
+                .map_err(|source| ExecutionAttemptError {
+                    stage: ExecutionStage::Monitoring,
+                    place_ack: Some(place_ack.clone()),
+                    source,
+                })?;
         } else {
             self.record_failure(
                 risk_engine,
@@ -338,7 +391,12 @@ impl BybitExecutionClient {
                     monitor.timed_out,
                     monitor.state.fills_confirmed
                 ),
-            )?;
+            )
+            .map_err(|source| ExecutionAttemptError {
+                stage: ExecutionStage::Monitoring,
+                place_ack: Some(place_ack.clone()),
+                source,
+            })?;
         }
 
         Ok(ExecutionResult {

@@ -87,11 +87,18 @@ impl RiskDecision {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RiskApprovalKind {
+    Normal,
+    EmergencyUnwind,
+}
+
 #[derive(Debug)]
 pub struct RiskApproval {
     trade_id: String,
     approved_at_ms: u64,
     expires_at_ms: u64,
+    kind: RiskApprovalKind,
 }
 
 impl RiskApproval {
@@ -106,6 +113,22 @@ impl RiskApproval {
     pub fn expires_at_ms(&self) -> u64 {
         self.expires_at_ms
     }
+
+    pub fn kind(&self) -> RiskApprovalKind {
+        self.kind
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmergencyUnwindIntent {
+    pub trade_id: String,
+    pub exposure_asset: String,
+    pub base_asset: String,
+    pub exposure_notional: Decimal,
+    pub unwind_notional: Decimal,
+    pub market_data_timestamp_ms: u64,
+    pub api_health: ServiceHealth,
+    pub exchange_health: ServiceHealth,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

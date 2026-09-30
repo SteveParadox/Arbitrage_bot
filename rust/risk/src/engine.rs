@@ -8,9 +8,9 @@ use rust_decimal::Decimal;
 use serde_json::json;
 
 use crate::{
-    BreakerKind, CircuitBreakerState, PersistentRiskState, ProposedOrderLeg, RiskApproval,
-    RiskCheck, RiskCheckResult, RiskConfig, RiskContext, RiskDecision, RiskError, RiskStatus,
-    ServiceHealth, TradeIntent,
+    BreakerKind, CircuitBreakerState, EmergencyUnwindIntent, PersistentRiskState,
+    ProposedOrderLeg, RiskApproval, RiskApprovalKind, RiskCheck, RiskCheckResult, RiskConfig,
+    RiskContext, RiskDecision, RiskError, RiskStatus, ServiceHealth, TradeIntent,
 };
 
 pub struct RiskEngine {
@@ -225,6 +225,7 @@ impl RiskEngine {
             trade_id: intent.trade_id.clone(),
             approved_at_ms: now_ms,
             expires_at_ms: now_ms.saturating_add(self.config.approval_ttl_ms),
+            kind: RiskApprovalKind::Normal,
         });
 
         Ok(RiskDecision {
@@ -242,16 +243,18 @@ impl RiskEngine {
         now_ms: u64,
     ) -> Result<(), RiskError> {
         self.refresh_state()?;
-        if self.manual_kill_switch_detail()?.is_some() {
-            return Err(RiskError::GateClosed(
-                "manual kill switch is active".to_string(),
-            ));
-        }
-        if let Some(breaker) = &self.state.circuit_breaker {
-            return Err(RiskError::GateClosed(format!(
-                "circuit breaker {:?} is active: {}",
-                breaker.kind, breaker.detail
-            )));
+        if approval.kind() == RiskApprovalKind::Normal {
+            if self.manual_kill_switch_detail()?.is_some() {
+                return Err(RiskError::GateClosed(
+                    "manual kill switch is active".to_string(),
+                ));
+            }
+            if let Some(breaker) = &self.state.circuit_breaker {
+                return Err(RiskError::GateClosed(format!(
+                    "circuit breaker {:?} is active: {}",
+                    breaker.kind, breaker.detail
+                )));
+            }
         }
         if approval.trade_id() != trade_id {
             return Err(RiskError::GateClosed(
@@ -270,6 +273,73 @@ impl RiskEngine {
             )));
         }
         Ok(())
+    }
+
+    pub fn approve_emergency_unwind(
+        &mut self,
+        intent: &EmergencyUnwindIntent,
+        now_ms: u64,
+    ) -> Result<RiskApproval, RiskError> {
+        if intent.trade_id.trim().is_empty()
+            || intent.exposure_asset.trim().is_empty()
+            || intent.base_asset.trim().is_empty()
+        {
+            return Err(RiskError::GateClosed(
+                "emergency unwind identifiers must not be empty".to_string(),
+            ));
+        }
+        if intent.exposure_asset == intent.base_asset {
+            return Err(RiskError::GateClosed(
+                "emergency unwind exposure asset must differ from base asset".to_string(),
+            ));
+        }
+        if intent.exposure_notional <= Decimal::ZERO
+            || intent.unwind_notional <= Decimal::ZERO
+            || intent.unwind_notional > intent.exposure_notional
+        {
+            return Err(RiskError::GateClosed(
+                "emergency unwind notional must be positive and no larger than known exposure"
+                    .to_string(),
+            ));
+        }
+        if intent.market_data_timestamp_ms > now_ms {
+            return Err(RiskError::GateClosed(
+                "emergency unwind market timestamp is ahead of local time".to_string(),
+            ));
+        }
+        let age = now_ms - intent.market_data_timestamp_ms;
+        if age > self.config.emergency_max_market_data_age_ms {
+            return Err(RiskError::GateClosed(format!(
+                "emergency unwind market data age={}ms exceeds {}ms",
+                age, self.config.emergency_max_market_data_age_ms
+            )));
+        }
+
+        let (api_ok, api_detail) = service_health(
+            "api",
+            &intent.api_health,
+            now_ms,
+            self.config.api_health_max_age_ms,
+        );
+        if !api_ok {
+            return Err(RiskError::GateClosed(api_detail));
+        }
+        let (exchange_ok, exchange_detail) = service_health(
+            "exchange",
+            &intent.exchange_health,
+            now_ms,
+            self.config.exchange_health_max_age_ms,
+        );
+        if !exchange_ok {
+            return Err(RiskError::GateClosed(exchange_detail));
+        }
+
+        Ok(RiskApproval {
+            trade_id: intent.trade_id.clone(),
+            approved_at_ms: now_ms,
+            expires_at_ms: now_ms.saturating_add(self.config.approval_ttl_ms),
+            kind: RiskApprovalKind::EmergencyUnwind,
+        })
     }
 
     pub fn record_execution_failure(
@@ -487,9 +557,9 @@ fn service_health(
 }
 
 fn validate_precision(legs: &[ProposedOrderLeg]) -> Option<String> {
-    if legs.len() != 3 {
+    if legs.is_empty() || legs.len() > 3 {
         return Some(format!(
-            "triangular execution requires exactly 3 legs, received {}",
+            "risk evaluation requires between 1 and 3 proposed legs, received {}",
             legs.len()
         ));
     }
@@ -576,6 +646,7 @@ mod tests {
             api_health_max_age_ms: 5_000,
             exchange_health_max_age_ms: 5_000,
             approval_ttl_ms: 100,
+            emergency_max_market_data_age_ms: 2_000,
             kill_switch_file,
             state_file,
         }
@@ -818,6 +889,58 @@ mod tests {
             .checks
             .iter()
             .any(|item| item.check == RiskCheck::AvailableLiquidity && !item.passed));
+    }
+
+    #[test]
+    fn emergency_unwind_can_be_approved_while_kill_switch_is_active() {
+        let now = 8_900_000;
+        let cfg = config("emergency-unwind");
+        let mut engine = RiskEngine::new(cfg).unwrap();
+        engine
+            .engage_manual_kill_switch("stop new risk", now)
+            .unwrap();
+
+        let approval = engine
+            .approve_emergency_unwind(
+                &EmergencyUnwindIntent {
+                    trade_id: "unwind-1".to_string(),
+                    exposure_asset: "BTC".to_string(),
+                    base_asset: "USDT".to_string(),
+                    exposure_notional: d("4.5"),
+                    unwind_notional: d("4.5"),
+                    market_data_timestamp_ms: now - 100,
+                    api_health: context(now).api_health,
+                    exchange_health: context(now).exchange_health,
+                },
+                now,
+            )
+            .unwrap();
+
+        assert_eq!(approval.kind(), RiskApprovalKind::EmergencyUnwind);
+        engine
+            .validate_approval(&approval, "unwind-1", now + 20)
+            .unwrap();
+    }
+
+    #[test]
+    fn emergency_unwind_rejects_unknown_or_stale_exposure() {
+        let now = 8_950_000;
+        let mut engine = RiskEngine::new(config("emergency-invalid")).unwrap();
+        let mut intent = EmergencyUnwindIntent {
+            trade_id: "unwind-2".to_string(),
+            exposure_asset: "ETH".to_string(),
+            base_asset: "USDT".to_string(),
+            exposure_notional: d("4"),
+            unwind_notional: d("5"),
+            market_data_timestamp_ms: now - 100,
+            api_health: context(now).api_health,
+            exchange_health: context(now).exchange_health,
+        };
+        assert!(engine.approve_emergency_unwind(&intent, now).is_err());
+
+        intent.unwind_notional = d("4");
+        intent.market_data_timestamp_ms = now - 2_001;
+        assert!(engine.approve_emergency_unwind(&intent, now).is_err());
     }
 
     #[test]

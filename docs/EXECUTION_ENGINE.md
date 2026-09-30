@@ -257,3 +257,32 @@ route executor must explicitly handle leg-to-leg quantity propagation and unwind
 when Leg 2 or Leg 3 fails.
 
 That recovery logic should not be hidden inside a generic order client.
+
+
+## Phase 11 detailed attempt errors
+
+The execution client now also exposes
+`execute_with_risk_tracking_detailed`.
+
+A detailed failure carries:
+
+```text
+execution stage
+optional accepted order acknowledgement
+underlying execution error
+```
+
+This lets the three-leg coordinator distinguish:
+
+```text
+definitive submission rejection
+    -> prior exposure may be unwound
+
+accepted order + monitoring/cancel uncertainty
+    -> do not send a blind opposite order
+    -> engage kill switch
+    -> reconcile exchange state first
+```
+
+The original `execute_with_risk_tracking` remains available and maps the detailed failure back
+to the underlying execution error.

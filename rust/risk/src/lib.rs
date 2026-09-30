@@ -5,7 +5,8 @@ mod model;
 pub use config::{load_risk_config, RiskConfig};
 pub use engine::{current_time_ms, RiskEngine};
 pub use model::{
-    BreakerKind, CircuitBreakerState, ProposedOrderLeg, RiskApproval, RiskCheck,
+    BreakerKind, CircuitBreakerState, EmergencyUnwindIntent, ProposedOrderLeg, RiskApproval,
+    RiskApprovalKind, RiskCheck,
     RiskCheckResult, RiskContext, RiskDecision, RiskStatus, ServiceHealth, SymbolRules,
     TradeIntent,
 };

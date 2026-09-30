@@ -156,6 +156,46 @@ risk of duplicate orders.
 
 See `docs/EXECUTION_ENGINE.md`.
 
+### Phase 11: Three-leg execution coordinator
+
+Rust now coordinates the complete triangular sequence:
+
+```text
+risk-approved Leg 1
+      ↓
+confirmed actual fill
+      ↓
+recalculate Leg 2 from actual net output
+      ↓
+confirmed actual fill
+      ↓
+risk-reducing Leg 3 back to base asset
+      ↓
+realized P&L
+```
+
+The coordinator maintains a route-local holdings ledger and applies each confirmed fill plus
+fee currency before sizing the next leg.
+
+If a terminal partial fill or definitive later-leg rejection leaves intermediate assets, the
+coordinator unwinds those positive exposures back to the route base asset. For the standard
+three-asset route it can unwind:
+
+```text
+asset 1 intermediate -> reverse Leg 1 -> base
+asset 2 intermediate -> Leg 3 -> base
+```
+
+If the exchange has accepted an order but its final state cannot be confirmed, the coordinator
+does not place a blind opposite order. It engages the manual kill switch and requires
+reconciliation first.
+
+Emergency unwind is explicitly risk-reducing and may proceed even while the ordinary kill switch
+or another circuit breaker blocks new exposure, but it still requires sufficiently recent market
+data plus healthy API/exchange status.
+
+See `docs/THREE_LEG_COORDINATOR.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -186,5 +226,6 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 10 private Bybit execution plumbing is implemented behind the Phase 9 risk gate.
-**Testnet is the default and mainnet remains disabled unless explicitly enabled.**
+Phase 11 three-leg coordination and emergency unwind are implemented above the Phase 10 private
+execution client. **Testnet is the default and mainnet remains disabled unless explicitly
+enabled.**

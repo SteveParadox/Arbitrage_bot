@@ -181,6 +181,65 @@ pub struct MonitorResult {
     pub timed_out: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionStage {
+    Submission,
+    Monitoring,
+    Cancellation,
+    CancelConfirmation,
+}
+
+#[derive(Debug)]
+pub struct ExecutionAttemptError {
+    pub stage: ExecutionStage,
+    pub place_ack: Option<PlaceOrderAck>,
+    pub source: ExecutionError,
+}
+
+impl ExecutionAttemptError {
+    pub fn safe_to_unwind_prior_exposure(&self) -> bool {
+        if self.stage != ExecutionStage::Submission || self.place_ack.is_some() {
+            return false;
+        }
+
+        match &self.source {
+            ExecutionError::InvalidConfig(_)
+            | ExecutionError::InvalidOrder(_)
+            | ExecutionError::EnvironmentMismatch(_)
+            | ExecutionError::Authentication(_)
+            | ExecutionError::RiskState(_) => true,
+            ExecutionError::HttpStatus { status, .. } => {
+                *status < 500 && *status != 429
+            }
+            ExecutionError::Bybit { .. } => {
+                !self.source.is_retryable()
+                    && !self.source.is_duplicate_request()
+            }
+            ExecutionError::Transport(_)
+            | ExecutionError::Decode(_)
+            | ExecutionError::MissingData(_)
+            | ExecutionError::InvalidNumber { .. }
+            | ExecutionError::OrderNotFound(_) => false,
+        }
+    }
+
+    pub fn order_state_unknown(&self) -> bool {
+        self.place_ack.is_some() || !self.safe_to_unwind_prior_exposure()
+    }
+}
+
+impl std::fmt::Display for ExecutionAttemptError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "execution failed during {:?}: {}",
+            self.stage, self.source
+        )
+    }
+}
+
+impl std::error::Error for ExecutionAttemptError {}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionResult {
     pub place_ack: PlaceOrderAck,
@@ -267,6 +326,26 @@ mod tests {
         };
 
         assert!(request.validate(d("5")).is_err());
+    }
+
+    #[test]
+    fn ambiguous_submission_decode_error_is_not_safe_to_unwind() {
+        let error = ExecutionAttemptError {
+            stage: ExecutionStage::Submission,
+            place_ack: None,
+            source: ExecutionError::Decode("truncated response".to_string()),
+        };
+        assert!(!error.safe_to_unwind_prior_exposure());
+
+        let rejected = ExecutionAttemptError {
+            stage: ExecutionStage::Submission,
+            place_ack: None,
+            source: ExecutionError::Bybit {
+                code: 10001,
+                message: "bad request".to_string(),
+            },
+        };
+        assert!(rejected.safe_to_unwind_prior_exposure());
     }
 
     #[test]

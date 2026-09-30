@@ -13,5 +13,6 @@
   "exchange_health_max_age_ms": 5000,
   "approval_ttl_ms": 100,
   "kill_switch_file": "../../data/risk/KILL_SWITCH",
-  "state_file": "../../data/risk/risk_state.json"
+  "state_file": "../../data/risk/risk_state.json",
+  "emergency_max_market_data_age_ms": 2000
 }

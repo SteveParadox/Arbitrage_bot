@@ -18,3 +18,9 @@ execution:
   poll_interval_ms: 50
   order_timeout_ms: 3000
   cancel_on_timeout: true
+coordinator:
+  config_path: shared/config/coordinator.json
+  normal_slippage_tolerance_percent: 0.10
+  emergency_slippage_tolerance_percent: 0.50
+  max_unwind_attempts_per_asset: 3
+  max_dust_notional_base: 0.01

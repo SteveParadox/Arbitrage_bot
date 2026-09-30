@@ -6,9 +6,9 @@ mod model;
 pub use client::BybitExecutionClient;
 pub use config::ExecutionConfig;
 pub use model::{
-    BalanceEntry, BalanceSnapshot, CancelAck, ExecutionFill, ExecutionOrderRequest,
-    ExecutionResult, MarketUnit, MonitorResult, OrderExecutionState, OrderSide, OrderType,
-    PlaceOrderAck, TimeInForce,
+    BalanceEntry, BalanceSnapshot, CancelAck, ExecutionAttemptError, ExecutionFill,
+    ExecutionOrderRequest, ExecutionResult, ExecutionStage, MarketUnit, MonitorResult,
+    OrderExecutionState, OrderSide, OrderType, PlaceOrderAck, TimeInForce,
 };
 
 use risk::{RiskApproval, RiskEngine, RiskError};

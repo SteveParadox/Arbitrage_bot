@@ -23,6 +23,7 @@ pub struct RiskConfig {
     pub api_health_max_age_ms: u64,
     pub exchange_health_max_age_ms: u64,
     pub approval_ttl_ms: u64,
+    pub emergency_max_market_data_age_ms: u64,
     pub kill_switch_file: PathBuf,
     pub state_file: PathBuf,
 }
@@ -42,6 +43,7 @@ struct RiskConfigFile {
     api_health_max_age_ms: u64,
     exchange_health_max_age_ms: u64,
     approval_ttl_ms: u64,
+    emergency_max_market_data_age_ms: u64,
     kill_switch_file: String,
     state_file: String,
 }
@@ -71,6 +73,7 @@ pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError>
         api_health_max_age_ms: file.api_health_max_age_ms,
         exchange_health_max_age_ms: file.exchange_health_max_age_ms,
         approval_ttl_ms: file.approval_ttl_ms,
+        emergency_max_market_data_age_ms: file.emergency_max_market_data_age_ms,
         kill_switch_file: resolve_path(path, &file.kill_switch_file),
         state_file: resolve_path(path, &file.state_file),
     };
@@ -91,9 +94,15 @@ impl RiskConfig {
             || self.api_health_max_age_ms == 0
             || self.exchange_health_max_age_ms == 0
             || self.approval_ttl_ms == 0
+            || self.emergency_max_market_data_age_ms == 0
         {
             return Err(RiskError::InvalidConfig(
                 "risk timing limits must be greater than zero".to_string(),
+            ));
+        }
+        if self.emergency_max_market_data_age_ms < self.max_market_data_age_ms {
+            return Err(RiskError::InvalidConfig(
+                "emergency_max_market_data_age_ms must be >= normal freshness limit".to_string(),
             ));
         }
         if self.execution_failure_limit == 0 {
