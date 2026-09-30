@@ -35,6 +35,25 @@ impl RiskEngine {
         context: &RiskContext,
         now_ms: u64,
     ) -> Result<RiskDecision, RiskError> {
+        self.evaluate_internal(intent, context, now_ms, true)
+    }
+
+    pub fn preview(
+        &mut self,
+        intent: &TradeIntent,
+        context: &RiskContext,
+        now_ms: u64,
+    ) -> Result<RiskDecision, RiskError> {
+        self.evaluate_internal(intent, context, now_ms, false)
+    }
+
+    fn evaluate_internal(
+        &mut self,
+        intent: &TradeIntent,
+        context: &RiskContext,
+        now_ms: u64,
+        latch_breakers: bool,
+    ) -> Result<RiskDecision, RiskError> {
         self.refresh_state()?;
         let mut checks = Vec::with_capacity(13);
 
@@ -216,8 +235,10 @@ impl RiskEngine {
             exchange_detail,
         ));
 
-        if let Some((kind, detail)) = trip {
-            self.trip_breaker(kind, detail, now_ms)?;
+        if latch_breakers {
+            if let Some((kind, detail)) = trip {
+                self.trip_breaker(kind, detail, now_ms)?;
+            }
         }
 
         let approved = market_fresh && checks.iter().all(|item| item.passed);
@@ -711,6 +732,28 @@ mod tests {
         engine
             .validate_approval(&approval, "trade-1", now + 50)
             .unwrap();
+    }
+
+    #[test]
+    fn preview_rejects_stale_market_without_latching_breaker() {
+        let now = 1_500_000;
+        let mut engine = RiskEngine::new(config("preview-stale")).unwrap();
+        let mut stale = intent(now);
+        stale.market_data_timestamp_ms = now - 501;
+
+        let decision = engine.preview(&stale, &context(now), now).unwrap();
+        assert!(!decision.approved);
+
+        let fresh = intent(now + 10);
+        let recovered = engine
+            .preview(&fresh, &context(now + 10), now + 10)
+            .unwrap();
+        assert!(recovered.approved);
+        assert!(engine
+            .status(now + 10)
+            .unwrap()
+            .circuit_breaker
+            .is_none());
     }
 
     #[test]

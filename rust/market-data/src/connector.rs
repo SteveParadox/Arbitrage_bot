@@ -12,7 +12,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{info, warn};
 
 use crate::{
-    config::Config,
+    config::{Category, Config},
     model::{
         InstrumentMetadata, InstrumentsResponse, MarketDataEvent, NormalizedQuote, NormalizedTrade,
         OrderbookData, StatusEvent, TickerData, TickerUpdate, TradeData, WsEnvelope,
@@ -73,23 +73,31 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     let (mut write, mut read) = socket.split();
 
     let topics = subscription_topics(config);
-    write
-        .send(Message::Text(
-            json!({
-                "op": "subscribe",
-                "args": topics,
-                "req_id": "market-data-subscribe"
-            })
-            .to_string()
-            .into(),
-        ))
-        .await
-        .context("failed to send subscription request")?;
+    validate_subscription_topics(&topics)?;
+    let batches = subscription_batches(config, &topics);
+    for (index, batch) in batches.iter().enumerate() {
+        write
+            .send(Message::Text(
+                json!({
+                    "op": "subscribe",
+                    "args": batch,
+                    "req_id": format!("market-data-subscribe-{index}")
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .context("failed to send subscription request")?;
+    }
 
     emit_status(
         sender,
         "connected",
-        format!("subscribed to {} topics", topics.len()),
+        format!(
+            "submitted {} subscription requests for {} topics",
+            batches.len(),
+            topics.len()
+        ),
     )
     .await;
 
@@ -148,17 +156,45 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
 }
 
 fn subscription_topics(config: &Config) -> Vec<String> {
-    config
-        .symbols
-        .iter()
-        .flat_map(|symbol| {
-            [
-                format!("orderbook.{}.{}", config.orderbook_depth, symbol),
-                format!("publicTrade.{symbol}"),
-                format!("tickers.{symbol}"),
-            ]
-        })
-        .collect()
+    let mut topics = Vec::new();
+    for symbol in &config.symbols {
+        topics.push(format!(
+            "orderbook.{}.{}",
+            config.orderbook_depth, symbol
+        ));
+        if config.subscribe_trades {
+            topics.push(format!("publicTrade.{symbol}"));
+        }
+        if config.subscribe_tickers {
+            topics.push(format!("tickers.{symbol}"));
+        }
+    }
+    topics
+}
+
+fn validate_subscription_topics(topics: &[String]) -> Result<()> {
+    let total_chars = topics.iter().map(String::len).sum::<usize>();
+    if total_chars > 21_000 {
+        return Err(anyhow!(
+            "public websocket topic args use {total_chars} characters; Bybit limit is 21000 per connection"
+        ));
+    }
+    Ok(())
+}
+
+fn subscription_batches<'a>(
+    config: &Config,
+    topics: &'a [String],
+) -> Vec<&'a [String]> {
+    if topics.is_empty() {
+        return Vec::new();
+    }
+
+    let batch_size = match config.category {
+        Category::Spot => 10,
+        Category::Linear | Category::Inverse => topics.len(),
+    };
+    topics.chunks(batch_size).collect()
 }
 
 async fn handle_text(
@@ -410,6 +446,8 @@ mod tests {
             category: crate::config::Category::Linear,
             symbols: vec!["BTCUSDT".into(), "ETHUSDT".into()],
             orderbook_depth: 50,
+            subscribe_trades: true,
+            subscribe_tickers: true,
             heartbeat_interval: Duration::from_secs(20),
             stale_after: Duration::from_secs(10),
             reconnect_min: Duration::from_millis(500),
@@ -420,6 +458,61 @@ mod tests {
         assert!(topics.contains(&"orderbook.50.BTCUSDT".to_string()));
         assert!(topics.contains(&"publicTrade.ETHUSDT".to_string()));
         assert!(topics.contains(&"tickers.BTCUSDT".to_string()));
+    }
+
+    #[test]
+    fn can_subscribe_to_orderbooks_only() {
+        let config = Config {
+            testnet: false,
+            category: crate::config::Category::Spot,
+            symbols: vec!["BTCUSDT".into(), "ETHUSDT".into()],
+            orderbook_depth: 50,
+            subscribe_trades: false,
+            subscribe_tickers: false,
+            heartbeat_interval: Duration::from_secs(20),
+            stale_after: Duration::from_secs(10),
+            reconnect_min: Duration::from_millis(500),
+            reconnect_max: Duration::from_secs(30),
+        };
+
+        let topics = subscription_topics(&config);
+        assert_eq!(
+            topics,
+            vec![
+                "orderbook.50.BTCUSDT".to_string(),
+                "orderbook.50.ETHUSDT".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn chunks_spot_subscriptions_to_ten_args() {
+        let config = Config {
+            testnet: false,
+            category: crate::config::Category::Spot,
+            symbols: (0..8)
+                .map(|index| format!("S{index}USDT"))
+                .collect(),
+            orderbook_depth: 50,
+            subscribe_trades: true,
+            subscribe_tickers: true,
+            heartbeat_interval: Duration::from_secs(20),
+            stale_after: Duration::from_secs(10),
+            reconnect_min: Duration::from_millis(500),
+            reconnect_max: Duration::from_secs(30),
+        };
+
+        let topics = subscription_topics(&config);
+        let batches = subscription_batches(&config, &topics);
+        assert_eq!(topics.len(), 24);
+        assert_eq!(batches.len(), 3);
+        assert!(batches.iter().all(|batch| batch.len() <= 10));
+    }
+
+    #[test]
+    fn rejects_topic_sets_above_connection_character_limit() {
+        let topics = vec!["x".repeat(10_501), "y".repeat(10_500)];
+        assert!(validate_subscription_topics(&topics).is_err());
     }
 
     #[test]

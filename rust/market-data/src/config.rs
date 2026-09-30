@@ -25,6 +25,8 @@ pub struct Config {
     pub category: Category,
     pub symbols: Vec<String>,
     pub orderbook_depth: u16,
+    pub subscribe_trades: bool,
+    pub subscribe_tickers: bool,
     pub heartbeat_interval: Duration,
     pub stale_after: Duration,
     pub reconnect_min: Duration,
@@ -64,6 +66,8 @@ impl Config {
             bail!("unsupported BYBIT_ORDERBOOK_DEPTH={orderbook_depth}; use 1, 50, 200, or 1000");
         }
 
+        let subscribe_trades = parse_bool("BYBIT_SUBSCRIBE_TRADES", true)?;
+        let subscribe_tickers = parse_bool("BYBIT_SUBSCRIBE_TICKERS", true)?;
         let heartbeat_seconds = parse_u64("BYBIT_HEARTBEAT_SECONDS", 20)?;
         let stale_seconds = parse_u64("BYBIT_STALE_AFTER_SECONDS", 10)?;
         let reconnect_min_ms = parse_u64("BYBIT_RECONNECT_MIN_MS", 500)?;
@@ -90,6 +94,8 @@ impl Config {
             category,
             symbols,
             orderbook_depth,
+            subscribe_trades,
+            subscribe_tickers,
             heartbeat_interval: Duration::from_secs(heartbeat_seconds),
             stale_after: Duration::from_secs(stale_seconds),
             reconnect_min,
@@ -149,6 +155,8 @@ mod tests {
             category: Category::Linear,
             symbols: vec!["BTCUSDT".into()],
             orderbook_depth: 50,
+            subscribe_trades: true,
+            subscribe_tickers: true,
             heartbeat_interval: Duration::from_secs(20),
             stale_after: Duration::from_secs(10),
             reconnect_min: Duration::from_millis(500),

@@ -196,6 +196,52 @@ data plus healthy API/exchange status.
 
 See `docs/THREE_LEG_COORDINATOR.md`.
 
+### Phase 12: Live shadow mode
+
+Rust now runs the strategy against **mainnet market data and a real account without exposing any
+order endpoint**.
+
+The shadow process emits:
+
+```text
+DETECTED
+APPROVED
+WOULD EXECUTE
+EXPECTED PROFIT
+```
+
+for gross-profitable route detections, then evaluates the same route against books received at or
+before:
+
+```text
++50 ms
++100 ms
++250 ms
+```
+
+The default experiment requires **5,000 opportunities with all configured latency samples**
+before marking the run ready for analysis.
+
+Shadow mode uses a dedicated GET-only authenticated account client for balance/equity context and
+does not depend on the Phase 10 execution crate. It also refuses to start if
+`ARB_LIVE_TRADING_ENABLED=true`.
+
+Delayed samples retain fees, rounding, safety margin, and the additional slippage assumption, but
+remove the synthetic Phase 6 latency buffer because the actual delayed book now represents that
+price movement. Historical book selection is based on local receipt time and never uses a book
+received after the latency target.
+
+PostgreSQL stores runs, decisions, and latency samples. Analytics are available at:
+
+```text
+GET /analytics/shadow/runs
+GET /analytics/shadow/summary
+GET /analytics/shadow/latencies
+GET /analytics/shadow/routes
+```
+
+See `docs/LIVE_SHADOW.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -205,8 +251,9 @@ secrets manager. Live trading remains disabled:
 ARB_LIVE_TRADING_ENABLED=false
 ```
 
-Phase 8 performs historical simulation only. Phase 9 adds risk gating but still does not submit
-orders.
+Phase 12 shadow mode can read the real account and mainnet public market data, but its Rust crate
+contains no order-create or cancel client. Use a Bybit API key with no trading permissions for
+shadow runs.
 
 ## Testing
 
@@ -226,6 +273,6 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 11 three-leg coordination and emergency unwind are implemented above the Phase 10 private
-execution client. **Testnet is the default and mainnet remains disabled unless explicitly
-enabled.**
+Phase 12 live shadow measurement is implemented above the scanner/risk layers. It uses mainnet
+books plus GET-only real-account context while keeping order submission structurally absent from
+the shadow crate. **Live trading remains disabled by default.**
