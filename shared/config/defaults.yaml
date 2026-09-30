@@ -12,3 +12,9 @@ scanner:
 risk:
   config_path: shared/config/risk.json
   live_trading_enabled: false
+execution:
+  testnet: true
+  max_order_notional: 5
+  poll_interval_ms: 50
+  order_timeout_ms: 3000
+  cancel_on_timeout: true

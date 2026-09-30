@@ -121,6 +121,41 @@ breaker state immediately before preparing execution.
 
 See `docs/RISK_ENGINE.md`.
 
+### Phase 10: Bybit execution engine
+
+Rust now contains authenticated Bybit V5 spot execution support behind the Phase 9 risk gate.
+
+The private client implements:
+
+```text
+HMAC authentication
+order creation
+order cancellation
+order monitoring
+fill confirmation
+fee aggregation
+balance synchronization
+retry/backoff handling
+```
+
+Order creation acknowledgements are treated only as acknowledgements. The engine polls order state
+and execution history until it can distinguish requested quantity, cumulative filled quantity,
+remaining quantity, weighted average fill price, per-currency fees, and terminal status.
+
+Phase 10 is testnet-first:
+
+```env
+BYBIT_EXECUTION_TESTNET=true
+BYBIT_EXECUTION_MAX_ORDER_NOTIONAL=5
+ARB_LIVE_TRADING_ENABLED=false
+```
+
+Market orders explicitly use `marketUnit=baseCoin` so requested and filled quantities stay in the
+same unit. Ambiguous create failures check the unique `orderLinkId` before any retry to reduce the
+risk of duplicate orders.
+
+See `docs/EXECUTION_ENGINE.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -151,5 +186,5 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 9 pre-trade risk gating and circuit breakers are implemented.
-**No trade execution is enabled.**
+Phase 10 private Bybit execution plumbing is implemented behind the Phase 9 risk gate.
+**Testnet is the default and mainnet remains disabled unless explicitly enabled.**
