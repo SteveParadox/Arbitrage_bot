@@ -82,6 +82,7 @@ jobs:
         working-directory: python
     env:
       TEST_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage_test
+      ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

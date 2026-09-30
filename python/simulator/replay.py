@@ -190,8 +190,16 @@ def simulate_route(
         raise ValueError("latency_ms must be greater than zero")
     if max_book_age_ms <= 0:
         raise ValueError("max_book_age_ms must be greater than zero")
+    if len(fee_bps_per_leg) != 3 or any(
+        not fee.is_finite() or not 0 <= fee < BPS for fee in fee_bps_per_leg
+    ):
+        raise ValueError("three finite fee rates in [0, 10000) are required")
+    if rounding_loss_bps != 0:
+        raise ValueError("a prediction rounding allowance is not realized execution cash cost")
 
     start_amount = _d(raw_scan["start_amount"])
+    if not start_amount.is_finite() or start_amount <= 0:
+        raise ValueError("start_amount must be positive and finite")
     detection_timestamp_ms = int(raw_scan["scan_timestamp"])
     route_legs = raw_scan.get("legs") or []
 
@@ -236,13 +244,17 @@ def simulate_route(
             return _failed(
                 leg_results,
                 Decimal("0"),
-                "missing_book_state",
+                replay.failure_reason or "missing_book_state",
                 leg_number,
                 observed_book_ages,
             )
 
         book_age = execution_timestamp_ms - state.timestamp_ms
-        if book_age > max_book_age_ms:
+        if state.best_bid is not None and state.best_ask is not None:
+            if state.best_bid >= state.best_ask:
+                return _failed(leg_results, Decimal("0"), "crossed_book_state",
+                               leg_number, observed_book_ages)
+        if book_age < 0 or book_age > max_book_age_ms:
             return _failed(
                 leg_results,
                 Decimal("0"),
@@ -306,19 +318,30 @@ def simulate_route(
 
         amount = fill.net_output_amount
 
-    rounding_loss = start_amount * rounding_loss_bps / BPS
-    final_amount = amount - rounding_loss
+    final_amount = amount
     simulated_profit = final_amount - start_amount
     simulated_net_edge_bps = simulated_profit / start_amount * BPS
-    execution_drift_bps = sum(
-        (
-            _d(leg["adverse_slippage_bps"])
-            for leg in leg_results
-            if leg.get("adverse_slippage_bps") is not None
-        ),
-        Decimal("0"),
+    # Compare compounded gross conversions at observed average prices. This is
+    # price drift, not an additive sum of percentages or an extra cash charge.
+    detected_gross = start_amount
+    replay_gross = start_amount
+    comparable = True
+    for detected, actual in zip(route_legs, leg_results, strict=True):
+        price = (detected.get("execution") or {}).get("average_execution_price")
+        if price is None or not _d(price).is_finite() or _d(price) <= 0:
+            comparable = False
+            break
+        actual_price = _d(actual["average_price"])
+        if actual["side"] == "BUY":
+            detected_gross /= _d(price)
+            replay_gross /= actual_price
+        else:
+            detected_gross *= _d(price)
+            replay_gross *= actual_price
+    execution_drift_amount = detected_gross - replay_gross if comparable else None
+    execution_drift_bps = (
+        execution_drift_amount / start_amount * BPS if comparable else None
     )
-    execution_drift_amount = start_amount * execution_drift_bps / BPS
     expectation_error = (
         simulated_profit - expected_profit if expected_profit is not None else None
     )

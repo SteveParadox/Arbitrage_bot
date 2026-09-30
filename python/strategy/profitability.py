@@ -68,6 +68,8 @@ class ProfitabilityConfig:
             self.safety_margin_bps,
         )
         for value in all_bps:
+            if not value.is_finite():
+                raise ValueError("profitability assumptions must be finite")
             if value < 0:
                 raise ValueError("profitability cost assumptions must be non-negative")
             if value >= BPS_DENOMINATOR:
@@ -138,6 +140,8 @@ def evaluate_profitability(
     config.validate()
     start = _decimal(start_amount)
     gross_final = _decimal(gross_final_amount)
+    if not start.is_finite() or not gross_final.is_finite():
+        raise ValueError("amounts must be finite")
 
     if start <= 0:
         raise ValueError("start_amount must be greater than zero")

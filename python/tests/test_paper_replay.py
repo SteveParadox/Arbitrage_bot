@@ -13,7 +13,8 @@ def replay(symbol: str, prices: list[tuple[int, float, float]]) -> SymbolReplay:
                 timestamp_ms=timestamp,
                 update_id=index + 1,
                 sequence=index + 1,
-                is_snapshot=index == 0,
+                # These fixtures contain replacement books, not price-level deltas.
+                is_snapshot=True,
                 bids=((bid, 100.0),),
                 asks=((ask, 100.0),),
             )
@@ -40,7 +41,7 @@ def scan() -> dict:
             {
                 "symbol": "ETHUSDT",
                 "side": "SELL",
-                "execution": {"average_execution_price": 21.0},
+                "execution": {"average_execution_price": 5.25},
             },
         ],
     }
@@ -50,7 +51,7 @@ def test_25ms_replay_uses_delayed_books_for_each_leg() -> None:
     replays = {
         "BTCUSDT": replay("BTCUSDT", [(1_000, 99.0, 100.0), (1_025, 100.0, 101.0)]),
         "ETHBTC": replay("ETHBTC", [(1_000, 0.049, 0.05), (1_050, 0.049, 0.05)]),
-        "ETHUSDT": replay("ETHUSDT", [(1_000, 21.0, 22.0), (1_075, 20.5, 22.0)]),
+        "ETHUSDT": replay("ETHUSDT", [(1_000, 5.25, 5.3), (1_075, 5.1, 5.3)]),
     }
 
     result = simulate_route(
@@ -65,6 +66,9 @@ def test_25ms_replay_uses_delayed_books_for_each_leg() -> None:
     assert result.completed is True
     assert result.simulated_profit is not None
     assert result.simulated_profit < Decimal("22.5")
+    expected = Decimal("450") / Decimal("101") / Decimal("0.05")
+    expected *= Decimal("5.1") * Decimal("0.999") ** 3
+    assert abs(result.final_amount - expected) < Decimal("1e-20")
     assert [leg["execution_timestamp_ms"] for leg in result.legs] == [1025, 1050, 1075]
     assert result.execution_drift_bps is not None
 

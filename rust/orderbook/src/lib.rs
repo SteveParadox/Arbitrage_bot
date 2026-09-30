@@ -65,6 +65,10 @@ pub struct BookView {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum OrderBookError {
+    #[error("snapshot required for {0}")]
+    SnapshotRequired(String),
+    #[error("crossed or locked order book for {0}")]
+    CrossedBook(String),
     #[error("sequence regressed for {symbol}: last={last}, next={next}")]
     SequenceRegression {
         symbol: String,
@@ -109,6 +113,10 @@ impl LocalOrderBook {
     }
 
     pub fn apply(&mut self, update: BookUpdate) -> Result<(), OrderBookError> {
+        let is_snapshot = update.is_snapshot || update.update_id == 1;
+        if !self.initialized && !is_snapshot {
+            return Err(OrderBookError::SnapshotRequired(update.symbol));
+        }
         if self.symbol.is_empty() {
             self.symbol = update.symbol.clone();
         }
@@ -120,7 +128,7 @@ impl LocalOrderBook {
         validate_levels(&update.symbol, &update.bids)?;
         validate_levels(&update.symbol, &update.asks)?;
 
-        if self.initialized && !update.is_snapshot {
+        if self.initialized && !is_snapshot {
             if update.sequence <= self.sequence {
                 return Err(OrderBookError::SequenceRegression {
                     symbol: update.symbol,
@@ -137,7 +145,7 @@ impl LocalOrderBook {
             }
         }
 
-        if update.is_snapshot {
+        if is_snapshot {
             self.bids.clear();
             self.asks.clear();
         }
@@ -208,10 +216,8 @@ impl LocalOrderBook {
 
         let total_bid_base_quantity = bids.iter().map(|level| level.quantity).sum();
         let total_ask_base_quantity = asks.iter().map(|level| level.quantity).sum();
-        let total_bid_quote_quantity =
-            bids.iter().map(|level| level.price * level.quantity).sum();
-        let total_ask_quote_quantity =
-            asks.iter().map(|level| level.price * level.quantity).sum();
+        let total_bid_quote_quantity = bids.iter().map(|level| level.price * level.quantity).sum();
+        let total_ask_quote_quantity = asks.iter().map(|level| level.price * level.quantity).sum();
 
         BookView {
             symbol: self.symbol.clone(),
@@ -229,10 +235,8 @@ impl LocalOrderBook {
         }
     }
 
-    pub fn buy_with_quote(
-        &self,
-        quote_quantity: f64,
-    ) -> Result<ExecutionEstimate, OrderBookError> {
+    pub fn buy_with_quote(&self, quote_quantity: f64) -> Result<ExecutionEstimate, OrderBookError> {
+        self.validate_spread()?;
         validate_amount(quote_quantity)?;
 
         let best_price = self.best_ask().map(|level| level.price);
@@ -243,7 +247,7 @@ impl LocalOrderBook {
         let mut levels_consumed = 0;
 
         for (price, available_base) in &self.asks {
-            if remaining_quote <= f64::EPSILON {
+            if remaining_quote <= 0.0 {
                 break;
             }
 
@@ -275,10 +279,8 @@ impl LocalOrderBook {
         ))
     }
 
-    pub fn buy_base(
-        &self,
-        base_quantity: f64,
-    ) -> Result<ExecutionEstimate, OrderBookError> {
+    pub fn buy_base(&self, base_quantity: f64) -> Result<ExecutionEstimate, OrderBookError> {
+        self.validate_spread()?;
         validate_amount(base_quantity)?;
 
         let best_price = self.best_ask().map(|level| level.price);
@@ -289,7 +291,7 @@ impl LocalOrderBook {
         let mut levels_consumed = 0;
 
         for (price, available_base) in &self.asks {
-            if remaining_base <= f64::EPSILON {
+            if remaining_base <= 0.0 {
                 break;
             }
 
@@ -319,10 +321,8 @@ impl LocalOrderBook {
         ))
     }
 
-    pub fn sell_base(
-        &self,
-        base_quantity: f64,
-    ) -> Result<ExecutionEstimate, OrderBookError> {
+    pub fn sell_base(&self, base_quantity: f64) -> Result<ExecutionEstimate, OrderBookError> {
+        self.validate_spread()?;
         validate_amount(base_quantity)?;
 
         let best_price = self.best_bid().map(|level| level.price);
@@ -333,7 +333,7 @@ impl LocalOrderBook {
         let mut levels_consumed = 0;
 
         for (price, available_base) in self.bids.iter().rev() {
-            if remaining_base <= f64::EPSILON {
+            if remaining_base <= 0.0 {
                 break;
             }
 
@@ -363,6 +363,17 @@ impl LocalOrderBook {
         ))
     }
 
+    fn validate_spread(&self) -> Result<(), OrderBookError> {
+        if let (Some(bid), Some(ask)) = (self.best_bid(), self.best_ask()) {
+            if bid.price >= ask.price {
+                return Err(OrderBookError::CrossedBook(self.symbol.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    // Explicit quantity units here are preferable to an untyped positional tuple.
+    #[allow(clippy::too_many_arguments)]
     fn build_estimate(
         &self,
         side: ExecutionSide,
@@ -492,10 +503,7 @@ fn validate_amount(amount: f64) -> Result<(), OrderBookError> {
     }
 }
 
-fn apply_levels(
-    side: &mut BTreeMap<OrderedFloat<f64>, f64>,
-    levels: &[PriceLevel],
-) {
+fn apply_levels(side: &mut BTreeMap<OrderedFloat<f64>, f64>, levels: &[PriceLevel]) {
     for level in levels {
         let key = OrderedFloat(level.price);
         if level.quantity == 0.0 {
@@ -509,6 +517,49 @@ fn apply_levels(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delta_requires_snapshot_and_tiny_positive_orders_walk_depth() {
+        let mut book = LocalOrderBook::new("ETHUSDT");
+        let mut delta = snapshot();
+        delta.is_snapshot = false;
+        assert!(matches!(
+            book.apply(delta),
+            Err(OrderBookError::SnapshotRequired(_))
+        ));
+        book.apply(snapshot()).unwrap();
+        let fill = book.sell_base(1e-18).unwrap();
+        assert!(fill.complete);
+        assert_eq!(fill.filled_base_quantity, 1e-18);
+        assert!(book.buy_with_quote(1e-18).unwrap().complete);
+    }
+
+    #[test]
+    fn crossed_book_cannot_produce_execution_estimate() {
+        let mut book = LocalOrderBook::new("ETHUSDT");
+        let mut crossed = snapshot();
+        crossed.bids[0].price = 2600.;
+        book.apply(crossed).unwrap();
+        assert!(matches!(book.buy_with_quote(400.), Err(OrderBookError::CrossedBook(_))));
+        assert!(matches!(book.sell_base(1.), Err(OrderBookError::CrossedBook(_))));
+    }
+
+    #[test]
+    fn update_id_one_replaces_old_depth_even_when_flagged_delta() {
+        let mut book = LocalOrderBook::new("ETHUSDT");
+        book.apply(snapshot()).unwrap();
+        let mut reset = snapshot();
+        reset.is_snapshot = false;
+        reset.update_id = 1;
+        reset.sequence = 1;
+        reset.bids = vec![PriceLevel {
+            price: 2400.,
+            quantity: 1.,
+        }];
+        book.apply(reset).unwrap();
+        assert_eq!(book.best_bid().unwrap().price, 2400.);
+        assert_eq!(book.top_n(50).bids.len(), 1);
+    }
 
     fn snapshot() -> BookUpdate {
         BookUpdate {
@@ -650,10 +701,7 @@ mod tests {
             })
             .unwrap_err();
 
-        assert!(matches!(
-            error,
-            OrderBookError::SequenceRegression { .. }
-        ));
+        assert!(matches!(error, OrderBookError::SequenceRegression { .. }));
     }
 
     #[test]

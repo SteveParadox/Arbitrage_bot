@@ -1,5 +1,4 @@
 from logging.config import fileConfig
-import os
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -7,14 +6,13 @@ from sqlalchemy import engine_from_config, pool
 from analytics.db import Base
 from analytics import models  # noqa: F401
 from simulator import models as simulator_models  # noqa: F401
+from api.settings import settings
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("ARB_DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", settings.arb_database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
@@ -26,6 +24,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        compare_server_default=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -42,6 +41,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            compare_server_default=True,
         )
         with context.begin_transaction():
             context.run_migrations()

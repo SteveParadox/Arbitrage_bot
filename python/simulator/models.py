@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -70,11 +71,17 @@ class PaperSimulationRun(Base):
     source_from_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source_to_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     requested_limit: Mapped[int] = mapped_column(Integer, nullable=False)
-    opportunity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    scenario_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    opportunity_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    scenario_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     config: Mapped[dict] = mapped_column(JSON, nullable=False)
     summary: Mapped[dict | None] = mapped_column(JSON)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="running", server_default="running"
+    )
     failure_reason: Mapped[str | None] = mapped_column(String(255))
 
 
@@ -114,9 +121,13 @@ class PaperSimulationResult(Base):
     fill_ratio: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
     failure_reason: Mapped[str | None] = mapped_column(String(128))
     failure_leg: Mapped[int | None] = mapped_column(Integer)
-    opportunity_lifetime_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    opportunity_lifetime_ms: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
     remaining_lifetime_ms: Mapped[int | None] = mapped_column(BigInteger)
-    outlived_opportunity: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    outlived_opportunity: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     max_book_age_ms: Mapped[int | None] = mapped_column(BigInteger)
     legs: Mapped[list] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -4,7 +4,7 @@ import argparse
 import json
 from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -16,7 +16,7 @@ from analytics.db import get_session_factory
 from analytics.models import OpportunityObservation, OpportunityWindow
 from simulator.book_archive import load_symbol_replays
 from simulator.models import PaperSimulationResult, PaperSimulationRun
-from simulator.replay import SimulationOutcome, simulate_route
+from simulator.replay import SimulationOutcome, _failed, simulate_route
 from strategy.profitability import ProfitabilityConfig
 
 
@@ -138,8 +138,8 @@ def _result_row(
         else int(observation.opportunity_duration_ms or 0)
     )
     remaining_lifetime_ms = None
-    if window is not None:
-        end = window.ended_at or window.last_seen_at
+    if window is not None and window.ended_at is not None:
+        end = window.ended_at
         end_ms = int(end.timestamp() * 1000)
         remaining_lifetime_ms = max(0, end_ms - observation.scan_timestamp_ms)
 
@@ -192,6 +192,9 @@ def _summary(results: list[PaperSimulationResult]) -> dict[str, Any]:
             for row in rows
             if row.expected_profit is not None
         ]
+        expected_fills = [
+            float(row.expected_profit) for row in completed if row.expected_profit is not None
+        ]
         simulated = [
             float(row.simulated_profit)
             for row in completed
@@ -230,7 +233,12 @@ def _summary(results: list[PaperSimulationResult]) -> dict[str, Any]:
             "fill_rate_pct": _pct(fills, attempts),
             "failure_rate_pct": _pct(attempts - fills, attempts),
             "avg_expected_profit": _avg(expected),
+            "avg_expected_profit_all_attempts": _avg(expected),
+            "avg_expected_profit_among_fills": _avg(expected_fills),
             "avg_simulated_profit": _avg(simulated),
+            "avg_simulated_profit_among_fills": _avg(simulated),
+            "failed_attempts_unvalued": attempts - fills,
+            "known_remaining_lifetime_count": len(remaining_lifetimes),
             "total_expected_profit": round(sum(expected), 8),
             "total_simulated_profit": round(sum(simulated), 8),
             "avg_execution_drift_bps": _avg(slippage),
@@ -240,8 +248,10 @@ def _summary(results: list[PaperSimulationResult]) -> dict[str, Any]:
             "avg_remaining_lifetime_ms": _avg(remaining_lifetimes),
             "simulated_profitable": len(profitable),
             "simulated_profitable_rate_pct": _pct(len(profitable), attempts),
+            "simulated_profitable_among_fills_pct": _pct(len(profitable), fills),
             "outlived_opportunity_count": outlived,
             "outlived_opportunity_rate_pct": _pct(outlived, attempts),
+            "outlived_of_known_lifetimes_pct": _pct(outlived, len(remaining_lifetimes)),
             "failure_reasons": dict(sorted(failures.items())),
         }
 
@@ -271,6 +281,12 @@ def run_simulation(
     profitability_config: Path,
     include_rejected: bool,
 ) -> PaperSimulationRun:
+    if not latencies or any(value <= 0 for value in latencies):
+        raise ValueError("latencies must be positive and nonempty")
+    if len(set(latencies)) != len(latencies):
+        raise ValueError("duplicate latency scenarios are not allowed")
+    if max_book_age_ms <= 0 or checkpoint_interval <= 0:
+        raise ValueError("book age and checkpoint interval must be positive")
     opportunities = _load_opportunities(
         session,
         hours=hours,
@@ -279,6 +295,8 @@ def run_simulation(
     )
     if not opportunities:
         raise RuntimeError("no eligible opportunities found for the requested period")
+    if len({row.start_asset for row, _ in opportunities}) != 1:
+        raise ValueError("simulation cash totals require one starting asset per run")
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")
 
@@ -307,7 +325,11 @@ def run_simulation(
             "include_rejected": include_rejected,
             "fee_profile": fee_config.fee_profile,
             "fee_bps_per_leg": [str(value) for value in fee_bps],
-            "rounding_loss_bps": str(fee_config.rounding_loss_bps),
+            "rounding_loss_bps": "0",
+            "prediction_rounding_allowance_bps": str(fee_config.rounding_loss_bps),
+            "quantity_rounding_modeled": False,
+            "start_asset": opportunities[0][0].start_asset,
+            "cash_totals_are_independent_scenarios": True,
         },
         status="running",
     )
@@ -335,15 +357,17 @@ def run_simulation(
                 else None
             )
             for latency_ms in latencies:
-                outcome = simulate_route(
-                    observation.raw_scan,
-                    replays,
-                    latency_ms=latency_ms,
-                    fee_bps_per_leg=(fee_bps[0], fee_bps[1], fee_bps[2]),
-                    max_book_age_ms=max_book_age_ms,
-                    rounding_loss_bps=fee_config.rounding_loss_bps,
-                    expected_profit=expected_profit,
-                )
+                try:
+                    outcome = simulate_route(
+                        observation.raw_scan,
+                        replays,
+                        latency_ms=latency_ms,
+                        fee_bps_per_leg=(fee_bps[0], fee_bps[1], fee_bps[2]),
+                        max_book_age_ms=max_book_age_ms,
+                        expected_profit=expected_profit,
+                    )
+                except (ValueError, TypeError, KeyError, IndexError, DecimalException):
+                    outcome = _failed([], Decimal("0"), "invalid_simulation_input", None, [])
                 row = _result_row(run.id, observation, window, latency_ms, outcome)
                 session.add(row)
                 result_rows.append(row)

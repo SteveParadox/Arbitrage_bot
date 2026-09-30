@@ -28,8 +28,8 @@ fn main() -> Result<()> {
         .nth(1)
         .map(PathBuf::from)
         .context("usage: profitability-fixture <shared fixture JSON>")?;
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let cases: Vec<FixtureCase> = serde_json::from_str(&raw)?;
 
     let mut outputs = Vec::with_capacity(cases.len());

@@ -41,6 +41,8 @@
     "status": {
       "enum": [
         "complete",
+        "stale_book",
+        "book_timestamp_skew",
         "missing_book",
         "insufficient_liquidity",
         "start_amount_not_configured",

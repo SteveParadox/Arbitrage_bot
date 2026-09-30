@@ -1,5 +1,281 @@
 [
   {
+    "name": "exact_break_even_zero_cost",
+    "input": {
+      "start_amount": "450",
+      "gross_final_amount": "450",
+      "config": {
+        "version": 1,
+        "fee_profile": "audit",
+        "fee_bps_per_leg": [
+          "0",
+          "0",
+          "0"
+        ],
+        "expected_slippage_bps": "0",
+        "rounding_loss_bps": "0",
+        "latency_buffer_bps": "0",
+        "safety_margin_bps": "0"
+      }
+    },
+    "expected": {
+      "start_amount": "450.00000000",
+      "gross_final_amount": "450.00000000",
+      "gross_profit": "0.00000000",
+      "gross_return_bps": "0.00000000",
+      "gross_return_pct": "0.00000000",
+      "fee_multiplier": "1.00000000",
+      "nominal_fee_bps": "0.00000000",
+      "fee_amount": "0.00000000",
+      "fee_bps_on_start": "0.00000000",
+      "expected_slippage_bps": "0.00000000",
+      "expected_slippage_amount": "0.00000000",
+      "rounding_loss_bps": "0.00000000",
+      "rounding_loss_amount": "0.00000000",
+      "latency_buffer_bps": "0.00000000",
+      "latency_buffer_amount": "0.00000000",
+      "safety_margin_bps": "0.00000000",
+      "safety_margin_amount": "0.00000000",
+      "total_cost_amount": "0.00000000",
+      "total_cost_bps": "0.00000000",
+      "expected_net_profit": "0.00000000",
+      "expected_net_return_bps": "0.00000000",
+      "expected_net_return_pct": "0.00000000",
+      "expected_final_amount": "450.00000000",
+      "net_profitable": false
+    }
+  },
+  {
+    "name": "tiny_positive_edge",
+    "input": {
+      "start_amount": "450",
+      "gross_final_amount": "450.0000000001",
+      "config": {
+        "version": 1,
+        "fee_profile": "audit",
+        "fee_bps_per_leg": [
+          "0",
+          "0",
+          "0"
+        ],
+        "expected_slippage_bps": "0",
+        "rounding_loss_bps": "0",
+        "latency_buffer_bps": "0",
+        "safety_margin_bps": "0"
+      }
+    },
+    "expected": {
+      "start_amount": "450.00000000",
+      "gross_final_amount": "450.00000000",
+      "gross_profit": "0.00000000",
+      "gross_return_bps": "0.00000000",
+      "gross_return_pct": "0.00000000",
+      "fee_multiplier": "1.00000000",
+      "nominal_fee_bps": "0.00000000",
+      "fee_amount": "0.00000000",
+      "fee_bps_on_start": "0.00000000",
+      "expected_slippage_bps": "0.00000000",
+      "expected_slippage_amount": "0.00000000",
+      "rounding_loss_bps": "0.00000000",
+      "rounding_loss_amount": "0.00000000",
+      "latency_buffer_bps": "0.00000000",
+      "latency_buffer_amount": "0.00000000",
+      "safety_margin_bps": "0.00000000",
+      "safety_margin_amount": "0.00000000",
+      "total_cost_amount": "0.00000000",
+      "total_cost_bps": "0.00000000",
+      "expected_net_profit": "0.00000000",
+      "expected_net_return_bps": "0.00000000",
+      "expected_net_return_pct": "0.00000000",
+      "expected_final_amount": "450.00000000",
+      "net_profitable": true
+    }
+  },
+  {
+    "name": "large_capital_fractional_fees",
+    "input": {
+      "start_amount": "1000000000",
+      "gross_final_amount": "1001000000",
+      "config": {
+        "version": 1,
+        "fee_profile": "audit",
+        "fee_bps_per_leg": [
+          "1.25",
+          "2.375",
+          "3.125"
+        ],
+        "expected_slippage_bps": "0",
+        "rounding_loss_bps": "0.125",
+        "latency_buffer_bps": "0",
+        "safety_margin_bps": "0"
+      }
+    },
+    "expected": {
+      "start_amount": "1000000000.00000000",
+      "gross_final_amount": "1001000000.00000000",
+      "gross_profit": "1000000.00000000",
+      "gross_return_bps": "10.00000000",
+      "gross_return_pct": "0.10000000",
+      "fee_multiplier": "0.99932514",
+      "nominal_fee_bps": "6.75000000",
+      "fee_amount": "675531.89756787",
+      "fee_bps_on_start": "6.75531898",
+      "expected_slippage_bps": "0.00000000",
+      "expected_slippage_amount": "0.00000000",
+      "rounding_loss_bps": "0.12500000",
+      "rounding_loss_amount": "12500.00000000",
+      "latency_buffer_bps": "0.00000000",
+      "latency_buffer_amount": "0.00000000",
+      "safety_margin_bps": "0.00000000",
+      "safety_margin_amount": "0.00000000",
+      "total_cost_amount": "688031.89756787",
+      "total_cost_bps": "6.88031898",
+      "expected_net_profit": "311968.10243213",
+      "expected_net_return_bps": "3.11968102",
+      "expected_net_return_pct": "0.03119681",
+      "expected_final_amount": "1000311968.10243213",
+      "net_profitable": true
+    }
+  },
+  {
+    "name": "very_small_capital",
+    "input": {
+      "start_amount": "0.00000001",
+      "gross_final_amount": "0.0000000102",
+      "config": {
+        "version": 1,
+        "fee_profile": "audit",
+        "fee_bps_per_leg": [
+          "10",
+          "10",
+          "10"
+        ],
+        "expected_slippage_bps": "0",
+        "rounding_loss_bps": "0",
+        "latency_buffer_bps": "0",
+        "safety_margin_bps": "0"
+      }
+    },
+    "expected": {
+      "start_amount": "0.00000001",
+      "gross_final_amount": "0.00000001",
+      "gross_profit": "0.00000000",
+      "gross_return_bps": "200.00000000",
+      "gross_return_pct": "2.00000000",
+      "fee_multiplier": "0.99700300",
+      "nominal_fee_bps": "30.00000000",
+      "fee_amount": "0.00000000",
+      "fee_bps_on_start": "30.56941020",
+      "expected_slippage_bps": "0.00000000",
+      "expected_slippage_amount": "0.00000000",
+      "rounding_loss_bps": "0.00000000",
+      "rounding_loss_amount": "0.00000000",
+      "latency_buffer_bps": "0.00000000",
+      "latency_buffer_amount": "0.00000000",
+      "safety_margin_bps": "0.00000000",
+      "safety_margin_amount": "0.00000000",
+      "total_cost_amount": "0.00000000",
+      "total_cost_bps": "30.56941020",
+      "expected_net_profit": "0.00000000",
+      "expected_net_return_bps": "169.43058980",
+      "expected_net_return_pct": "1.69430590",
+      "expected_final_amount": "0.00000001",
+      "net_profitable": true
+    }
+  },
+  {
+    "name": "high_fees",
+    "input": {
+      "start_amount": "500",
+      "gross_final_amount": "510",
+      "config": {
+        "version": 1,
+        "fee_profile": "audit",
+        "fee_bps_per_leg": [
+          "9000",
+          "9000",
+          "9000"
+        ],
+        "expected_slippage_bps": "0",
+        "rounding_loss_bps": "1",
+        "latency_buffer_bps": "0",
+        "safety_margin_bps": "0"
+      }
+    },
+    "expected": {
+      "start_amount": "500.00000000",
+      "gross_final_amount": "510.00000000",
+      "gross_profit": "10.00000000",
+      "gross_return_bps": "200.00000000",
+      "gross_return_pct": "2.00000000",
+      "fee_multiplier": "0.00100000",
+      "nominal_fee_bps": "27000.00000000",
+      "fee_amount": "509.49000000",
+      "fee_bps_on_start": "10189.80000000",
+      "expected_slippage_bps": "0.00000000",
+      "expected_slippage_amount": "0.00000000",
+      "rounding_loss_bps": "1.00000000",
+      "rounding_loss_amount": "0.05000000",
+      "latency_buffer_bps": "0.00000000",
+      "latency_buffer_amount": "0.00000000",
+      "safety_margin_bps": "0.00000000",
+      "safety_margin_amount": "0.00000000",
+      "total_cost_amount": "509.54000000",
+      "total_cost_bps": "10190.80000000",
+      "expected_net_profit": "-499.54000000",
+      "expected_net_return_bps": "-9990.80000000",
+      "expected_net_return_pct": "-99.90800000",
+      "expected_final_amount": "0.46000000",
+      "net_profitable": false
+    }
+  },
+  {
+    "name": "exact_break_even_with_rounding",
+    "input": {
+      "start_amount": "100",
+      "gross_final_amount": "100.01",
+      "config": {
+        "version": 1,
+        "fee_profile": "audit",
+        "fee_bps_per_leg": [
+          "0",
+          "0",
+          "0"
+        ],
+        "expected_slippage_bps": "0",
+        "rounding_loss_bps": "1",
+        "latency_buffer_bps": "0",
+        "safety_margin_bps": "0"
+      }
+    },
+    "expected": {
+      "start_amount": "100.00000000",
+      "gross_final_amount": "100.01000000",
+      "gross_profit": "0.01000000",
+      "gross_return_bps": "1.00000000",
+      "gross_return_pct": "0.01000000",
+      "fee_multiplier": "1.00000000",
+      "nominal_fee_bps": "0.00000000",
+      "fee_amount": "0.00000000",
+      "fee_bps_on_start": "0.00000000",
+      "expected_slippage_bps": "0.00000000",
+      "expected_slippage_amount": "0.00000000",
+      "rounding_loss_bps": "1.00000000",
+      "rounding_loss_amount": "0.01000000",
+      "latency_buffer_bps": "0.00000000",
+      "latency_buffer_amount": "0.00000000",
+      "safety_margin_bps": "0.00000000",
+      "safety_margin_amount": "0.00000000",
+      "total_cost_amount": "0.01000000",
+      "total_cost_bps": "1.00000000",
+      "expected_net_profit": "0.00000000",
+      "expected_net_return_bps": "0.00000000",
+      "expected_net_return_pct": "0.00000000",
+      "expected_final_amount": "100.00000000",
+      "net_profitable": false
+    }
+  },
+  {
     "name": "reference_061_percent_gross",
     "input": {
       "start_amount": "450",

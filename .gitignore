@@ -11,6 +11,8 @@ coverage.xml
 htmlcov/
 target/
 node_modules/
+*.egg-info/
+*.tsbuildinfo
 frontend/dist/
 .DS_Store
 .idea/

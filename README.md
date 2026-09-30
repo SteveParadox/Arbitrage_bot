@@ -2,6 +2,9 @@
 
 A multi-language monorepo for researching, simulating, monitoring, and eventually executing arbitrage strategies.
 
+Audit: [Phase 1–8 technical audit, 2026-09-30](docs/AUDIT_REPORT_2026-09-30.md).
+Accepted observations are research candidates, not proof of exchange-executable profit.
+
 ## Architecture
 
 - **Python**: strategy research, persistence, analytics, paper simulation, orchestration, and APIs.
@@ -57,9 +60,9 @@ t0 + 3L
 ```
 
 using the archived book at each timestamp. Fees are applied between legs, partial liquidity causes
-a failed simulation, and stale historical books are rejected. Large runs load history in bounded
-opportunity chunks so thousands of candidates do not require the full experiment's book archive in
-memory at once.
+a failed simulation, and stale historical books are rejected. History is loaded in opportunity
+chunks with an event budget; opportunities and results are still retained for the entire run.
+This is not a strict memory bound. Exchange quantity rounding and order constraints remain unmodeled.
 
 Capture market data while scanning, ingest it, then replay thousands of opportunities:
 

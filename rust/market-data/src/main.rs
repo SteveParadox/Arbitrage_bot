@@ -15,10 +15,9 @@ async fn main() -> Result<()> {
         .to_lowercase();
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(format!("market_data={default_level},{default_level}"))),
-        )
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+            EnvFilter::new(format!("market_data={default_level},{default_level}"))
+        }))
         .json()
         .init();
 
@@ -33,7 +32,8 @@ async fn main() -> Result<()> {
 
     let (sender, mut receiver) = mpsc::channel::<MarketDataEvent>(4096);
     let connector_config = config.clone();
-    let connector_task = tokio::spawn(async move { connector::run(connector_config, sender).await });
+    let connector_task =
+        tokio::spawn(async move { connector::run(connector_config, sender).await });
 
     while let Some(event) = receiver.recv().await {
         match serde_json::to_string(&event) {

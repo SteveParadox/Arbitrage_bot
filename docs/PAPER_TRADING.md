@@ -43,10 +43,10 @@ it afterward. On macOS/Linux:
 ```bash
 mkdir -p data/market
 
-cargo run -p market-data \
+cargo run --manifest-path rust/Cargo.toml -p market-data \
   | tee data/market/market_data.ndjson \
-  | cargo run -p scanner --bin scan-live \
-  | (cd ../python && python -m analytics.opportunity_ingest)
+  | cargo run --manifest-path rust/Cargo.toml -p scanner --bin scan-live \
+  | (cd python && python -m analytics.opportunity_ingest)
 ```
 
 Then archive the captured book stream:
@@ -76,9 +76,11 @@ To avoid materializing a full deep-book copy for every update, each symbol store
 checkpoints. A random historical lookup restores the nearest checkpoint and replays only the
 remaining deltas.
 
-Large experiments are also processed in opportunity chunks. Only the symbols and market-event
-range needed for the current chunk are loaded, so a 10,000-opportunity run does not require an
-entire day of every relevant order book to sit in memory at once.
+Large experiments are processed in opportunity chunks, but reconstruction can extend back to an
+old snapshot. A 100,000-event budget per chunk marks oversized symbol histories as
+`history_limit_exceeded`; it never silently truncates a book. Persistent periodic checkpoints and
+streaming result aggregation are still needed: all selected opportunities/results remain in
+memory, and event-count limits are not strict byte limits.
 
 Default checkpoint interval:
 
@@ -97,8 +99,9 @@ quantity becomes the input to the next leg.
 The simulator does **not** subtract the Phase 6 latency or safety buffers as realized costs. Those
 are prediction allowances. Instead it measures the actual effect of the delayed book replay.
 
-Configured rounding loss is applied as a final conservative haircut; it currently defaults to
-zero.
+The configured rounding-loss allowance is a prediction assumption, not a replayed cash charge.
+Exact exchange quantity rounding is NOT modeled. Run metadata records this limitation; simulated
+profit must not be described as exchange-accurate realized P&L.
 
 ## Metrics
 

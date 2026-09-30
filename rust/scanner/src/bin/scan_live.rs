@@ -14,16 +14,16 @@ use scanner::{
 fn main() -> Result<()> {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let triangle_path = std::env::var("ARB_TRIANGLE_CONFIG")
-        .map(PathBuf::from)
+        .map(|value| resolve_path(&repo_root, &value))
         .unwrap_or_else(|_| repo_root.join("shared/config/triangles.json"));
     let scanner_config_path = std::env::var("ARB_SCANNER_CONFIG")
-        .map(PathBuf::from)
+        .map(|value| resolve_path(&repo_root, &value))
         .unwrap_or_else(|_| repo_root.join("shared/config/scanner.json"));
 
     let triangle_config = load_triangle_config(&triangle_path)?;
     let scanner_settings = load_scanner_settings(&scanner_config_path)?;
     let profitability_path = std::env::var("ARB_PROFITABILITY_CONFIG")
-        .map(PathBuf::from)
+        .map(|value| resolve_path(&repo_root, &value))
         .unwrap_or_else(|_| resolve_path(&repo_root, &scanner_settings.profitability_config_path));
     let profitability = load_profitability_config(&profitability_path)?;
 
@@ -48,11 +48,21 @@ fn main() -> Result<()> {
             Ok(value) => value,
             Err(error) => {
                 eprintln!("ignored malformed market-data line: {error}");
+                scanner.reset_books();
                 continue;
             }
         };
 
-        if value.get("type").and_then(|value| value.as_str()) != Some("order_book") {
+        let event_type = value.get("type").and_then(|value| value.as_str());
+        if event_type == Some("status")
+            && matches!(
+                value.get("state").and_then(|v| v.as_str()),
+                Some("connected" | "reconnecting" | "metadata_retry")
+            )
+        {
+            scanner.reset_books();
+        }
+        if event_type != Some("order_book") {
             continue;
         }
 
@@ -60,11 +70,18 @@ fn main() -> Result<()> {
             Ok(update) => update,
             Err(error) => {
                 eprintln!("ignored malformed order_book event: {error}");
+                scanner.reset_books();
                 continue;
             }
         };
 
-        let records = scanner.on_book_update(update)?;
+        let records = match scanner.on_book_update(update) {
+            Ok(records) => records,
+            Err(error) => {
+                eprintln!("book invalidated; waiting for snapshots: {error}");
+                continue;
+            }
+        };
         if records.is_empty() {
             continue;
         }
