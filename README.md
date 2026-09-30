@@ -85,6 +85,42 @@ execution drift/slippage, and failure reasons.
 
 See `docs/PAPER_TRADING.md`.
 
+### Phase 9: Risk engine
+
+Rust now provides a mandatory pre-execution risk gate.
+
+Every future trade intent must pass:
+
+```text
+market freshness
+net edge
+slippage
+liquidity
+balance
+trade-size limit
+symbol precision
+total exposure
+daily-loss limit
+API health
+exchange health
+```
+
+System failures latch circuit breakers. The default policy stops approval when market data is more
+than 500 ms old and after 3 execution failures inside 5 minutes.
+
+A restart-safe manual kill switch is available:
+
+```bash
+cd rust
+cargo run -p risk --bin riskctl -- kill "operator emergency stop"
+cargo run -p risk --bin riskctl -- status
+```
+
+The execution crate now requires a short-lived `RiskApproval` token and re-checks kill-switch /
+breaker state immediately before preparing execution.
+
+See `docs/RISK_ENGINE.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -94,7 +130,8 @@ secrets manager. Live trading remains disabled:
 ARB_LIVE_TRADING_ENABLED=false
 ```
 
-Phase 8 performs historical simulation only.
+Phase 8 performs historical simulation only. Phase 9 adds risk gating but still does not submit
+orders.
 
 ## Testing
 
@@ -114,5 +151,5 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 8 historical paper execution replay is implemented.
+Phase 9 pre-trade risk gating and circuit breakers are implemented.
 **No trade execution is enabled.**

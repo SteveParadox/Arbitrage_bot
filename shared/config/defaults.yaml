@@ -9,3 +9,6 @@ triangles:
 scanner:
   config_path: shared/config/scanner.json
   record_path: data/scans/arbitrage_scans.ndjson
+risk:
+  config_path: shared/config/risk.json
+  live_trading_enabled: false

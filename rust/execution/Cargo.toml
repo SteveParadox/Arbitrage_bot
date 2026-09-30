@@ -5,4 +5,6 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+risk = { path = "../risk" }
+thiserror = "2"
 tracing.workspace = true

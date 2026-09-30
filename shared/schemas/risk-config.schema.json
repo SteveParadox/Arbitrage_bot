@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/risk-config.schema.json",
+  "title": "RiskConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "max_market_data_age_ms",
+    "min_net_edge_bps",
+    "max_slippage_bps",
+    "min_liquidity_ratio",
+    "max_trade_size",
+    "max_total_exposure",
+    "max_daily_loss",
+    "execution_failure_limit",
+    "execution_failure_window_ms",
+    "api_health_max_age_ms",
+    "exchange_health_max_age_ms",
+    "approval_ttl_ms",
+    "kill_switch_file",
+    "state_file"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "max_market_data_age_ms": { "type": "integer", "minimum": 1 },
+    "min_net_edge_bps": { "type": "string" },
+    "max_slippage_bps": { "type": "string" },
+    "min_liquidity_ratio": { "type": "string" },
+    "max_trade_size": { "type": "string" },
+    "max_total_exposure": { "type": "string" },
+    "max_daily_loss": { "type": "string" },
+    "execution_failure_limit": { "type": "integer", "minimum": 1 },
+    "execution_failure_window_ms": { "type": "integer", "minimum": 1 },
+    "api_health_max_age_ms": { "type": "integer", "minimum": 1 },
+    "exchange_health_max_age_ms": { "type": "integer", "minimum": 1 },
+    "approval_ttl_ms": { "type": "integer", "minimum": 1 },
+    "kill_switch_file": { "type": "string", "minLength": 1 },
+    "state_file": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
