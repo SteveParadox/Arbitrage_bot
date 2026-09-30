@@ -9,3 +9,23 @@ triangles:
 scanner:
   config_path: shared/config/scanner.json
   record_path: data/scans/arbitrage_scans.ndjson
+risk:
+  config_path: shared/config/risk.json
+  live_trading_enabled: false
+execution:
+  testnet: true
+  max_order_notional: 5
+  poll_interval_ms: 50
+  order_timeout_ms: 3000
+  cancel_on_timeout: true
+coordinator:
+  config_path: shared/config/coordinator.json
+  normal_slippage_tolerance_percent: 0.10
+  emergency_slippage_tolerance_percent: 0.50
+  max_unwind_attempts_per_asset: 3
+  max_dust_notional_base: 0.01
+shadow:
+  config_path: shared/config/shadow.json
+  base_asset: USDT
+  latency_ms: [50, 100, 250]
+  minimum_observations: 5000

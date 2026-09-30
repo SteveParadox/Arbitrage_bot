@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/coordinator-config.schema.json",
+  "title": "CoordinatorConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "normal_slippage_tolerance_percent",
+    "emergency_slippage_tolerance_percent",
+    "max_unwind_attempts_per_asset",
+    "max_dust_notional_base"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "normal_slippage_tolerance_percent": { "type": "string" },
+    "emergency_slippage_tolerance_percent": { "type": "string" },
+    "max_unwind_attempts_per_asset": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_dust_notional_base": { "type": "string" }
+  },
+  "additionalProperties": false
+}

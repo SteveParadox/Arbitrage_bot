@@ -27,3 +27,5 @@ secrets.*
 data/scans/*.ndjson
 
 data/market/*.ndjson
+data/risk/KILL_SWITCH
+data/risk/risk_state.json

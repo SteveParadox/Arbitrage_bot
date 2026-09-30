@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/execution-state.schema.json",
+  "title": "ExecutionState",
+  "type": "object",
+  "required": [
+    "order_id",
+    "symbol",
+    "status",
+    "requested_quantity",
+    "filled_quantity",
+    "remaining_quantity",
+    "fees",
+    "terminal",
+    "fully_filled",
+    "fills_confirmed"
+  ],
+  "properties": {
+    "order_id": { "type": "string" },
+    "order_link_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "status": { "type": "string" },
+    "requested_quantity": { "type": "string" },
+    "filled_quantity": { "type": "string" },
+    "remaining_quantity": { "type": "string" },
+    "average_fill_price": { "type": ["string", "null"] },
+    "fees": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "terminal": { "type": "boolean" },
+    "fully_filled": { "type": "boolean" },
+    "fills_confirmed": { "type": "boolean" },
+    "reject_reason": { "type": ["string", "null"] },
+    "updated_at_ms": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": true
+}

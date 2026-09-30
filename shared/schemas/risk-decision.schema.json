@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/risk-decision.schema.json",
+  "title": "RiskDecisionAudit",
+  "type": "object",
+  "required": ["trade_id", "approved", "checks"],
+  "properties": {
+    "trade_id": { "type": "string" },
+    "approved": { "type": "boolean" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "passed", "detail"],
+        "properties": {
+          "check": {
+            "enum": [
+              "manual_kill_switch",
+              "circuit_breaker",
+              "market_data_freshness",
+              "minimum_net_edge",
+              "maximum_slippage",
+              "available_liquidity",
+              "account_balance",
+              "maximum_trade_size",
+              "symbol_precision",
+              "maximum_exposure",
+              "maximum_daily_loss",
+              "api_health",
+              "exchange_health"
+            ]
+          },
+          "passed": { "type": "boolean" },
+          "detail": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

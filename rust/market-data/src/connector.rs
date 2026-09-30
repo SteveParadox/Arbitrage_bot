@@ -75,9 +75,10 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     let (mut write, mut read) = socket.split();
 
     let topics = subscription_topics(config);
+    validate_subscription_topics(&topics)?;
     for request in subscription_requests(&topics) {
         write
-            .send(Message::Text(request.to_string()))
+            .send(Message::Text(request.to_string().into()))
             .await
             .context("failed to send subscription request")?;
     }
@@ -147,17 +148,30 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
 }
 
 fn subscription_topics(config: &Config) -> Vec<String> {
-    config
-        .symbols
-        .iter()
-        .flat_map(|symbol| {
-            [
-                format!("orderbook.{}.{}", config.orderbook_depth, symbol),
-                format!("publicTrade.{symbol}"),
-                format!("tickers.{symbol}"),
-            ]
-        })
-        .collect()
+    let mut topics = Vec::new();
+    for symbol in &config.symbols {
+        topics.push(format!(
+            "orderbook.{}.{}",
+            config.orderbook_depth, symbol
+        ));
+        if config.subscribe_trades {
+            topics.push(format!("publicTrade.{symbol}"));
+        }
+        if config.subscribe_tickers {
+            topics.push(format!("tickers.{symbol}"));
+        }
+    }
+    topics
+}
+
+fn validate_subscription_topics(topics: &[String]) -> Result<()> {
+    let total_chars = topics.iter().map(String::len).sum::<usize>();
+    if total_chars > 21_000 {
+        return Err(anyhow!(
+            "public websocket topic args use {total_chars} characters; Bybit limit is 21000 per connection"
+        ));
+    }
+    Ok(())
 }
 
 fn subscription_requests(topics: &[String]) -> Vec<serde_json::Value> {
@@ -462,6 +476,8 @@ mod tests {
             category: crate::config::Category::Linear,
             symbols: vec!["BTCUSDT".into(), "ETHUSDT".into()],
             orderbook_depth: 50,
+            subscribe_trades: true,
+            subscribe_tickers: true,
             heartbeat_interval: Duration::from_secs(20),
             stale_after: Duration::from_secs(10),
             reconnect_min: Duration::from_millis(500),
@@ -472,6 +488,35 @@ mod tests {
         assert!(topics.contains(&"orderbook.50.BTCUSDT".to_string()));
         assert!(topics.contains(&"publicTrade.ETHUSDT".to_string()));
         assert!(topics.contains(&"tickers.BTCUSDT".to_string()));
+    }
+
+    #[test]
+    fn can_subscribe_to_orderbooks_only() {
+        let config = Config {
+            testnet: false,
+            category: crate::config::Category::Spot,
+            symbols: vec!["BTCUSDT".into(), "ETHUSDT".into()],
+            orderbook_depth: 50,
+            subscribe_trades: false,
+            subscribe_tickers: false,
+            heartbeat_interval: Duration::from_secs(20),
+            stale_after: Duration::from_secs(10),
+            reconnect_min: Duration::from_millis(500),
+            reconnect_max: Duration::from_secs(30),
+        };
+        assert_eq!(
+            subscription_topics(&config),
+            vec![
+                "orderbook.50.BTCUSDT".to_string(),
+                "orderbook.50.ETHUSDT".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_topic_sets_above_connection_character_limit() {
+        let topics = vec!["x".repeat(10_501), "y".repeat(10_500)];
+        assert!(validate_subscription_topics(&topics).is_err());
     }
 
     #[test]

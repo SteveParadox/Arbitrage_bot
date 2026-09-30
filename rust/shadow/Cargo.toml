@@ -1,15 +1,20 @@
 [package]
-name = "execution"
+name = "shadow"
 version.workspace = true
 edition.workspace = true
+autobins = false
 
 [dependencies]
 anyhow.workspace = true
+dotenvy = "0.15"
 hex = "0.4"
 hmac = "0.12"
+market-data = { path = "../market-data" }
+orderbook = { path = "../orderbook" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 risk = { path = "../risk" }
 rust_decimal = "1"
+scanner = { path = "../scanner" }
 serde.workspace = true
 serde_json = "1"
 serde_urlencoded = "0.7"
@@ -17,3 +22,8 @@ sha2 = "0.10"
 thiserror = "2"
 tokio.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "shadow-live"
+path = "src/bin/shadow_live.rs"

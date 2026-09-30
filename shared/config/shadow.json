@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "base_asset": "USDT",
+  "latency_ms": [50, 100, 250],
+  "minimum_observations": 5000,
+  "max_pending_observations": 50000,
+  "account_refresh_ms": 2000,
+  "sample_tick_ms": 5,
+  "history_retention_ms": 1000
+}

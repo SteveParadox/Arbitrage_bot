@@ -4,7 +4,9 @@ members = [
   "orderbook",
   "scanner",
   "execution",
-  "risk"
+  "risk",
+  "coordinator",
+  "shadow"
 ]
 resolver = "2"
 

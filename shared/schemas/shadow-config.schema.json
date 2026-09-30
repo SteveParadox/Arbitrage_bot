@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/shadow-config.schema.json",
+  "title": "ShadowConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "base_asset",
+    "latency_ms",
+    "minimum_observations",
+    "max_pending_observations",
+    "account_refresh_ms",
+    "sample_tick_ms",
+    "history_retention_ms"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "base_asset": {
+      "const": "USDT"
+    },
+    "latency_ms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "minimum_observations": {
+      "type": "integer",
+      "minimum": 3000
+    },
+    "max_pending_observations": {
+      "type": "integer",
+      "minimum": 3000
+    },
+    "account_refresh_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sample_tick_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "history_retention_ms": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "additionalProperties": false
+}
