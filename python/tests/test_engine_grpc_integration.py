@@ -7,13 +7,22 @@ import time
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from redis import Redis
+import redis.asyncio as async_redis
+from redis.exceptions import ResponseError
+from sqlalchemy import select
 
+from analytics.db import get_session_factory
+from analytics.engine_event_models import EngineEvent
 from api.engine_client import EngineCommandError, EngineGrpcClient
+from api.event_consumer import EngineEventConsumer
+from api.main import app
+from api.settings import settings
 
 pytestmark = pytest.mark.skipif(
     os.getenv("ARB_RUN_GRPC_INTEGRATION") != "1",
-    reason="requires the Rust engine-service and Redis",
+    reason="requires the Rust engine-service, Redis, and PostgreSQL",
 )
 
 
@@ -56,6 +65,50 @@ def _wait_for_command_event(request_id: str) -> dict:
     )
 
 
+async def _consume_until_persisted(request_id: str) -> str:
+    client = async_redis.from_url(
+        os.environ["ARB_REDIS_URL"],
+        decode_responses=True,
+    )
+    consumer = EngineEventConsumer()
+    group = settings.arb_event_consumer_group
+    stream = settings.arb_event_stream
+    try:
+        try:
+            await client.xgroup_create(stream, group, id="0-0", mkstream=True)
+        except ResponseError as error:
+            if "BUSYGROUP" not in str(error):
+                raise
+
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            batches = await client.xreadgroup(
+                groupname=group,
+                consumername=f"integration-{os.getpid()}",
+                streams={stream: ">"},
+                count=100,
+                block=1000,
+            )
+            for _stream, messages in batches:
+                target_event_id: str | None = None
+                for _stream_id, fields in messages:
+                    if fields.get("event_type") != "engine.health":
+                        continue
+                    payload = json.loads(fields.get("payload", "{}"))
+                    if payload.get("request_id") == request_id:
+                        target_event_id = fields["event_id"]
+
+                await consumer._persist_and_ack(client, messages)
+                if target_event_id is not None:
+                    return target_event_id
+
+        raise AssertionError(
+            f"consumer did not persist request_id={request_id}"
+        )
+    finally:
+        await client.aclose()
+
+
 def test_rust_python_grpc_and_redis_boundary() -> None:
     client = EngineGrpcClient()
 
@@ -72,6 +125,31 @@ def test_rust_python_grpc_and_redis_boundary() -> None:
     event = _wait_for_command_event(stopped.request_id)
     assert event["command"] == "stop_trading"
     assert event["runtime_enabled"] is False
+
+    persisted_event_id = asyncio.run(
+        _consume_until_persisted(stopped.request_id)
+    )
+    with get_session_factory()() as session:
+        persisted = session.scalar(
+            select(EngineEvent).where(
+                EngineEvent.event_id == persisted_event_id
+            )
+        )
+        assert persisted is not None
+        assert persisted.payload["request_id"] == stopped.request_id
+
+    with TestClient(app) as api:
+        health = api.get("/health")
+        assert health.status_code == 200
+        event_pipeline = health.json()["event_pipeline"]
+        assert event_pipeline["status"] == "online"
+        assert event_pipeline["last_event_id"]
+        with get_session_factory()() as session:
+            visible = session.get(
+                EngineEvent,
+                event_pipeline["last_event_id"],
+            )
+            assert visible is not None
 
     with pytest.raises(EngineCommandError) as error:
         asyncio.run(client.start("deployment gate should reject"))
