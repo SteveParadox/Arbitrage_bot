@@ -170,13 +170,15 @@ def test_stop_falls_back_fail_closed_when_grpc_is_down(
     monkeypatch.setattr(runtime_control, "control_state_path", lambda: path)
     monkeypatch.setattr(control, "engine_grpc_client", BrokenEngine())
 
-    result = asyncio.run(
-        control.stop_trading(
-            control.TradingCommand(reason="emergency stop")
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            control.stop_trading(
+                control.TradingCommand(reason="emergency stop")
+            )
         )
-    )
 
-    assert result["status"] == "stopped_fallback"
+    assert error.value.status_code == 503
+    assert "unconfirmed" in str(error.value.detail)
     assert runtime_control.read_control_state()["enabled"] is False
 
 
@@ -196,3 +198,49 @@ def test_update_limits_and_reload_use_grpc(monkeypatch) -> None:
 
     assert limits["status"] == "updated"
     assert reload_result["status"] == "reload_requested"
+
+
+def test_health_degrades_when_market_data_is_stale(monkeypatch) -> None:
+    class FakeDb:
+        def execute(self, _statement):
+            return None
+
+    class HealthyEngine:
+        async def status(self):
+            return SimpleNamespace(
+                healthy=True,
+                runtime_enabled=False,
+                strategy_generation="test",
+                detail="control service healthy",
+            )
+
+    monkeypatch.setattr(control, "engine_grpc_client", HealthyEngine())
+    monkeypatch.setattr(
+        control,
+        "_recent_market_activity",
+        lambda _db: ("stale", None),
+    )
+    monkeypatch.setattr(
+        control,
+        "_risk_status",
+        lambda: {
+            "available": True,
+            "kill_switch_active": False,
+            "circuit_breaker": None,
+        },
+    )
+    monkeypatch.setattr(
+        control,
+        "read_control_state",
+        lambda: {
+            "enabled": False,
+            "updated_at": None,
+            "reason": "stopped",
+            "source": "test",
+        },
+    )
+
+    result = asyncio.run(control.get_health(FakeDb()))
+
+    assert result["status"] == "degraded"
+    assert result["market_stream_status"] == "stale"
