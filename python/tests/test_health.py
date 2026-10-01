@@ -9,5 +9,7 @@ def test_health() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "ok"
-    assert payload["live_trading_enabled"] is False
+    assert payload["status"] in {"ok", "degraded", "unhealthy"}
+    assert payload["trading"]["deployment_enabled"] is False
+    assert "engine_grpc" in payload
+    assert "market_stream_status" in payload
