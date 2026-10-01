@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package arbitrage.engine.v1;
+
+service EngineControl {
+  rpc StartTrading(ControlRequest) returns (CommandReply);
+  rpc StopTrading(ControlRequest) returns (CommandReply);
+  rpc UpdateLimits(UpdateLimitsRequest) returns (CommandReply);
+  rpc ReloadStrategy(ReloadStrategyRequest) returns (CommandReply);
+  rpc GetStatus(StatusRequest) returns (EngineStatus);
+}
+
+message ControlRequest {
+  string request_id = 1;
+  string reason = 2;
+}
+
+message UpdateLimitsRequest {
+  string request_id = 1;
+  string min_net_edge_bps = 2;
+  string max_slippage_bps = 3;
+  string max_trade_size = 4;
+  string max_total_exposure = 5;
+  string max_daily_loss = 6;
+}
+
+message ReloadStrategyRequest {
+  string request_id = 1;
+  string reason = 2;
+}
+
+message StatusRequest {
+  string request_id = 1;
+}
+
+message CommandReply {
+  bool accepted = 1;
+  string command = 2;
+  string request_id = 3;
+  string detail = 4;
+  int64 applied_at_ms = 5;
+}
+
+message EngineStatus {
+  bool healthy = 1;
+  bool runtime_enabled = 2;
+  string control_source = 3;
+  int64 generated_at_ms = 4;
+  string strategy_generation = 5;
+  string limits_json = 6;
+  string detail = 7;
+}

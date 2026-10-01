@@ -2,13 +2,15 @@ use std::{
     fs,
     io::{self, BufRead},
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
+use event_bus::EventPublisher;
 use orderbook::BookUpdate;
 use scanner::{
     load_profitability_config, load_triangle_config, ArbitrageScanner, NdjsonRecorder,
-    ScannerSettings,
+    ScanStatus, ScannerSettings,
 };
 
 fn main() -> Result<()> {
@@ -31,6 +33,11 @@ fn main() -> Result<()> {
     let mut scanner = ArbitrageScanner::new(triangle_config, scanner_settings, profitability)
         .map_err(anyhow::Error::msg)?;
     let mut recorder = NdjsonRecorder::open(&record_path)?;
+    let events = EventPublisher::from_env("scanner");
+    let reload_path = std::env::var("ARB_STRATEGY_RELOAD_FILE")
+        .map(|value| resolve_path(&repo_root, &value))
+        .unwrap_or_else(|_| repo_root.join("data/control/strategy_reload.json"));
+    let mut reload_watcher = StrategyReloadWatcher::new(reload_path);
 
     eprintln!(
         "scanner ready; records will be appended to {}",
@@ -40,6 +47,7 @@ fn main() -> Result<()> {
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = line?;
+        reload_watcher.maybe_reload(&mut scanner, &triangle_path)?;
         if line.trim().is_empty() {
             continue;
         }
@@ -88,6 +96,12 @@ fn main() -> Result<()> {
 
         recorder.record_batch(&records)?;
         for record in records {
+            if record.status == ScanStatus::Complete {
+                events.publish(
+                    "opportunity.detected",
+                    serde_json::to_value(&record)?,
+                );
+            }
             println!("{}", serde_json::to_string(&record)?);
         }
     }
@@ -111,4 +125,70 @@ fn resolve_path(repo_root: &Path, configured: &str) -> PathBuf {
     } else {
         repo_root.join(path)
     }
+}
+
+
+struct StrategyReloadWatcher {
+    path: PathBuf,
+    generation: Option<String>,
+    next_check: Instant,
+}
+
+impl StrategyReloadWatcher {
+    fn new(path: PathBuf) -> Self {
+        let generation = read_generation(&path);
+        Self {
+            path,
+            generation,
+            next_check: Instant::now(),
+        }
+    }
+
+    fn maybe_reload(
+        &mut self,
+        scanner: &mut ArbitrageScanner,
+        triangle_path: &Path,
+    ) -> Result<()> {
+        let now = Instant::now();
+        if now < self.next_check {
+            return Ok(());
+        }
+        self.next_check = now + Duration::from_millis(500);
+
+        let Some(generation) = read_generation(&self.path) else {
+            return Ok(());
+        };
+        if self.generation.as_deref() == Some(generation.as_str()) {
+            return Ok(());
+        }
+
+        let result = load_triangle_config(triangle_path)
+            .with_context(|| "strategy reload could not read triangle config")
+            .and_then(|config| {
+                scanner
+                    .reload_routes(config)
+                    .map_err(anyhow::Error::msg)
+            });
+        self.generation = Some(generation.clone());
+        match result {
+            Ok(()) => {
+                eprintln!("strategy routes reloaded; generation={generation}");
+            }
+            Err(error) => {
+                eprintln!(
+                    "strategy reload rejected; generation={generation}: {error}"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+fn read_generation(path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    value
+        .get("generation")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
 }

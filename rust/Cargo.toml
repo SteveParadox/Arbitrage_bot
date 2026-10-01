@@ -7,7 +7,9 @@ members = [
   "risk",
   "coordinator",
   "shadow",
-  "micro-canary"
+  "micro-canary",
+  "event-bus",
+  "engine-service"
 ]
 resolver = "2"
 

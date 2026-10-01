@@ -20,7 +20,8 @@
     "emergency_max_market_data_age_ms",
     "kill_switch_file",
     "state_file",
-    "trading_control_file"
+    "trading_control_file",
+    "runtime_limits_file"
   ],
   "properties": {
     "version": {
@@ -81,6 +82,10 @@
       "minimum": 1
     },
     "trading_control_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_limits_file": {
       "type": "string",
       "minLength": 1
     }

@@ -5,6 +5,7 @@ use std::{
 };
 
 use rust_decimal::Decimal;
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
@@ -58,6 +59,7 @@ impl RiskEngine {
         latch_breakers: bool,
     ) -> Result<RiskDecision, RiskError> {
         self.refresh_state()?;
+        let limits = self.runtime_limits()?;
         let mut checks = Vec::with_capacity(14);
 
         if latch_breakers {
@@ -127,24 +129,24 @@ impl RiskEngine {
             passed
         };
 
-        let edge_ok = intent.expected_net_edge_bps >= self.config.min_net_edge_bps;
+        let edge_ok = intent.expected_net_edge_bps >= limits.min_net_edge_bps;
         checks.push(check(
             RiskCheck::MinimumNetEdge,
             edge_ok,
             format!(
                 "net edge={} bps, minimum={} bps",
-                intent.expected_net_edge_bps, self.config.min_net_edge_bps
+                intent.expected_net_edge_bps, limits.min_net_edge_bps
             ),
         ));
 
         let slippage_ok = intent.estimated_slippage_bps >= Decimal::ZERO
-            && intent.estimated_slippage_bps <= self.config.max_slippage_bps;
+            && intent.estimated_slippage_bps <= limits.max_slippage_bps;
         checks.push(check(
             RiskCheck::MaximumSlippage,
             slippage_ok,
             format!(
                 "estimated slippage={} bps, maximum={} bps",
-                intent.estimated_slippage_bps, self.config.max_slippage_bps
+                intent.estimated_slippage_bps, limits.max_slippage_bps
             ),
         ));
 
@@ -177,13 +179,13 @@ impl RiskEngine {
 
         let trade_size_ok =
             intent.starting_notional > Decimal::ZERO
-                && intent.starting_notional <= self.config.max_trade_size;
+                && intent.starting_notional <= limits.max_trade_size;
         checks.push(check(
             RiskCheck::MaximumTradeSize,
             trade_size_ok,
             format!(
                 "trade_size={}, maximum={}",
-                intent.starting_notional, self.config.max_trade_size
+                intent.starting_notional, limits.max_trade_size
             ),
         ));
 
@@ -198,7 +200,7 @@ impl RiskEngine {
         let exposure_ok =
             context.current_exposure >= Decimal::ZERO
                 && intent.projected_peak_exposure >= Decimal::ZERO
-                && exposure_after <= self.config.max_total_exposure;
+                && exposure_after <= limits.max_total_exposure;
         checks.push(check(
             RiskCheck::MaximumExposure,
             exposure_ok,
@@ -207,14 +209,14 @@ impl RiskEngine {
                 context.current_exposure,
                 intent.projected_peak_exposure,
                 exposure_after,
-                self.config.max_total_exposure
+                limits.max_total_exposure
             ),
         ));
 
-        let daily_loss_ok = context.daily_realized_pnl > -self.config.max_daily_loss;
+        let daily_loss_ok = context.daily_realized_pnl > -limits.max_daily_loss;
         let daily_detail = format!(
             "daily_realized_pnl={}, loss_limit=-{}",
-            context.daily_realized_pnl, self.config.max_daily_loss
+            context.daily_realized_pnl, limits.max_daily_loss
         );
         if !daily_loss_ok && trip.is_none() {
             trip = Some((BreakerKind::DailyLossLimit, daily_detail.clone()));
@@ -506,6 +508,71 @@ impl RiskEngine {
         Ok(())
     }
 
+    fn runtime_limits(&self) -> Result<EffectiveRiskLimits, RiskError> {
+        let defaults = EffectiveRiskLimits {
+            min_net_edge_bps: self.config.min_net_edge_bps,
+            max_slippage_bps: self.config.max_slippage_bps,
+            max_trade_size: self.config.max_trade_size,
+            max_total_exposure: self.config.max_total_exposure,
+            max_daily_loss: self.config.max_daily_loss,
+        };
+
+        let raw = match fs::read_to_string(&self.config.runtime_limits_file) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(defaults);
+            }
+            Err(error) => return Err(RiskError::Io(error)),
+        };
+        let file: RuntimeLimitsFile = serde_json::from_str(&raw)?;
+        if file.version != 1 {
+            return Err(RiskError::InvalidConfig(
+                "unsupported runtime risk limits version".to_string(),
+            ));
+        }
+
+        let limits = EffectiveRiskLimits {
+            min_net_edge_bps: runtime_decimal(
+                "min_net_edge_bps",
+                file.min_net_edge_bps.as_deref(),
+                defaults.min_net_edge_bps,
+            )?,
+            max_slippage_bps: runtime_decimal(
+                "max_slippage_bps",
+                file.max_slippage_bps.as_deref(),
+                defaults.max_slippage_bps,
+            )?,
+            max_trade_size: runtime_decimal(
+                "max_trade_size",
+                file.max_trade_size.as_deref(),
+                defaults.max_trade_size,
+            )?,
+            max_total_exposure: runtime_decimal(
+                "max_total_exposure",
+                file.max_total_exposure.as_deref(),
+                defaults.max_total_exposure,
+            )?,
+            max_daily_loss: runtime_decimal(
+                "max_daily_loss",
+                file.max_daily_loss.as_deref(),
+                defaults.max_daily_loss,
+            )?,
+        };
+
+        if limits.min_net_edge_bps < Decimal::ZERO
+            || limits.max_slippage_bps < Decimal::ZERO
+            || limits.max_trade_size <= Decimal::ZERO
+            || limits.max_total_exposure <= Decimal::ZERO
+            || limits.max_daily_loss <= Decimal::ZERO
+            || limits.max_total_exposure < limits.max_trade_size
+        {
+            return Err(RiskError::InvalidConfig(
+                "runtime risk limits failed validation".to_string(),
+            ));
+        }
+        Ok(limits)
+    }
+
     fn runtime_trading_control_status(&self) -> (bool, String) {
         let raw = match fs::read_to_string(&self.config.trading_control_file) {
             Ok(value) => value,
@@ -706,6 +773,41 @@ fn validate_precision(legs: &[ProposedOrderLeg]) -> Option<String> {
     None
 }
 
+#[derive(Debug, Deserialize)]
+struct RuntimeLimitsFile {
+    version: u32,
+    min_net_edge_bps: Option<String>,
+    max_slippage_bps: Option<String>,
+    max_trade_size: Option<String>,
+    max_total_exposure: Option<String>,
+    max_daily_loss: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EffectiveRiskLimits {
+    min_net_edge_bps: Decimal,
+    max_slippage_bps: Decimal,
+    max_trade_size: Decimal,
+    max_total_exposure: Decimal,
+    max_daily_loss: Decimal,
+}
+
+fn runtime_decimal(
+    field: &str,
+    raw: Option<&str>,
+    default: Decimal,
+) -> Result<Decimal, RiskError> {
+    match raw {
+        Some(value) => Decimal::from_str_exact(value).map_err(|_| {
+            RiskError::InvalidDecimal {
+                field: field.to_string(),
+                value: value.to_string(),
+            }
+        }),
+        None => Ok(default),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -738,6 +840,10 @@ mod tests {
             .parent()
             .unwrap()
             .join("trading_state.json");
+        let runtime_limits_file = state_file
+            .parent()
+            .unwrap()
+            .join("risk_limits.json");
         fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
         fs::write(
             &trading_control_file,
@@ -762,6 +868,7 @@ mod tests {
             kill_switch_file,
             state_file,
             trading_control_file,
+            runtime_limits_file,
         }
     }
 
@@ -1125,6 +1232,35 @@ mod tests {
             .validate_approval(&approval, "trade-1", now + 20)
             .unwrap_err();
         assert!(matches!(error, RiskError::GateClosed(_)));
+    }
+
+    #[test]
+    fn runtime_limit_overlay_changes_future_risk_decision() {
+        let now = 8_985_000;
+        let cfg = config("runtime-limit-overlay");
+        fs::write(
+            &cfg.runtime_limits_file,
+            br#"{"version":1,"max_trade_size":"100"}"#,
+        )
+        .unwrap();
+        let mut engine = RiskEngine::new(cfg).unwrap();
+
+        let decision = engine.evaluate(&intent(now), &context(now), now).unwrap();
+
+        assert!(!decision.approved);
+        assert!(decision.checks.iter().any(|item| {
+            item.check == RiskCheck::MaximumTradeSize && !item.passed
+        }));
+    }
+
+    #[test]
+    fn malformed_runtime_limits_fail_closed() {
+        let now = 8_990_000;
+        let cfg = config("runtime-limit-invalid");
+        fs::write(&cfg.runtime_limits_file, b"{not-json").unwrap();
+        let mut engine = RiskEngine::new(cfg).unwrap();
+
+        assert!(engine.evaluate(&intent(now), &context(now), now).is_err());
     }
 
     #[test]

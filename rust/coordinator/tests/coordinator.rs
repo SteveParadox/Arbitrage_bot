@@ -111,6 +111,7 @@ fn risk_config(name: &str) -> RiskConfig {
         kill_switch_file: base.join("KILL_SWITCH"),
         state_file: base.join("risk_state.json"),
         trading_control_file,
+        runtime_limits_file: base.join("risk_limits.json"),
     }
 }
 

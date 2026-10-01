@@ -1,0 +1,25 @@
+[package]
+name = "engine-service"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+event-bus = { path = "../event-bus" }
+prost = "0.13"
+risk = { path = "../risk" }
+scanner = { path = "../scanner" }
+rust_decimal = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio.workspace = true
+tonic = { version = "0.12", features = ["transport"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[build-dependencies]
+protoc-bin-vendored = "3"
+tonic-build = "0.12"

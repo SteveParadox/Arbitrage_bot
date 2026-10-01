@@ -19,6 +19,15 @@ class Settings(BaseSettings):
     arb_cors_origins: str = "http://localhost:5173"
     arb_control_api_token: str = ""
     arb_control_state_file: str = "data/control/trading_state.json"
+    arb_engine_grpc_target: str = "127.0.0.1:50051"
+    arb_engine_grpc_token: str = ""
+    arb_engine_grpc_timeout_seconds: float = 2.0
+    arb_redis_url: str = "redis://127.0.0.1:6379/0"
+    arb_event_stream: str = "arb.events"
+    arb_event_consumer_group: str = "python-api"
+    arb_event_dead_letter_stream: str = "arb.events.dlq"
+    arb_event_batch_size: int = 100
+    arb_event_retry_seconds: float = 2.0
 
     arb_database_url: str = (
         "postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage"
@@ -47,6 +56,12 @@ class Settings(BaseSettings):
             "arb_live_trading_enabled": self.arb_live_trading_enabled,
             "arb_control_auth_configured": bool(self.arb_control_api_token),
             "arb_control_state_file": self.arb_control_state_file,
+            "arb_engine_grpc_target": self.arb_engine_grpc_target,
+            "arb_engine_grpc_auth_configured": (
+                len(self.arb_engine_grpc_token.encode("utf-8")) >= 32
+            ),
+            "arb_event_stream": self.arb_event_stream,
+            "arb_event_dead_letter_stream": self.arb_event_dead_letter_stream,
             "arb_database_configured": bool(self.arb_database_url),
             "arb_opportunity_min_net_bps": self.arb_opportunity_min_net_bps,
             "arb_opportunity_max_gap_ms": self.arb_opportunity_max_gap_ms,

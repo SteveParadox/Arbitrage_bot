@@ -14,7 +14,10 @@ dependencies = [
   "structlog>=24.4,<26",
   "sqlalchemy>=2.0,<3",
   "psycopg[binary]>=3.2,<4",
-  "alembic>=1.13,<2"
+  "alembic>=1.13,<2",
+  "grpcio>=1.65,<2",
+  "protobuf>=5.27,<7",
+  "redis>=5.0,<7"
 ]
 
 [project.optional-dependencies]

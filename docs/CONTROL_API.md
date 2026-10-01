@@ -219,3 +219,19 @@ The Phase 14 React client now uses only the Phase 15 read surface:
 Typed `startTrading()` and `stopTrading()` client functions are also available. They require a
 Bearer token supplied at call time. The dashboard does not persist that control token in browser
 storage.
+
+
+## Phase 16 transport change
+
+Phase 15 defines the browser-facing control API. Phase 16 changes the implementation behind the
+mutating endpoints:
+
+~~~text
+FastAPI -> Rust engine-control: gRPC
+~~~
+
+FastAPI no longer opens the normal runtime trading gate directly. The Rust gRPC service owns the
+authoritative start command. Stop retains a fail-closed shared-file fallback for the specific case
+where the gRPC service is unavailable.
+
+See RUST_PYTHON_BOUNDARY.md for the gRPC and Redis contracts.

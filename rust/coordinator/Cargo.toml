@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = "0.1"
+event-bus = { path = "../event-bus" }
 execution = { path = "../execution" }
 hex = "0.4"
 orderbook = { path = "../orderbook" }

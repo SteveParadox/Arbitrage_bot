@@ -9,7 +9,9 @@
     "enabled": { "type": "boolean" },
     "updated_at": { "type": "string", "format": "date-time" },
     "reason": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "source": { "const": "fastapi_control" }
+    "source": {
+      "enum": ["fastapi_control", "rust_grpc_control"]
+    }
   },
   "additionalProperties": false
 }

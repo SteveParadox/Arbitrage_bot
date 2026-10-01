@@ -1108,6 +1108,7 @@ mod tests {
             kill_switch_file: base.join("KILL"),
             state_file: base.join("STATE"),
             trading_control_file: base.join("TRADING_CONTROL"),
+            runtime_limits_file: base.join("RISK_LIMITS"),
         };
         let _ = std::fs::remove_dir_all(&base);
         RiskEngine::new(config).unwrap()

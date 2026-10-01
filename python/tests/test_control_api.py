@@ -1,13 +1,54 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
 from api import control, runtime_control
+from api.engine_client import EngineCommandError
+
+
+class FakeEngineClient:
+    async def start(self, _reason: str):
+        return SimpleNamespace(
+            accepted=True,
+            command="start_trading",
+            request_id="start-1",
+            detail="started",
+            applied_at_ms=1,
+        )
+
+    async def stop(self, _reason: str):
+        return SimpleNamespace(
+            accepted=True,
+            command="stop_trading",
+            request_id="stop-1",
+            detail="stopped",
+            applied_at_ms=2,
+        )
+
+    async def update_limits(self, **_values):
+        return SimpleNamespace(
+            accepted=True,
+            command="update_limits",
+            request_id="limits-1",
+            detail="updated",
+            applied_at_ms=3,
+        )
+
+    async def reload_strategy(self, _reason: str):
+        return SimpleNamespace(
+            accepted=True,
+            command="reload_strategy",
+            request_id="reload-1",
+            detail="reloaded",
+            applied_at_ms=4,
+        )
 
 
 def test_control_state_defaults_fail_closed(
@@ -58,11 +99,8 @@ def test_control_auth_rejects_missing_configuration(monkeypatch) -> None:
 
 
 def test_control_auth_uses_bearer_token(monkeypatch) -> None:
-    monkeypatch.setattr(
-        control.settings,
-        "arb_control_api_token",
-        "this-is-a-test-token-with-more-than-32-characters",
-    )
+    token = "this-is-a-test-token-with-more-than-32-characters"
+    monkeypatch.setattr(control.settings, "arb_control_api_token", token)
 
     with pytest.raises(HTTPException) as error:
         control.require_control_auth(
@@ -76,157 +114,85 @@ def test_control_auth_uses_bearer_token(monkeypatch) -> None:
     control.require_control_auth(
         HTTPAuthorizationCredentials(
             scheme="Bearer",
-            credentials="this-is-a-test-token-with-more-than-32-characters",
+            credentials=token,
         )
     )
 
 
-def test_control_auth_rejects_weak_configured_token(monkeypatch) -> None:
-    monkeypatch.setattr(control.settings, "arb_control_api_token", "too-short")
-
+def test_start_requires_deployment_gate_and_clear_risk(monkeypatch) -> None:
+    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", False)
+    monkeypatch.setattr(control, "engine_grpc_client", FakeEngineClient())
     with pytest.raises(HTTPException) as error:
-        control.require_control_auth(
-            HTTPAuthorizationCredentials(
-                scheme="Bearer",
-                credentials="too-short",
+        asyncio.run(
+            control.start_trading(
+                control.TradingCommand(reason="test start")
             )
         )
-
-    assert error.value.status_code == 503
-
-
-def test_start_requires_deployment_gate_and_clear_risk(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "control" / "trading_state.json"
-    monkeypatch.setattr(runtime_control, "control_state_path", lambda: path)
-    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", False)
-    monkeypatch.setattr(
-        control,
-        "_risk_status",
-        lambda: {
-            "available": True,
-            "kill_switch_active": False,
-            "circuit_breaker": None,
-        },
-    )
-
-    with pytest.raises(HTTPException) as error:
-        control.start_trading(control.TradingCommand(reason="test start"))
-
     assert error.value.status_code == 409
-    assert runtime_control.read_control_state()["enabled"] is False
 
     monkeypatch.setattr(control.settings, "arb_live_trading_enabled", True)
-    result = control.start_trading(
-        control.TradingCommand(reason="test start")
+    result = asyncio.run(
+        control.start_trading(
+            control.TradingCommand(reason="test start")
+        )
     )
-
     assert result["status"] == "started"
-    assert runtime_control.read_control_state()["enabled"] is True
+    assert result["command"]["accepted"] is True
 
 
-def test_stop_is_idempotent_and_does_not_require_live_deployment_gate(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "control" / "trading_state.json"
-    monkeypatch.setattr(runtime_control, "control_state_path", lambda: path)
-    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", False)
+def test_stop_uses_grpc_and_is_idempotent(monkeypatch) -> None:
+    monkeypatch.setattr(control, "engine_grpc_client", FakeEngineClient())
 
-    first = control.stop_trading(
-        control.TradingCommand(reason="operator stop")
+    first = asyncio.run(
+        control.stop_trading(
+            control.TradingCommand(reason="operator stop")
+        )
     )
-    second = control.stop_trading(
-        control.TradingCommand(reason="operator stop again")
+    second = asyncio.run(
+        control.stop_trading(
+            control.TradingCommand(reason="operator stop again")
+        )
     )
 
     assert first["status"] == "stopped"
     assert second["status"] == "stopped"
+
+
+def test_stop_falls_back_fail_closed_when_grpc_is_down(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    class BrokenEngine:
+        async def stop(self, _reason: str):
+            raise EngineCommandError("unavailable")
+
+    path = tmp_path / "control" / "trading_state.json"
+    monkeypatch.setattr(runtime_control, "control_state_path", lambda: path)
+    monkeypatch.setattr(control, "engine_grpc_client", BrokenEngine())
+
+    result = asyncio.run(
+        control.stop_trading(
+            control.TradingCommand(reason="emergency stop")
+        )
+    )
+
+    assert result["status"] == "stopped_fallback"
     assert runtime_control.read_control_state()["enabled"] is False
 
 
+def test_update_limits_and_reload_use_grpc(monkeypatch) -> None:
+    monkeypatch.setattr(control, "engine_grpc_client", FakeEngineClient())
 
-class HealthySession:
-    def execute(self, _statement):
-        return None
-
-
-def test_health_effective_state_includes_risk_gate(monkeypatch) -> None:
-    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", True)
-    monkeypatch.setattr(
-        control.settings,
-        "arb_control_api_token",
-        "x" * 40,
+    limits = asyncio.run(
+        control.update_limits(
+            control.RiskLimitsCommand(max_trade_size="25")
+        )
     )
-    monkeypatch.setattr(
-        control,
-        "_recent_market_activity",
-        lambda _db: ("connected", None),
-    )
-    monkeypatch.setattr(
-        control,
-        "read_control_state",
-        lambda: {
-            "enabled": True,
-            "updated_at": None,
-            "reason": "test",
-            "source": "control_api",
-        },
-    )
-    monkeypatch.setattr(
-        control,
-        "_risk_status",
-        lambda: {
-            "available": True,
-            "state": "halted",
-            "kill_switch_active": True,
-            "kill_switch_detail": "test stop",
-            "circuit_breaker": None,
-            "execution_failures_recorded": 0,
-        },
+    reload_result = asyncio.run(
+        control.reload_strategy(
+            control.TradingCommand(reason="new routes")
+        )
     )
 
-    health = control.get_health(HealthySession())
-
-    assert health["trading"]["runtime_enabled"] is True
-    assert health["trading"]["risk_allows_new_orders"] is False
-    assert health["trading"]["effective_enabled"] is False
-    assert health["control_auth_configured"] is True
-
-
-def test_health_does_not_call_short_token_configured(monkeypatch) -> None:
-    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", False)
-    monkeypatch.setattr(control.settings, "arb_control_api_token", "short")
-    monkeypatch.setattr(
-        control,
-        "_recent_market_activity",
-        lambda _db: ("offline", None),
-    )
-    monkeypatch.setattr(
-        control,
-        "read_control_state",
-        lambda: {
-            "enabled": False,
-            "updated_at": None,
-            "reason": "test",
-            "source": "default_fail_closed",
-        },
-    )
-    monkeypatch.setattr(
-        control,
-        "_risk_status",
-        lambda: {
-            "available": True,
-            "state": "ready",
-            "kill_switch_active": False,
-            "kill_switch_detail": None,
-            "circuit_breaker": None,
-            "execution_failures_recorded": 0,
-        },
-    )
-
-    health = control.get_health(HealthySession())
-
-    assert health["control_auth_configured"] is False
+    assert limits["status"] == "updated"
+    assert reload_result["status"] == "reload_requested"

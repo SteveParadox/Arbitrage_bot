@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/runtime-risk-limits.schema.json",
+  "title": "RuntimeRiskLimits",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": { "const": 1 },
+    "min_net_edge_bps": { "type": ["string", "null"] },
+    "max_slippage_bps": { "type": ["string", "null"] },
+    "max_trade_size": { "type": ["string", "null"] },
+    "max_total_exposure": { "type": ["string", "null"] },
+    "max_daily_loss": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

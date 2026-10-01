@@ -175,6 +175,30 @@ impl ArbitrageScanner {
         self.books = OrderBookEngine::default();
     }
 
+    pub fn reload_routes(&mut self, config: TriangleConfig) -> Result<(), String> {
+        config.validate().map_err(|error| error.to_string())?;
+
+        let mut route_indexes_by_symbol: HashMap<String, Vec<usize>> =
+            HashMap::new();
+        for (route_index, route) in config.routes.iter().enumerate() {
+            for leg in &route.legs {
+                route_indexes_by_symbol
+                    .entry(leg.symbol.clone())
+                    .or_default()
+                    .push(route_index);
+            }
+        }
+        for indexes in route_indexes_by_symbol.values_mut() {
+            indexes.sort_unstable();
+            indexes.dedup();
+        }
+
+        self.routes = config.routes;
+        self.route_indexes_by_symbol = route_indexes_by_symbol;
+        self.reset_books();
+        Ok(())
+    }
+
     pub fn affected_route_count(&self, symbol: &str) -> usize {
         self.route_indexes_by_symbol.get(symbol).map_or(0, Vec::len)
     }
@@ -634,6 +658,24 @@ mod tests {
             .on_book_update(snapshot("ETHUSDT", 21., 100., 22., 100., 3))
             .unwrap();
         assert_eq!(scans[0].status, ScanStatus::MissingBook);
+    }
+
+    #[test]
+    fn route_reload_resets_books_before_scanning_resumes() {
+        let mut scanner = scanner();
+        scanner
+            .on_book_update(snapshot("BTCUSDT", 99.0, 10.0, 100.0, 10.0, 1))
+            .unwrap();
+        scanner
+            .on_book_update(snapshot("ETHBTC", 0.049, 100.0, 0.05, 100.0, 2))
+            .unwrap();
+
+        scanner.reload_routes(config()).unwrap();
+
+        let records = scanner
+            .on_book_update(snapshot("ETHUSDT", 21.0, 100.0, 22.0, 100.0, 3))
+            .unwrap();
+        assert_eq!(records[0].status, ScanStatus::MissingBook);
     }
 
     #[test]

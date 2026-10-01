@@ -4,6 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from analytics.db import Base
+from analytics import engine_event_models  # noqa: F401
 from analytics import micro_live_models  # noqa: F401
 from analytics import models  # noqa: F401
 from analytics import shadow_models  # noqa: F401

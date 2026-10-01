@@ -37,3 +37,11 @@ micro_canary:
   max_candidates_per_session: 20
   cooldown_ms: 5000
   require_shadow_ready_ack: true
+
+service_boundary:
+  grpc_target: 127.0.0.1:50051
+  redis_url: redis://127.0.0.1:6379/0
+  event_stream: arb.events
+  event_consumer_group: python-api
+  runtime_limits_file: data/control/risk_limits.json
+  strategy_reload_file: data/control/strategy_reload.json

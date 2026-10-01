@@ -333,6 +333,21 @@ control state. Shadow preview remains unaffected, and emergency unwind remains a
 
 See `docs/CONTROL_API.md`.
 
+### Phase 16: Rust ↔ Python service boundary
+
+Python and Rust now communicate through explicit service contracts rather than process embedding.
+
+~~~text
+Python -> Rust: gRPC commands
+Rust -> Python: Redis Streams events
+~~~
+
+gRPC supports trading start/stop, runtime risk-limit updates, strategy reloads, and engine status.
+Redis Streams carries opportunity, execution, balance, failure, and engine-health events. FastAPI
+persists consumed events to PostgreSQL before acknowledging them.
+
+See docs/RUST_PYTHON_BOUNDARY.md.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a

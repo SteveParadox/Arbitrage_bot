@@ -3,11 +3,12 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use event_bus::EventPublisher;
 use reqwest::{Client, Method};
 use risk::{RiskEngine, RiskError};
 use rust_decimal::Decimal;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::time::sleep;
 use tracing::warn;
 
@@ -24,6 +25,7 @@ use crate::{
 pub struct BybitExecutionClient {
     config: ExecutionConfig,
     http: Client,
+    events: EventPublisher,
 }
 
 impl BybitExecutionClient {
@@ -33,7 +35,11 @@ impl BybitExecutionClient {
             .timeout(config.request_timeout)
             .build()
             .map_err(|error| ExecutionError::InvalidConfig(error.to_string()))?;
-        Ok(Self { config, http })
+        Ok(Self {
+            config,
+            http,
+            events: EventPublisher::from_env("execution"),
+        })
     }
 
     pub fn config(&self) -> &ExecutionConfig {
@@ -239,7 +245,7 @@ impl BybitExecutionClient {
             });
         }
 
-        Ok(BalanceSnapshot {
+        let snapshot = BalanceSnapshot {
             account_type: account.account_type,
             total_equity_usd: parse_decimal("totalEquity", &account.total_equity)?,
             total_wallet_balance_usd: parse_decimal(
@@ -252,7 +258,29 @@ impl BybitExecutionClient {
             )?,
             coins: entries,
             synchronized_at_ms: time,
-        })
+        };
+        self.events.publish(
+            "balance.updated",
+            json!({
+                "account_type": snapshot.account_type.clone(),
+                "total_equity_usd": snapshot.total_equity_usd.to_string(),
+                "total_wallet_balance_usd": snapshot.total_wallet_balance_usd.to_string(),
+                "total_available_balance_usd": snapshot.total_available_balance_usd.to_string(),
+                "synchronized_at_ms": snapshot.synchronized_at_ms,
+                "coins": snapshot.coins.iter().map(|coin| {
+                    json!({
+                        "coin": coin.coin.clone(),
+                        "wallet_balance": coin.wallet_balance.to_string(),
+                        "locked": coin.locked.to_string(),
+                        "spot_borrow": coin.spot_borrow.to_string(),
+                        "equity": coin.equity.to_string(),
+                        "usd_value": coin.usd_value.to_string(),
+                        "estimated_spot_available": coin.estimated_spot_available.to_string(),
+                    })
+                }).collect::<Vec<_>>(),
+            }),
+        );
+        Ok(snapshot)
     }
 
     pub async fn execute_with_risk_tracking(
@@ -267,6 +295,83 @@ impl BybitExecutionClient {
     }
 
     pub async fn execute_with_risk_tracking_detailed(
+        &self,
+        risk_engine: &mut RiskEngine,
+        prepared: &PreparedExecution,
+        request: &ExecutionOrderRequest,
+    ) -> Result<ExecutionResult, ExecutionAttemptError> {
+        let result = self
+            .execute_with_risk_tracking_detailed_inner(
+                risk_engine,
+                prepared,
+                request,
+            )
+            .await;
+
+        match &result {
+            Ok(execution)
+                if execution.monitor.state.fully_filled
+                    && execution.monitor.state.fills_confirmed =>
+            {
+                self.events.publish(
+                    "order.executed",
+                    json!({
+                        "trade_id": prepared.trade_id(),
+                        "symbol": request.symbol.clone(),
+                        "side": format!("{:?}", request.side),
+                        "requested_quantity": request.requested_quantity.to_string(),
+                        "filled_quantity": execution.monitor.state.filled_quantity.to_string(),
+                        "remaining_quantity": execution.monitor.state.remaining_quantity.to_string(),
+                        "average_fill_price": execution.monitor.state.average_fill_price
+                            .map(|value| value.to_string()),
+                        "status": execution.monitor.state.status.clone(),
+                        "fully_filled": true,
+                        "fills_confirmed": true,
+                        "fees": execution.monitor.state.fees.iter()
+                            .map(|(asset, amount)| (asset.clone(), amount.to_string()))
+                            .collect::<BTreeMap<_, _>>(),
+                        "updated_at_ms": execution.monitor.state.updated_at_ms,
+                    }),
+                );
+            }
+            Ok(execution) => {
+                self.events.publish(
+                    "order.failed",
+                    json!({
+                        "trade_id": prepared.trade_id(),
+                        "symbol": request.symbol.clone(),
+                        "side": format!("{:?}", request.side),
+                        "requested_quantity": request.requested_quantity.to_string(),
+                        "filled_quantity": execution.monitor.state.filled_quantity.to_string(),
+                        "remaining_quantity": execution.monitor.state.remaining_quantity.to_string(),
+                        "status": execution.monitor.state.status.clone(),
+                        "fully_filled": execution.monitor.state.fully_filled,
+                        "fills_confirmed": execution.monitor.state.fills_confirmed,
+                        "timed_out": execution.monitor.timed_out,
+                        "reason": "execution did not finish as a confirmed full fill",
+                        "updated_at_ms": execution.monitor.state.updated_at_ms,
+                    }),
+                );
+            }
+            Err(error) => {
+                self.events.publish(
+                    "order.failed",
+                    json!({
+                        "trade_id": prepared.trade_id(),
+                        "symbol": request.symbol.clone(),
+                        "side": format!("{:?}", request.side),
+                        "requested_quantity": request.requested_quantity.to_string(),
+                        "stage": format!("{:?}", error.stage),
+                        "error": error.source.to_string(),
+                        "order_state_unknown": error.order_state_unknown(),
+                    }),
+                );
+            }
+        }
+        result
+    }
+
+    async fn execute_with_risk_tracking_detailed_inner(
         &self,
         risk_engine: &mut RiskEngine,
         prepared: &PreparedExecution,

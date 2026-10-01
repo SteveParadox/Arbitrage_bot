@@ -27,6 +27,7 @@ pub struct RiskConfig {
     pub kill_switch_file: PathBuf,
     pub state_file: PathBuf,
     pub trading_control_file: PathBuf,
+    pub runtime_limits_file: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +49,7 @@ struct RiskConfigFile {
     kill_switch_file: String,
     state_file: String,
     trading_control_file: String,
+    runtime_limits_file: String,
 }
 
 pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError> {
@@ -79,6 +81,7 @@ pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError>
         kill_switch_file: resolve_path(path, &file.kill_switch_file),
         state_file: resolve_path(path, &file.state_file),
         trading_control_file: resolve_path(path, &file.trading_control_file),
+        runtime_limits_file: resolve_path(path, &file.runtime_limits_file),
     };
     config.validate()?;
     Ok(config)
@@ -143,6 +146,7 @@ impl RiskConfig {
         if self.kill_switch_file.as_os_str().is_empty()
             || self.state_file.as_os_str().is_empty()
             || self.trading_control_file.as_os_str().is_empty()
+            || self.runtime_limits_file.as_os_str().is_empty()
         {
             return Err(RiskError::InvalidConfig(
                 "risk state paths must not be empty".to_string(),

@@ -15,6 +15,43 @@ services:
     volumes:
       - arbitrage-postgres:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - arbitrage-redis:/data
+
+  engine-control:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.engine
+    env_file:
+      - ../.env
+    environment:
+      ARB_ENGINE_GRPC_ADDR: 0.0.0.0:50051
+      ARB_REDIS_URL: redis://redis:6379/0
+      ARB_RISK_CONFIG: /app/shared/config/risk.json
+      ARB_TRIANGLE_CONFIG: /app/shared/config/triangles.json
+      ARB_CONTROL_STATE_FILE: /app/data/control/trading_state.json
+      ARB_RUNTIME_LIMITS_FILE: /app/data/control/risk_limits.json
+      ARB_STRATEGY_RELOAD_FILE: /app/data/control/strategy_reload.json
+    ports:
+      - "127.0.0.1:50051:50051"
+    volumes:
+      - ../shared:/app/shared:ro
+      - ../data/risk:/app/data/risk:ro
+      - ../data/control:/app/data/control
+    depends_on:
+      redis:
+        condition: service_healthy
+
   api:
     build:
       context: ..
@@ -23,6 +60,8 @@ services:
       - ../.env
     environment:
       ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@postgres:5432/arbitrage
+      ARB_ENGINE_GRPC_TARGET: engine-control:50051
+      ARB_REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
@@ -31,6 +70,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      engine-control:
+        condition: service_started
 
   frontend:
     build:
@@ -43,3 +86,4 @@ services:
 
 volumes:
   arbitrage-postgres:
+  arbitrage-redis:
