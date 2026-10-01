@@ -62,6 +62,16 @@ impl BybitExecutionClient {
 
         let mut last_error: Option<ExecutionError> = None;
         for attempt in 0..=self.config.max_retries {
+            if attempt > 0 {
+                if let Err(error) = risk_engine.validate_approval(
+                    &prepared.approval,
+                    prepared.trade_id(),
+                    current_time_ms(),
+                ) {
+                    let gate_error = risk_state_error(error);
+                    return Err(last_error.unwrap_or(gate_error));
+                }
+            }
             match self
                 .private_post_once::<PlaceOrderResult>("/v5/order/create", &body_json)
                 .await

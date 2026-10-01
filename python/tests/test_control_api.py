@@ -145,3 +145,88 @@ def test_stop_is_idempotent_and_does_not_require_live_deployment_gate(
     assert first["status"] == "stopped"
     assert second["status"] == "stopped"
     assert runtime_control.read_control_state()["enabled"] is False
+
+
+
+class HealthySession:
+    def execute(self, _statement):
+        return None
+
+
+def test_health_effective_state_includes_risk_gate(monkeypatch) -> None:
+    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", True)
+    monkeypatch.setattr(
+        control.settings,
+        "arb_control_api_token",
+        "x" * 40,
+    )
+    monkeypatch.setattr(
+        control,
+        "_recent_market_activity",
+        lambda _db: ("connected", None),
+    )
+    monkeypatch.setattr(
+        control,
+        "read_control_state",
+        lambda: {
+            "enabled": True,
+            "updated_at": None,
+            "reason": "test",
+            "source": "control_api",
+        },
+    )
+    monkeypatch.setattr(
+        control,
+        "_risk_status",
+        lambda: {
+            "available": True,
+            "state": "halted",
+            "kill_switch_active": True,
+            "kill_switch_detail": "test stop",
+            "circuit_breaker": None,
+            "execution_failures_recorded": 0,
+        },
+    )
+
+    health = control.get_health(HealthySession())
+
+    assert health["trading"]["runtime_enabled"] is True
+    assert health["trading"]["risk_allows_new_orders"] is False
+    assert health["trading"]["effective_enabled"] is False
+    assert health["control_auth_configured"] is True
+
+
+def test_health_does_not_call_short_token_configured(monkeypatch) -> None:
+    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", False)
+    monkeypatch.setattr(control.settings, "arb_control_api_token", "short")
+    monkeypatch.setattr(
+        control,
+        "_recent_market_activity",
+        lambda _db: ("offline", None),
+    )
+    monkeypatch.setattr(
+        control,
+        "read_control_state",
+        lambda: {
+            "enabled": False,
+            "updated_at": None,
+            "reason": "test",
+            "source": "default_fail_closed",
+        },
+    )
+    monkeypatch.setattr(
+        control,
+        "_risk_status",
+        lambda: {
+            "available": True,
+            "state": "ready",
+            "kill_switch_active": False,
+            "kill_switch_detail": None,
+            "circuit_breaker": None,
+            "execution_failures_recorded": 0,
+        },
+    )
+
+    health = control.get_health(HealthySession())
+
+    assert health["control_auth_configured"] is False

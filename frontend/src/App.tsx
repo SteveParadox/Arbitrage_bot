@@ -316,8 +316,13 @@ export function App() {
           value={summary.system.trading_enabled ? "Enabled" : "Stopped"}
           state={summary.system.trading_enabled ? "warn" : "ok"}
           detail={
-            `Runtime ${summary.system.trading_runtime_enabled ? "on" : "off"} · ` +
-            `deployment ${summary.system.trading_deployment_enabled ? "on" : "off"}`
+            !summary.system.trading_deployment_enabled
+              ? "Deployment master gate is disabled"
+              : !summary.system.trading_runtime_enabled
+                ? "Runtime control gate is stopped"
+                : !summary.system.trading_risk_allows_new_orders
+                  ? "Risk gate is blocking new orders"
+                  : "Deployment, runtime, and risk gates are open"
           }
         />
         <StatusPill

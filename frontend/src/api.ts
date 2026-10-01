@@ -50,6 +50,7 @@ export type HealthResponse = {
   trading: {
     deployment_enabled: boolean;
     runtime_enabled: boolean;
+    risk_allows_new_orders: boolean;
     effective_enabled: boolean;
     updated_at: string | null;
     reason: string | null;
@@ -71,6 +72,7 @@ export type DashboardSummary = {
     trading_enabled: boolean;
     trading_deployment_enabled: boolean;
     trading_runtime_enabled: boolean;
+    trading_risk_allows_new_orders: boolean;
     trading_control_reason: string | null;
     control_auth_configured: boolean;
     risk: RiskStatus;
@@ -200,6 +202,8 @@ export async function fetchDashboard(): Promise<DashboardSummary> {
       trading_enabled: health.trading.effective_enabled,
       trading_deployment_enabled: health.trading.deployment_enabled,
       trading_runtime_enabled: health.trading.runtime_enabled,
+      trading_risk_allows_new_orders:
+        health.trading.risk_allows_new_orders,
       trading_control_reason: health.trading.reason,
       control_auth_configured: health.control_auth_configured,
       risk: health.risk,

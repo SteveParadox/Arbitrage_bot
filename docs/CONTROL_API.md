@@ -109,8 +109,13 @@ Example:
 Missing, unreadable, invalid, or unsupported state fails closed.
 
 The Rust risk engine reads the same file before every normal live risk evaluation and again when an
-existing normal approval crosses the execution gate. This means a stop request also invalidates an
-approval issued immediately before the stop.
+existing normal approval crosses the execution gate. The execution client also revalidates that
+approval before each order retry. This means a stop request invalidates both a freshly issued
+approval and any later retry before another submission is attempted.
+
+If a previous submission failed ambiguously, a newly closed gate returns the original ambiguous
+execution error instead of pretending the exchange definitely received nothing. The coordinator
+therefore preserves its existing unknown-order reconciliation behavior.
 
 Shadow `preview()` does not require the runtime live gate, so Phase 12 research continues while
 live trading is stopped.
@@ -160,6 +165,7 @@ market-stream activity
 risk state
 deployment trading gate
 runtime trading gate
+risk permission for new orders
 effective trading state
 control-auth configured
 ```

@@ -117,8 +117,15 @@ def get_health(db: DatabaseSession) -> dict[str, Any]:
 
     risk = _risk_status()
     control = read_control_state()
+    risk_allows_new_orders = bool(
+        risk.get("available") is not False
+        and not risk.get("kill_switch_active")
+        and not risk.get("circuit_breaker")
+    )
     effective = bool(
-        settings.arb_live_trading_enabled and control["enabled"]
+        settings.arb_live_trading_enabled
+        and control["enabled"]
+        and risk_allows_new_orders
     )
 
     return {
@@ -132,12 +139,15 @@ def get_health(db: DatabaseSession) -> dict[str, Any]:
         "trading": {
             "deployment_enabled": settings.arb_live_trading_enabled,
             "runtime_enabled": control["enabled"],
+            "risk_allows_new_orders": risk_allows_new_orders,
             "effective_enabled": effective,
             "updated_at": control["updated_at"],
             "reason": control["reason"],
             "source": control["source"],
         },
-        "control_auth_configured": bool(settings.arb_control_api_token),
+        "control_auth_configured": (
+            len(settings.arb_control_api_token.encode("utf-8")) >= 32
+        ),
     }
 
 
@@ -158,7 +168,7 @@ def start_trading(command: TradingCommand) -> dict[str, Any]:
     risk = _risk_status()
     if risk["available"] is False:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="risk runtime state is unavailable",
         )
     if risk["kill_switch_active"]:
