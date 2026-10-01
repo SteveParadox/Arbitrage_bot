@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "base_asset": "USDT",
+  "cycle_notional": "10",
+  "max_candidates_per_session": 20,
+  "cooldown_ms": 5000,
+  "require_shadow_ready_ack": true
+}

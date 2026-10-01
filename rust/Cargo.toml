@@ -6,7 +6,8 @@ members = [
   "execution",
   "risk",
   "coordinator",
-  "shadow"
+  "shadow",
+  "micro-canary"
 ]
 resolver = "2"
 

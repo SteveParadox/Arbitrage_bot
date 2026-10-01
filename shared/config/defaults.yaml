@@ -29,3 +29,11 @@ shadow:
   base_asset: USDT
   latency_ms: [50, 100, 250]
   minimum_observations: 5000
+micro_canary:
+  config_path: shared/config/micro_canary.json
+  base_asset: USDT
+  cycle_notional: 10
+  hard_cycle_cap: 25
+  max_candidates_per_session: 20
+  cooldown_ms: 5000
+  require_shadow_ready_ack: true

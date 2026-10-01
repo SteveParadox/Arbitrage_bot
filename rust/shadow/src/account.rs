@@ -11,6 +11,13 @@ use crate::ShadowError;
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
+pub struct ReadOnlyFeeRate {
+    pub symbol: String,
+    pub maker_fee_rate: Decimal,
+    pub taker_fee_rate: Decimal,
+}
+
+#[derive(Debug, Clone)]
 pub struct ReadOnlyAccountSnapshot {
     pub base_asset: String,
     pub base_available: Decimal,
@@ -82,8 +89,51 @@ impl ReadOnlyAccountClient {
         })
     }
 
-    pub async fn sync(&self) -> Result<ReadOnlyAccountSnapshot, ShadowError> {
-        let query = "accountType=UNIFIED";
+    pub async fn get_spot_fee_rate(
+        &self,
+        symbol: &str,
+    ) -> Result<ReadOnlyFeeRate, ShadowError> {
+        if symbol.trim().is_empty() || symbol != symbol.to_uppercase() {
+            return Err(ShadowError::Account(
+                "fee-rate symbol must be non-empty uppercase text".to_string(),
+            ));
+        }
+        let query = format!("category=spot&symbol={symbol}");
+        let body = self.signed_get("/v5/account/fee-rate", &query).await?;
+        let envelope: FeeEnvelope = serde_json::from_str(&body)?;
+        if envelope.ret_code != 0 {
+            return Err(ShadowError::Account(format!(
+                "Bybit fee-rate error {}: {}",
+                envelope.ret_code, envelope.ret_msg
+            )));
+        }
+        let row = envelope.result.list.into_iter().next().ok_or_else(|| {
+            ShadowError::Account(format!(
+                "fee-rate response contained no row for {symbol}"
+            ))
+        })?;
+        Ok(ReadOnlyFeeRate {
+            symbol: if row.symbol.is_empty() {
+                symbol.to_string()
+            } else {
+                row.symbol
+            },
+            maker_fee_rate: parse_decimal(
+                "makerFeeRate",
+                &row.maker_fee_rate,
+            )?,
+            taker_fee_rate: parse_decimal(
+                "takerFeeRate",
+                &row.taker_fee_rate,
+            )?,
+        })
+    }
+
+    async fn signed_get(
+        &self,
+        path: &str,
+        query: &str,
+    ) -> Result<String, ShadowError> {
         let timestamp = current_time_ms();
         let signature = sign(
             &self.api_secret,
@@ -92,10 +142,7 @@ impl ReadOnlyAccountClient {
             self.recv_window_ms,
             query,
         )?;
-        let url = format!(
-            "https://api.bybit.com/v5/account/wallet-balance?{query}"
-        );
-
+        let url = format!("https://api.bybit.com{path}?{query}");
         let response = self
             .http
             .get(url)
@@ -106,20 +153,26 @@ impl ReadOnlyAccountClient {
             .send()
             .await
             .map_err(|error| ShadowError::Account(error.to_string()))?;
-
         let status = response.status();
         let body = response
             .text()
             .await
             .map_err(|error| ShadowError::Account(error.to_string()))?;
-
         if !status.is_success() {
             return Err(ShadowError::Account(format!(
-                "wallet-balance HTTP {}: {}",
+                "{path} HTTP {}: {}",
                 status.as_u16(),
                 body
             )));
         }
+        Ok(body)
+    }
+
+    pub async fn sync(&self) -> Result<ReadOnlyAccountSnapshot, ShadowError> {
+        let query = "accountType=UNIFIED";
+        let body = self
+            .signed_get("/v5/account/wallet-balance", query)
+            .await?;
 
         let envelope: WalletEnvelope = serde_json::from_str(&body)?;
         if envelope.ret_code != 0 {
@@ -209,6 +262,32 @@ fn current_time_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[derive(Debug, Deserialize)]
+struct FeeEnvelope {
+    #[serde(rename = "retCode")]
+    ret_code: i64,
+    #[serde(rename = "retMsg")]
+    ret_msg: String,
+    result: FeeResult,
+}
+
+#[derive(Debug, Deserialize)]
+struct FeeResult {
+    #[serde(default)]
+    list: Vec<FeeRow>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeeRow {
+    #[serde(default)]
+    symbol: String,
+    #[serde(default)]
+    maker_fee_rate: String,
+    #[serde(default)]
+    taker_fee_rate: String,
 }
 
 #[derive(Debug, Deserialize)]

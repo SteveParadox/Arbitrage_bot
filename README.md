@@ -245,6 +245,43 @@ GET /analytics/shadow/routes
 
 See `docs/LIVE_SHADOW.md`.
 
+### Phase 13: Micro-live canary telemetry
+
+Phase 13 adds a mainnet canary layer for calibrating predicted versus realized performance at
+small sizes without adding an autonomous order-submission path.
+
+The Rust canary uses mainnet order books plus the account's authenticated read-only spot taker fee
+rates. Candidate size defaults to 10 USDT and is hard-limited to 25 USDT by the canary config
+validator.
+
+Each candidate records:
+
+```text
+expected P&L
+expected fees
+expected slippage
+expected net edge
+detection leg prices
+real account balance/exposure snapshot
+```
+
+After a small trade is executed manually, reconcile it through:
+
+```text
+POST /analytics/micro-live/reconcile/{trade_id}
+```
+
+The server computes the primary calibration metric itself:
+
+```text
+prediction_error = realized_pnl - expected_pnl
+```
+
+PostgreSQL stores both the candidate and reconciled result. Summary analytics expose mean
+prediction error, mean absolute prediction error, fee error, slippage error, and execution time.
+
+See `docs/MICRO_LIVE.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -276,6 +313,8 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 12 live shadow measurement is implemented above the scanner/risk layers. It uses mainnet
-books plus GET-only real-account context while keeping order submission structurally absent from
-the shadow crate. **Live trading remains disabled by default.**
+Phase 13 micro-live canary telemetry is implemented above the Phase 12 shadow layer. It uses
+mainnet books, read-only account balance/fee data, a 10 USDT default candidate size, and a hard
+25 USDT candidate cap. Actual manually executed canary results can be reconciled into PostgreSQL
+for predicted-versus-realized calibration. **The canary crate contains no autonomous order
+submission path.**

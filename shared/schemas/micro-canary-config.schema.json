@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/micro-canary-config.schema.json",
+  "title": "MicroCanaryConfig",
+  "type": "object",
+  "required": [
+    "version",
+    "base_asset",
+    "cycle_notional",
+    "max_candidates_per_session",
+    "cooldown_ms",
+    "require_shadow_ready_ack"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "base_asset": { "const": "USDT" },
+    "cycle_notional": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+    },
+    "max_candidates_per_session": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "cooldown_ms": { "type": "integer", "minimum": 1 },
+    "require_shadow_ready_ack": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}
