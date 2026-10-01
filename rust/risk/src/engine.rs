@@ -874,7 +874,7 @@ mod tests {
         fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
         fs::write(
             &trading_control_file,
-            br#"{"version":1,"enabled":true}"#,
+            br#"{"version":1,"enabled":true,"updated_at":"2026-10-01T21:00:00Z","reason":"test enabled","source":"rust_grpc_control"}"#,
         )
         .unwrap();
         RiskConfig {
@@ -1218,7 +1218,7 @@ mod tests {
         let cfg = config("runtime-control-preview");
         fs::write(
             &cfg.trading_control_file,
-            br#"{"version":1,"enabled":false}"#,
+            br#"{"version":1,"enabled":false,"updated_at":"2026-10-01T21:00:00Z","reason":"test stopped","source":"rust_grpc_control"}"#,
         )
         .unwrap();
         let mut engine = RiskEngine::new(cfg).unwrap();
@@ -1251,7 +1251,7 @@ mod tests {
 
         fs::write(
             control_file,
-            br#"{"version":1,"enabled":false}"#,
+            br#"{"version":1,"enabled":false,"updated_at":"2026-10-01T21:00:00Z","reason":"test stopped","source":"rust_grpc_control"}"#,
         )
         .unwrap();
 
