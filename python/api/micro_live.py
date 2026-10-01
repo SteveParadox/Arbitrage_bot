@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from analytics.db import get_db
 from analytics.micro_live_analytics import recent_cycles, summary
 from analytics.micro_live_models import MicroLiveCycle, MicroLiveRun
+from api.control import require_control_auth
 
 router = APIRouter(prefix="/analytics/micro-live", tags=["micro-live"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -42,7 +43,10 @@ def get_cycles(
     return recent_cycles(db, session_id, limit)
 
 
-@router.post("/reconcile/{trade_id}")
+@router.post(
+    "/reconcile/{trade_id}",
+    dependencies=[Depends(require_control_auth)],
+)
 def reconcile_cycle(
     trade_id: str,
     payload: ReconcileRequest,
