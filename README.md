@@ -348,6 +348,48 @@ persists consumed events to PostgreSQL before acknowledging them.
 
 See docs/RUST_PYTHON_BOUNDARY.md.
 
+### Phase 17: Performance analytics
+
+Python now builds strategy-performance analytics across the opportunity ledger, Phase 13 reconciled
+canaries, and Phase 16 engine events.
+
+The API exposes:
+
+```text
+GET /analytics/performance?days=7&base_asset=USDT&bins=10
+```
+
+Metrics include:
+
+```text
+profit per cycle
+average profit per day
+profit per $1,000 estimated turnover
+net-edge distribution
+win/loss distribution
+opportunity survival-time distribution
+execution-latency distribution
+actual-slippage distribution
+```
+
+The money funnel is explicit:
+
+```text
+Observed opportunity
+        ↓
+Expected profitable opportunity
+        ↓
+Trade attempted
+        ↓
+Actual realized profit
+```
+
+Opportunity stages use distinct Phase 7 opportunity windows. Trade stages use distinct terminal
+engine/canary trade IDs over the same time window. The dashboard refreshes these heavier analytics
+every 30 seconds rather than every five seconds.
+
+See `docs/PERFORMANCE_ANALYTICS.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -379,12 +421,15 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 16 is implemented as an explicit Rust/Python service boundary. FastAPI sends control
-commands to Rust over gRPC, while Rust publishes operational telemetry through Redis Streams for
-durable Python consumption and PostgreSQL persistence.
+Phase 17 performance analytics is implemented above the Phase 16 event ledger. Python combines
+distinct opportunity windows, reconciled micro-canary cycles, and terminal Rust execution events
+to show where expected edge survives or disappears before realized P&L.
 
-Phase 15 remains the public control plane for the React dashboard. Normal live execution still
-requires the deployment gate, the runtime trading gate, and the Phase 9 risk gate. Redis delivery
-is telemetry-only and is not allowed to weaken trading safety when the stream is unavailable.
+The React operations dashboard now includes the observed → expected → attempted → actual funnel,
+profit efficiency metrics, daily P&L, and edge/survival/latency/slippage distributions.
 
-See `docs/RUST_PYTHON_BOUNDARY.md` for the command, event, failure, and deployment semantics.
+Phase 16 remains the Rust/Python service boundary, and Phase 15 remains the public control plane.
+Normal live execution still requires the deployment gate, runtime trading gate, and Phase 9 risk
+gate.
+
+See `docs/PERFORMANCE_ANALYTICS.md` for metric definitions and data-quality limitations.

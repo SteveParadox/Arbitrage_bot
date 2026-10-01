@@ -13,6 +13,7 @@ from api.micro_live import router as micro_live_analytics_router
 from api.opportunities import router as opportunity_analytics_router
 from api.operations import router as operations_router
 from api.paper_trading import router as paper_trading_router
+from api.performance_analytics import router as performance_analytics_router
 from api.settings import settings
 from api.shadow import router as shadow_analytics_router
 
@@ -49,6 +50,7 @@ app.add_middleware(
 
 app.include_router(opportunity_analytics_router)
 app.include_router(paper_trading_router)
+app.include_router(performance_analytics_router)
 app.include_router(shadow_analytics_router)
 app.include_router(micro_live_analytics_router)
 app.include_router(operations_router)

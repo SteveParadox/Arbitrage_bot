@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     arb_opportunity_batch_size: int = 250
     arb_shadow_batch_size: int = 250
     arb_micro_live_batch_size: int = 100
+    arb_performance_sample_limit: int = 100_000
 
     bybit_testnet: bool = True
     bybit_api_key: str = ""
@@ -67,6 +68,7 @@ class Settings(BaseSettings):
             "arb_opportunity_max_gap_ms": self.arb_opportunity_max_gap_ms,
             "arb_shadow_batch_size": self.arb_shadow_batch_size,
             "arb_micro_live_batch_size": self.arb_micro_live_batch_size,
+            "arb_performance_sample_limit": self.arb_performance_sample_limit,
             "arb_cors_origins": self.cors_origins(),
             "bybit_testnet": self.bybit_testnet,
             "bybit_api_key_configured": bool(self.bybit_api_key),

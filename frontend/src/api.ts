@@ -111,6 +111,91 @@ export type Execution = {
   detection_leg_prices: Array<number | null>;
 };
 
+
+export type DistributionBin = {
+  lower: number;
+  upper: number;
+  count: number;
+};
+
+export type DistributionSummary = {
+  count: number;
+  sample_count: number;
+  unit: string;
+  min: number | null;
+  p25: number | null;
+  median: number | null;
+  p75: number | null;
+  p95: number | null;
+  max: number | null;
+  mean: number | null;
+  bins: DistributionBin[];
+};
+
+export type PerformanceAnalytics = {
+  generated_at: string;
+  window: {
+    days: number;
+    start: string;
+    end: string;
+    base_asset: string;
+  };
+  profit: {
+    total_profit: number;
+    cycles_with_known_pnl: number;
+    profit_per_cycle: number | null;
+    average_profit_per_day: number;
+    estimated_turnover: number;
+    profit_per_1000_turnover: number | null;
+    turnover_basis: string;
+    daily: Array<{
+      date: string;
+      profit: number;
+      cycles: number;
+    }>;
+    by_source: {
+      engine: { cycles: number; profit: number };
+      micro_canary: { cycles: number; profit: number };
+    };
+  };
+  funnel: {
+    observed_opportunities: number;
+    expected_profitable_opportunities: number;
+    expected_profit_total: number;
+    expected_profit_basis: string;
+    trade_attempted: number;
+    actual_profit_known: number;
+    actual_profit_total: number;
+  };
+  distributions: {
+    net_edge_bps: DistributionSummary;
+    win_loss: {
+      wins: number;
+      losses: number;
+      breakeven: number;
+      unknown_pnl: number;
+      win_rate_pct: number | null;
+    };
+    opportunity_survival_ms: DistributionSummary & {
+      open_windows: number;
+      basis: string;
+    };
+    latency_ms: DistributionSummary & { basis: string };
+    slippage_bps: DistributionSummary & { basis: string };
+  };
+  data_quality: {
+    sample_limit: number;
+    opportunity_windows_sampled: boolean;
+    net_edge_sampled: boolean;
+    slippage_sampled: boolean;
+    engine_terminal_events: number;
+    micro_canary_cycles: number;
+    deduplicated_canary_trade_ids: number;
+    orphan_order_attempts_without_terminal_trade: number;
+    note: string;
+  };
+};
+
 export type TradingControlResponse = {
   status: "started" | "stopped";
   effective_enabled: boolean;
@@ -217,6 +302,20 @@ export async function fetchOpportunities(): Promise<Opportunity[]> {
 
 export async function fetchExecutions(): Promise<Execution[]> {
   return request<Execution[]>("/trades?limit=20");
+}
+
+export async function fetchPerformanceAnalytics(
+  days = 7,
+  baseAsset = "USDT",
+): Promise<PerformanceAnalytics> {
+  const params = new URLSearchParams({
+    days: String(days),
+    base_asset: baseAsset,
+    bins: "10",
+  });
+  return request<PerformanceAnalytics>(
+    `/analytics/performance?${params.toString()}`,
+  );
 }
 
 async function tradingCommand(

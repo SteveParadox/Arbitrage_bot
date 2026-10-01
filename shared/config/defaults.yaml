@@ -45,3 +45,9 @@ service_boundary:
   event_consumer_group: python-api
   runtime_limits_file: data/control/risk_limits.json
   strategy_reload_file: data/control/strategy_reload.json
+
+performance_analytics:
+  default_window_days: 7
+  max_window_days: 90
+  sample_limit: 100000
+  histogram_bins: 10

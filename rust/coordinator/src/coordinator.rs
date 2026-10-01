@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 use event_bus::EventPublisher;
 use execution::{prepare_execution, ExecutionResult};
@@ -55,6 +55,7 @@ where
         route: &TriangleRoute,
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
+        let started = Instant::now();
         let result = self
             .execute_route_inner(
                 risk_engine,
@@ -63,7 +64,14 @@ where
                 starting_amount,
             )
             .await;
-        self.publish_trade_event(trade_id, route, starting_amount, &result);
+        let execution_time_ms = started.elapsed().as_millis() as u64;
+        self.publish_trade_event(
+            trade_id,
+            route,
+            starting_amount,
+            execution_time_ms,
+            &result,
+        );
         result
     }
 
@@ -649,6 +657,7 @@ where
         trade_id: &str,
         route: &TriangleRoute,
         starting_amount: Decimal,
+        execution_time_ms: u64,
         result: &Result<RouteExecutionReport, CoordinatorError>,
     ) {
         match result {
@@ -672,6 +681,7 @@ where
                         "status": format!("{:?}", report.status),
                         "leg_count": report.legs.len(),
                         "unwind_count": report.unwind_orders.len(),
+                        "execution_time_ms": execution_time_ms,
                     }),
                 );
             }
@@ -690,6 +700,7 @@ where
                         "failure_reason": report.failure_reason.clone(),
                         "leg_count": report.legs.len(),
                         "unwind_count": report.unwind_orders.len(),
+                        "execution_time_ms": execution_time_ms,
                     }),
                 );
             }
@@ -703,6 +714,7 @@ where
                         "starting_amount": starting_amount.to_string(),
                         "status": "coordinator_error",
                         "failure_reason": error.to_string(),
+                        "execution_time_ms": execution_time_ms,
                     }),
                 );
             }

@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_URL,
   type DashboardSummary,
+  type DistributionSummary,
   type Execution,
   type Opportunity,
+  type PerformanceAnalytics,
   fetchDashboard,
   fetchExecutions,
   fetchOpportunities,
+  fetchPerformanceAnalytics,
 } from "./api";
 
 type Tone = "positive" | "negative" | "neutral" | "warning";
@@ -135,6 +138,108 @@ function statusClass(status: string): string {
   return "status-warning";
 }
 
+
+function distributionValue(
+  value: number | null,
+  unit: string,
+): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  if (unit === "ms") return latency(value);
+  if (unit === "bps") return bps(value);
+  return value.toFixed(2);
+}
+
+function DistributionCard({
+  title,
+  distribution,
+}: {
+  title: string;
+  distribution: DistributionSummary;
+}) {
+  const maxCount = Math.max(
+    1,
+    ...distribution.bins.map((item) => item.count),
+  );
+
+  return (
+    <article className="analytics-card">
+      <div className="analytics-card__header">
+        <div>
+          <div className="eyebrow">DISTRIBUTION</div>
+          <h3>{title}</h3>
+        </div>
+        <span>{distribution.count.toLocaleString()} samples</span>
+      </div>
+      <div className="distribution-stats">
+        <div>
+          <span>Median</span>
+          <strong>
+            {distributionValue(
+              distribution.median,
+              distribution.unit,
+            )}
+          </strong>
+        </div>
+        <div>
+          <span>P95</span>
+          <strong>
+            {distributionValue(distribution.p95, distribution.unit)}
+          </strong>
+        </div>
+        <div>
+          <span>Mean</span>
+          <strong>
+            {distributionValue(distribution.mean, distribution.unit)}
+          </strong>
+        </div>
+      </div>
+      <div className="histogram" aria-label={`${title} histogram`}>
+        {distribution.bins.length ? (
+          distribution.bins.map((item, index) => (
+            <div className="histogram__row" key={index}>
+              <span>
+                {distributionValue(item.lower, distribution.unit)}
+              </span>
+              <div className="histogram__track">
+                <div
+                  className="histogram__bar"
+                  style={{
+                    width: `${(item.count / maxCount) * 100}%`,
+                  }}
+                />
+              </div>
+              <strong>{item.count}</strong>
+            </div>
+          ))
+        ) : (
+          <div className="analytics-empty">No samples yet</div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function FunnelStage({
+  label,
+  count,
+  value,
+  detail,
+}: {
+  label: string;
+  count: number;
+  value?: string;
+  detail?: string;
+}) {
+  return (
+    <div className="funnel-stage">
+      <span>{label}</span>
+      <strong>{count.toLocaleString()}</strong>
+      {value ? <b>{value}</b> : null}
+      {detail ? <small>{detail}</small> : null}
+    </div>
+  );
+}
+
 export function App() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -143,7 +248,30 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [analytics, setAnalytics] =
+    useState<PerformanceAnalytics | null>(null);
+  const [analyticsError, setAnalyticsError] =
+    useState<string | null>(null);
   const requestInFlight = useRef(false);
+  const analyticsInFlight = useRef(false);
+
+  const loadAnalytics = useCallback(async () => {
+    if (analyticsInFlight.current) return;
+    analyticsInFlight.current = true;
+    try {
+      const value = await fetchPerformanceAnalytics(7, "USDT");
+      setAnalytics(value);
+      setAnalyticsError(null);
+    } catch (reason) {
+      setAnalyticsError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to load performance analytics",
+      );
+    } finally {
+      analyticsInFlight.current = false;
+    }
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (requestInFlight.current) return;
@@ -190,6 +318,14 @@ export function App() {
     }, 5000);
     return () => window.clearInterval(id);
   }, [load]);
+
+  useEffect(() => {
+    void loadAnalytics();
+    const id = window.setInterval(() => {
+      void loadAnalytics();
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [loadAnalytics]);
 
   const selectedExecution = useMemo(
     () =>
@@ -611,6 +747,250 @@ export function App() {
             </div>
           )}
         </aside>
+      </section>
+
+
+      <section className="analytics-section">
+        <div className="section-heading">
+          <div>
+            <div className="eyebrow">PHASE 17 · PERFORMANCE ANALYTICS</div>
+            <h2>Where the edge becomes money</h2>
+            <p>
+              Seven-day analytics for observed opportunities, execution,
+              and realized outcomes.
+            </p>
+          </div>
+          {analytics ? (
+            <span className="panel__count">
+              {analytics.window.base_asset} · {analytics.window.days} days
+            </span>
+          ) : null}
+        </div>
+
+        {analyticsError ? (
+          <div className="alert alert--error">
+            <strong>Performance analytics unavailable.</strong>
+            <span>{analyticsError}</span>
+          </div>
+        ) : null}
+
+        {analytics ? (
+          <>
+            <div className="analytics-kpis">
+              <KpiCard
+                label="Profit per cycle"
+                value={amount(
+                  analytics.profit.profit_per_cycle,
+                  analytics.window.base_asset,
+                  4,
+                )}
+                detail={`${analytics.profit.cycles_with_known_pnl} cycles with known P&L`}
+                tone={toneForNumber(
+                  analytics.profit.profit_per_cycle ?? 0,
+                )}
+              />
+              <KpiCard
+                label="Average profit per day"
+                value={amount(
+                  analytics.profit.average_profit_per_day,
+                  analytics.window.base_asset,
+                  4,
+                )}
+                detail="Across the selected 7-day window"
+                tone={toneForNumber(
+                  analytics.profit.average_profit_per_day,
+                )}
+              />
+              <KpiCard
+                label="Profit per 1,000 turnover"
+                value={amount(
+                  analytics.profit.profit_per_1000_turnover,
+                  analytics.window.base_asset,
+                  4,
+                )}
+                detail="Estimated three-leg turnover basis"
+                tone={toneForNumber(
+                  analytics.profit.profit_per_1000_turnover ?? 0,
+                )}
+              />
+              <KpiCard
+                label="Total realized P&L"
+                value={amount(
+                  analytics.profit.total_profit,
+                  analytics.window.base_asset,
+                  4,
+                )}
+                detail={
+                  `Engine ${analytics.profit.by_source.engine.cycles} · ` +
+                  `Canary ${analytics.profit.by_source.micro_canary.cycles}`
+                }
+                tone={toneForNumber(analytics.profit.total_profit)}
+              />
+            </div>
+
+            <article className="panel funnel-panel">
+              <div className="panel__header">
+                <div>
+                  <div className="eyebrow">MONEY FUNNEL</div>
+                  <h2>Observed → expected → attempted → actual</h2>
+                </div>
+              </div>
+              <div className="funnel-grid">
+                <FunnelStage
+                  label="Observed opportunity"
+                  count={analytics.funnel.observed_opportunities}
+                  detail="Distinct Phase 7 windows"
+                />
+                <FunnelStage
+                  label="Expected profit"
+                  count={
+                    analytics.funnel.expected_profitable_opportunities
+                  }
+                  value={amount(
+                    analytics.funnel.expected_profit_total,
+                    analytics.window.base_asset,
+                    4,
+                  )}
+                  detail="Sum of max expected profit per window"
+                />
+                <FunnelStage
+                  label="Trade attempted"
+                  count={analytics.funnel.trade_attempted}
+                  detail="Distinct terminal/canary trade ids"
+                />
+                <FunnelStage
+                  label="Actual profit"
+                  count={analytics.funnel.actual_profit_known}
+                  value={amount(
+                    analytics.funnel.actual_profit_total,
+                    analytics.window.base_asset,
+                    4,
+                  )}
+                  detail="Cycles with known realized P&L"
+                />
+              </div>
+            </article>
+
+            <div className="analytics-grid">
+              <DistributionCard
+                title="Net edge"
+                distribution={analytics.distributions.net_edge_bps}
+              />
+              <DistributionCard
+                title="Opportunity survival"
+                distribution={
+                  analytics.distributions.opportunity_survival_ms
+                }
+              />
+              <DistributionCard
+                title="Execution latency"
+                distribution={analytics.distributions.latency_ms}
+              />
+              <DistributionCard
+                title="Actual slippage"
+                distribution={analytics.distributions.slippage_bps}
+              />
+            </div>
+
+            <div className="analytics-bottom-grid">
+              <article className="analytics-card">
+                <div className="analytics-card__header">
+                  <div>
+                    <div className="eyebrow">OUTCOME DISTRIBUTION</div>
+                    <h3>Wins and losses</h3>
+                  </div>
+                </div>
+                <div className="outcome-grid">
+                  <div className="outcome outcome--win">
+                    <span>Wins</span>
+                    <strong>
+                      {analytics.distributions.win_loss.wins}
+                    </strong>
+                  </div>
+                  <div className="outcome outcome--loss">
+                    <span>Losses</span>
+                    <strong>
+                      {analytics.distributions.win_loss.losses}
+                    </strong>
+                  </div>
+                  <div className="outcome">
+                    <span>Breakeven</span>
+                    <strong>
+                      {analytics.distributions.win_loss.breakeven}
+                    </strong>
+                  </div>
+                  <div className="outcome">
+                    <span>Win rate</span>
+                    <strong>
+                      {rate(
+                        analytics.distributions.win_loss.win_rate_pct,
+                      )}
+                    </strong>
+                  </div>
+                </div>
+              </article>
+
+              <article className="analytics-card">
+                <div className="analytics-card__header">
+                  <div>
+                    <div className="eyebrow">PROFIT PER DAY</div>
+                    <h3>Daily realized P&L</h3>
+                  </div>
+                </div>
+                <div className="daily-profit">
+                  {analytics.profit.daily.map((item) => {
+                    const maxAbsolute = Math.max(
+                      1e-9,
+                      ...analytics.profit.daily.map((day) =>
+                        Math.abs(day.profit),
+                      ),
+                    );
+                    return (
+                      <div className="daily-profit__row" key={item.date}>
+                        <span>{item.date.slice(5)}</span>
+                        <div className="daily-profit__track">
+                          <div
+                            className={
+                              item.profit >= 0
+                                ? "daily-profit__bar daily-profit__bar--positive"
+                                : "daily-profit__bar daily-profit__bar--negative"
+                            }
+                            style={{
+                              width: `${(Math.abs(item.profit) / maxAbsolute) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <strong>
+                          {amount(
+                            item.profit,
+                            analytics.window.base_asset,
+                            3,
+                          )}
+                        </strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              </article>
+            </div>
+
+            {analytics.data_quality.orphan_order_attempts_without_terminal_trade >
+            0 ? (
+              <div className="analytics-warning">
+                {analytics.data_quality
+                  .orphan_order_attempts_without_terminal_trade
+                  .toLocaleString()}{" "}
+                order-level trade ids have no terminal route event in the
+                selected event sample. They are reported as a data-quality
+                warning and are not assigned to the {analytics.window.base_asset} funnel.
+              </div>
+            ) : null}
+          </>
+        ) : analyticsError ? null : (
+          <div className="analytics-loading">
+            Loading performance distributions…
+          </div>
+        )}
       </section>
 
       <footer>
