@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from analytics.micro_live_ingest import _candidate_values
+from api.control import require_control_auth
+from api.micro_live import router as micro_live_router
 
 
 def test_candidate_keeps_expected_calibration_fields() -> None:
@@ -30,3 +32,16 @@ def test_candidate_keeps_expected_calibration_fields() -> None:
     assert values["expected_pnl"] == Decimal("0.05")
     assert values["expected_fees"] == Decimal("0.03")
     assert values["manual_execution_required"] is True
+
+
+def test_reconcile_route_requires_control_auth() -> None:
+    route = next(
+        item
+        for item in micro_live_router.routes
+        if getattr(item, "path", "") == "/analytics/micro-live/reconcile/{trade_id}"
+    )
+
+    assert any(
+        getattr(dependency, "dependency", None) is require_control_auth
+        for dependency in route.dependencies
+    )
