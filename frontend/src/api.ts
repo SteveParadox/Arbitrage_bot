@@ -199,12 +199,12 @@ export type PerformanceAnalytics = {
 export type TradingControlResponse = {
   status: "started" | "stopped";
   effective_enabled: boolean;
-  control: {
-    version: number;
-    enabled: boolean;
-    updated_at: string;
-    reason: string;
-    source: string;
+  command: {
+    accepted: boolean;
+    command: "start_trading" | "stop_trading";
+    request_id: string;
+    detail: string;
+    applied_at_ms: number;
   };
 };
 
