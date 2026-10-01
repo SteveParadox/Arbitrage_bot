@@ -115,12 +115,16 @@ This measures the best modeled edge observed within each opportunity lifetime.
 
 ### Trade attempted
 
-Count of distinct selected-base-asset terminal Rust route events plus reconciled micro-canary trade
-IDs.
+New coordinator executions publish a dedicated `trade.attempted` event immediately after route
+validation and before the first leg is planned. The event contains the trade ID, route, triangle,
+base asset, starting amount, and asset path.
 
-Order-level events with no terminal route event are not silently assigned to USDT or another base
-asset because the order event alone does not contain enough route context. Those orphan IDs are
-reported separately under `data_quality`.
+Phase 17 counts distinct selected-base-asset `trade.attempted` IDs plus reconciled micro-canary
+trade IDs. For historical data created before the event existed, terminal route events are used as
+a backward-compatible fallback.
+
+Order-level events with neither a route-attempt nor terminal route event remain unassigned because
+they do not contain enough route context. Those orphan IDs are reported under `data_quality`.
 
 ### Actual profit
 
@@ -131,8 +135,11 @@ Count and total realized P&L for attempted cycles where economic/realized P&L is
 Source:
 
 ```text
-opportunity_observations.net_edge_bps
+opportunity_windows.max_net_edge_bps
 ```
+
+One value is used per distinct economic opportunity window. This avoids overweighting long-lived
+opportunities merely because they generated more order-book updates.
 
 The response provides:
 
@@ -210,7 +217,9 @@ caps in-memory rows used to build histograms and quantiles.
 The effective limit is clamped between 1,000 and 1,000,000.
 
 Aggregate opportunity counts and expected-profit sums remain database aggregates. Response
-`data_quality` fields indicate when a distribution is sampled.
+`data_quality` fields indicate when distributions, engine event-derived profit metrics, or
+micro-canary metrics are sampled. When `profit_metrics_sampled=true`, the dashboard displays an
+explicit warning rather than presenting the partial totals as complete economics.
 
 ## Dashboard
 
@@ -244,7 +253,10 @@ The API explicitly reports:
 sample limit
 sampled distribution flags
 engine terminal event count
-micro-canary cycle count
+engine event loaded/total counts
+engine-event sampling flag
+micro-canary loaded/total counts
+profit-metric sampling flag
 deduplicated canary IDs
 orphan order attempts without terminal route events
 ```
@@ -285,3 +297,21 @@ slippage, rounding, fill behavior, or opportunity decay deserve investigation.
 
 That is the point of Phase 17: stop asking whether the bot "finds opportunities" and measure where
 the money actually goes.
+
+
+## Funnel diagnostics
+
+The response also exposes:
+
+```text
+attempt_to_actual_known_pct
+aggregate_profit_capture_pct
+```
+
+The first measures how many distinct attempted trade IDs have a known realized P&L.
+
+The second compares aggregate realized P&L with aggregate maximum expected P&L across profitable
+opportunity windows in the selected period. It is a diagnostic, not a one-to-one attribution,
+because opportunity windows and execution trade IDs are distinct populations. The API returns this
+caveat as `funnel.population_note` rather than pretending every execution can currently be joined
+back to one exact opportunity-window record.

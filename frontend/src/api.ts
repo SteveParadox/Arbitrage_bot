@@ -164,11 +164,16 @@ export type PerformanceAnalytics = {
     expected_profit_total: number;
     expected_profit_basis: string;
     trade_attempted: number;
+    trade_attempted_engine: number;
+    trade_attempted_micro_canary: number;
     actual_profit_known: number;
     actual_profit_total: number;
+    attempt_to_actual_known_pct: number | null;
+    aggregate_profit_capture_pct: number | null;
+    population_note: string;
   };
   distributions: {
-    net_edge_bps: DistributionSummary;
+    net_edge_bps: DistributionSummary & { basis: string };
     win_loss: {
       wins: number;
       losses: number;
@@ -189,7 +194,14 @@ export type PerformanceAnalytics = {
     net_edge_sampled: boolean;
     slippage_sampled: boolean;
     engine_terminal_events: number;
+    engine_trade_attempt_events: number;
+    engine_events_loaded: number;
+    engine_events_total: number;
+    engine_events_sampled: boolean;
     micro_canary_cycles: number;
+    micro_canary_cycles_total: number;
+    micro_canary_cycles_sampled: boolean;
+    profit_metrics_sampled: boolean;
     deduplicated_canary_trade_ids: number;
     orphan_order_attempts_without_terminal_trade: number;
     note: string;

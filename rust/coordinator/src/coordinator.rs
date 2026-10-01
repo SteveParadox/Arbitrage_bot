@@ -83,6 +83,17 @@ where
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
         validate_route(route, trade_id, starting_amount)?;
+        self.events.publish(
+            "trade.attempted",
+            json!({
+                "trade_id": trade_id,
+                "route_id": route.id.clone(),
+                "triangle_id": route.triangle_id.clone(),
+                "base_asset": route.start_asset.clone(),
+                "starting_amount": starting_amount.to_string(),
+                "asset_path": route.assets.clone(),
+            }),
+        );
 
         let mut holdings = BTreeMap::new();
         holdings.insert(route.start_asset.clone(), starting_amount);

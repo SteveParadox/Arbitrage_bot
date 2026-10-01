@@ -869,6 +869,20 @@ export function App() {
                   detail="Cycles with known realized P&L"
                 />
               </div>
+              <div className="funnel-diagnostics">
+                <span>
+                  Attempt → known outcome{" "}
+                  <strong>
+                    {rate(analytics.funnel.attempt_to_actual_known_pct)}
+                  </strong>
+                </span>
+                <span>
+                  Aggregate expected → actual profit{" "}
+                  <strong>
+                    {rate(analytics.funnel.aggregate_profit_capture_pct)}
+                  </strong>
+                </span>
+              </div>
             </article>
 
             <div className="analytics-grid">
@@ -974,15 +988,28 @@ export function App() {
               </article>
             </div>
 
+            {analytics.data_quality.profit_metrics_sampled ? (
+              <div className="analytics-warning">
+                Profit and execution metrics are sampled at the configured row
+                limit. Engine events loaded{" "}
+                {analytics.data_quality.engine_events_loaded.toLocaleString()} of{" "}
+                {analytics.data_quality.engine_events_total.toLocaleString()};
+                canary cycles loaded{" "}
+                {analytics.data_quality.micro_canary_cycles.toLocaleString()} of{" "}
+                {analytics.data_quality.micro_canary_cycles_total.toLocaleString()}.
+              </div>
+            ) : null}
+
             {analytics.data_quality.orphan_order_attempts_without_terminal_trade >
             0 ? (
               <div className="analytics-warning">
                 {analytics.data_quality
                   .orphan_order_attempts_without_terminal_trade
                   .toLocaleString()}{" "}
-                order-level trade ids have no terminal route event in the
-                selected event sample. They are reported as a data-quality
-                warning and are not assigned to the {analytics.window.base_asset} funnel.
+                order-level trade ids have neither an explicit route-attempt
+                event nor a terminal route event in the selected event sample.
+                They remain a data-quality warning rather than being assigned
+                to the {analytics.window.base_asset} funnel.
               </div>
             ) : null}
           </>

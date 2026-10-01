@@ -963,3 +963,18 @@ footer {
     text-align: left;
   }
 }
+
+
+.funnel-diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  padding: 0 18px 16px;
+  color: #6f7c8f;
+  font-size: 0.72rem;
+}
+
+.funnel-diagnostics strong {
+  color: #d8e0ea;
+  margin-left: 4px;
+}

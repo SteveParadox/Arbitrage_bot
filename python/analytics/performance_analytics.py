@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from analytics.engine_event_models import EngineEvent
 from analytics.micro_live_models import MicroLiveCycle
-from analytics.models import OpportunityObservation, OpportunityWindow
+from analytics.models import OpportunityWindow
 from api.settings import settings
 
 
@@ -83,7 +83,34 @@ def build_performance_analytics(
         )
     ) or Decimal.ZERO
 
-    engine_cycles, orphan_order_attempts = _engine_cycles(
+    engine_event_total = db.scalar(
+        select(func.count(EngineEvent.event_id)).where(
+            EngineEvent.occurred_at_ms >= start_ms,
+            EngineEvent.event_type.in_(
+                [
+                    "trade.attempted",
+                    "trade.executed",
+                    "trade.failed",
+                    "order.executed",
+                    "order.failed",
+                ]
+            ),
+        )
+    ) or 0
+    canary_cycle_total = db.scalar(
+        select(func.count(MicroLiveCycle.trade_id)).where(
+            MicroLiveCycle.reconciled_at >= start,
+            MicroLiveCycle.base_asset == base_asset,
+        )
+    ) or 0
+
+    (
+        engine_cycles,
+        attempted_engine_ids,
+        orphan_order_attempts,
+        attempted_event_count,
+        engine_events_loaded,
+    ) = _engine_cycles(
         db,
         start_ms=start_ms,
         base_asset=base_asset,
@@ -110,7 +137,7 @@ def build_performance_analytics(
         by_trade_id.values(),
         key=lambda cycle: cycle.occurred_at,
     )
-    attempted_ids = {cycle.trade_id for cycle in engine_cycles}
+    attempted_ids = set(attempted_engine_ids)
     attempted_ids.update(
         cycle.trade_id for cycle in unique_canary_cycles
     )
@@ -140,25 +167,16 @@ def build_performance_analytics(
     ]
 
     net_edge_total = db.scalar(
-        select(func.count(OpportunityObservation.id)).where(
-            OpportunityObservation.detected_at >= start,
-            OpportunityObservation.start_asset == base_asset,
-            OpportunityObservation.net_edge_bps.is_not(None),
+        select(func.count(OpportunityWindow.id)).where(
+            OpportunityWindow.started_at >= start,
+            OpportunityWindow.start_asset == base_asset,
+            OpportunityWindow.max_net_edge_bps.is_not(None),
         )
     ) or 0
     net_edges = [
-        float(value)
-        for value in db.scalars(
-            select(OpportunityObservation.net_edge_bps)
-            .where(
-                OpportunityObservation.detected_at >= start,
-                OpportunityObservation.start_asset == base_asset,
-                OpportunityObservation.net_edge_bps.is_not(None),
-            )
-            .order_by(desc(OpportunityObservation.detected_at))
-            .limit(sample_limit)
-        ).all()
-        if value is not None
+        float(window.max_net_edge_bps)
+        for window in windows
+        if window.max_net_edge_bps is not None
     ]
 
     slippage_total = db.scalar(
@@ -255,16 +273,44 @@ def build_performance_analytics(
                 "sum of max expected net profit per Phase 7 opportunity window"
             ),
             "trade_attempted": len(attempted_ids),
+            "trade_attempted_engine": len(attempted_engine_ids),
+            "trade_attempted_micro_canary": len(unique_canary_cycles),
             "actual_profit_known": len(known_profit_cycles),
             "actual_profit_total": _float(total_actual_profit),
+            "attempt_to_actual_known_pct": (
+                len(known_profit_cycles) / len(attempted_ids) * 100.0
+                if attempted_ids
+                else None
+            ),
+            "aggregate_profit_capture_pct": (
+                _float(
+                    total_actual_profit
+                    / Decimal(str(expected_profit_total))
+                    * Decimal(100)
+                )
+                if Decimal(str(expected_profit_total)) > 0
+                else None
+            ),
+            "population_note": (
+                "opportunity stages are distinct Phase 7 windows; trade stages "
+                "are distinct execution trade ids over the same time window, "
+                "so aggregate conversion ratios are diagnostic rather than "
+                "a one-to-one attribution"
+            ),
         },
         "distributions": {
-            "net_edge_bps": _distribution(
-                net_edges,
-                bins=bins,
-                total_count=int(net_edge_total),
-                unit="bps",
-            ),
+            "net_edge_bps": {
+                **_distribution(
+                    net_edges,
+                    bins=bins,
+                    total_count=int(net_edge_total),
+                    unit="bps",
+                ),
+                "basis": (
+                    "maximum modeled net edge per distinct Phase 7 "
+                    "opportunity window"
+                ),
+            },
             "win_loss": {
                 "wins": wins,
                 "losses": losses,
@@ -312,14 +358,30 @@ def build_performance_analytics(
             "net_edge_sampled": len(net_edges) < int(net_edge_total),
             "slippage_sampled": len(slippage) < int(slippage_total),
             "engine_terminal_events": len(engine_cycles),
+            "engine_trade_attempt_events": attempted_event_count,
+            "engine_events_loaded": engine_events_loaded,
+            "engine_events_total": int(engine_event_total),
+            "engine_events_sampled": (
+                engine_events_loaded < int(engine_event_total)
+            ),
             "micro_canary_cycles": len(unique_canary_cycles),
+            "micro_canary_cycles_total": int(canary_cycle_total),
+            "micro_canary_cycles_sampled": (
+                len(canary_cycles) < int(canary_cycle_total)
+            ),
+            "profit_metrics_sampled": (
+                engine_events_loaded < int(engine_event_total)
+                or len(canary_cycles) < int(canary_cycle_total)
+            ),
             "deduplicated_canary_trade_ids": (
                 len(canary_cycles) - len(unique_canary_cycles)
             ),
             "orphan_order_attempts_without_terminal_trade": orphan_order_attempts,
             "note": (
-                "funnel opportunity stages use distinct opportunity windows; "
-                "trade stages use distinct trade ids over the same time window"
+                "new engine data uses explicit trade.attempted events; older "
+                "history falls back to terminal route events. Opportunity "
+                "stages and trade stages remain distinct populations over "
+                "the same selected time window."
             ),
         },
     }
@@ -350,13 +412,14 @@ def _engine_cycles(
     start_ms: int,
     base_asset: str,
     limit: int,
-) -> tuple[list[ActualCycle], int]:
+) -> tuple[list[ActualCycle], set[str], int, int, int]:
     rows = db.scalars(
         select(EngineEvent)
         .where(
             EngineEvent.occurred_at_ms >= start_ms,
             EngineEvent.event_type.in_(
                 [
+                    "trade.attempted",
                     "trade.executed",
                     "trade.failed",
                     "order.executed",
@@ -370,6 +433,9 @@ def _engine_cycles(
 
     order_trade_ids: set[str] = set()
     terminal_all_ids: set[str] = set()
+    attempted_all_ids: set[str] = set()
+    attempted_engine_ids: set[str] = set()
+    attempted_event_count = 0
     terminal: dict[str, ActualCycle] = {}
 
     for event in reversed(rows):
@@ -378,6 +444,12 @@ def _engine_cycles(
             continue
         if event.event_type in {"order.executed", "order.failed"}:
             order_trade_ids.add(trade_id)
+            continue
+        if event.event_type == "trade.attempted":
+            attempted_all_ids.add(trade_id)
+            if str(event.payload.get("base_asset") or "").upper() == base_asset:
+                attempted_engine_ids.add(trade_id)
+                attempted_event_count += 1
             continue
 
         terminal_all_ids.add(trade_id)
@@ -397,6 +469,7 @@ def _engine_cycles(
             if starting is not None and leg_count > 0
             else Decimal.ZERO
         )
+        attempted_engine_ids.add(trade_id)
         terminal[trade_id] = ActualCycle(
             trade_id=trade_id,
             occurred_at=datetime.fromtimestamp(
@@ -414,8 +487,16 @@ def _engine_cycles(
             successful=event.event_type == "trade.executed",
         )
 
-    orphan_order_attempts = len(order_trade_ids - terminal_all_ids)
-    return list(terminal.values()), orphan_order_attempts
+    orphan_order_attempts = len(
+        order_trade_ids - terminal_all_ids - attempted_all_ids
+    )
+    return (
+        list(terminal.values()),
+        attempted_engine_ids,
+        orphan_order_attempts,
+        attempted_event_count,
+        len(rows),
+    )
 
 def _canary_cycles(
     db: Session,

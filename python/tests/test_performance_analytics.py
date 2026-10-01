@@ -64,3 +64,16 @@ def test_actual_cycle_is_immutable_value_object() -> None:
         successful=True,
     )
     assert cycle.pnl == Decimal("0.10")
+
+
+
+def test_distribution_count_can_exceed_sample_count() -> None:
+    distribution = _distribution(
+        [1.0, 2.0],
+        bins=2,
+        total_count=10,
+        unit="bps",
+    )
+
+    assert distribution["count"] == 10
+    assert distribution["sample_count"] == 2
