@@ -80,7 +80,11 @@ def reconcile_cycle(
     cycle.notes = payload.notes
     cycle.reconciled_at = datetime.now(timezone.utc)
 
-    run = db.get(MicroLiveRun, cycle.session_id)
+    run = db.scalar(
+        select(MicroLiveRun)
+        .where(MicroLiveRun.id == cycle.session_id)
+        .with_for_update()
+    )
     if run is not None:
         run.reconciled_cycles += 1
         run.updated_at = datetime.now(timezone.utc)
