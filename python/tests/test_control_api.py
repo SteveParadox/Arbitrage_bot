@@ -222,6 +222,17 @@ def test_health_degrades_when_market_data_is_stale(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         control,
+        "_engine_event_pipeline_status",
+        lambda _db: {
+            "status": "online",
+            "last_event_id": "event-1",
+            "last_event_at": None,
+            "age_ms": 0,
+            "source": "engine-service",
+        },
+    )
+    monkeypatch.setattr(
+        control,
         "_risk_status",
         lambda: {
             "available": True,
@@ -244,3 +255,60 @@ def test_health_degrades_when_market_data_is_stale(monkeypatch) -> None:
 
     assert result["status"] == "degraded"
     assert result["market_stream_status"] == "stale"
+
+
+def test_health_degrades_when_engine_event_pipeline_is_stale(monkeypatch) -> None:
+    class FakeDb:
+        def execute(self, _statement):
+            return None
+
+    class HealthyEngine:
+        async def status(self):
+            return SimpleNamespace(
+                healthy=True,
+                runtime_enabled=False,
+                strategy_generation="test",
+                detail="control service healthy",
+            )
+
+    monkeypatch.setattr(control, "engine_grpc_client", HealthyEngine())
+    monkeypatch.setattr(
+        control,
+        "_recent_market_activity",
+        lambda _db: ("connected", None),
+    )
+    monkeypatch.setattr(
+        control,
+        "_engine_event_pipeline_status",
+        lambda _db: {
+            "status": "stale",
+            "last_event_id": "event-old",
+            "last_event_at": None,
+            "age_ms": 30_000,
+            "source": "engine-service",
+        },
+    )
+    monkeypatch.setattr(
+        control,
+        "_risk_status",
+        lambda: {
+            "available": True,
+            "kill_switch_active": False,
+            "circuit_breaker": None,
+        },
+    )
+    monkeypatch.setattr(
+        control,
+        "read_control_state",
+        lambda: {
+            "enabled": False,
+            "updated_at": None,
+            "reason": "stopped",
+            "source": "test",
+        },
+    )
+
+    result = asyncio.run(control.get_health(FakeDb()))
+
+    assert result["status"] == "degraded"
+    assert result["event_pipeline"]["status"] == "stale"
