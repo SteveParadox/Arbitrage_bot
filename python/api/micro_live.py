@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from analytics.db import get_db
@@ -52,7 +53,11 @@ def reconcile_cycle(
     payload: ReconcileRequest,
     db: DatabaseSession,
 ) -> dict:
-    cycle = db.get(MicroLiveCycle, trade_id)
+    cycle = db.scalar(
+        select(MicroLiveCycle)
+        .where(MicroLiveCycle.trade_id == trade_id)
+        .with_for_update()
+    )
     if cycle is None:
         raise HTTPException(status_code=404, detail="micro-live candidate not found")
     if cycle.reconciled_at is not None:
