@@ -155,7 +155,17 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
 
     if database_status == "online":
         market_status, last_market_event = _recent_market_activity(db)
-        event_pipeline = _engine_event_pipeline_status(db)
+        try:
+            event_pipeline = _engine_event_pipeline_status(db)
+        except SQLAlchemyError as error:
+            event_pipeline = {
+                "status": "unavailable",
+                "last_event_id": None,
+                "last_event_at": None,
+                "age_ms": None,
+                "source": None,
+                "detail": str(error),
+            }
     else:
         market_status, last_market_event = "unknown", None
         event_pipeline = {
