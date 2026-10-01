@@ -282,6 +282,32 @@ prediction error, mean absolute prediction error, fee error, slippage error, and
 
 See `docs/MICRO_LIVE.md`.
 
+### Phase 14: TypeScript operations dashboard
+
+The React + TypeScript frontend is now an operational dashboard backed by a dedicated
+`/operations` API contract.
+
+The main screen includes:
+
+```text
+account balance
+today / weekly P&L
+net return
+detected opportunities
+executed trades
+rejected opportunities
+success rate
+average net edge
+average execution latency
+```
+
+It also exposes recent opportunity rows, the latest micro-live execution flow, API/market-stream
+health, trading state, risk state, circuit-breaker state, and the manual kill switch.
+
+The dashboard polls every five seconds and uses `VITE_API_URL` for the backend address.
+
+See `docs/DASHBOARD.md`.
+
 ## Security
 
 Bybit credentials and PostgreSQL production credentials must come from environment variables or a
@@ -313,7 +339,9 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 13 micro-live canary telemetry is implemented above the Phase 12 shadow layer. It uses
+Phase 14 operations dashboard is implemented above the Phase 13 telemetry layer. The dashboard
+uses the dedicated operations API to display account, performance, opportunity, execution, and
+risk telemetry. Phase 13 micro-live canary telemetry remains available underneath it. It uses
 mainnet books, read-only account balance/fee data, a 10 USDT default candidate size, and a hard
 25 USDT candidate cap. Actual manually executed canary results can be reconciled into PostgreSQL
 for predicted-versus-realized calibration. **The canary crate contains no autonomous order

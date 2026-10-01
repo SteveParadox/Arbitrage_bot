@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     arb_api_host: str = "0.0.0.0"
     arb_api_port: int = 8000
     arb_live_trading_enabled: bool = False
+    arb_cors_origins: str = "http://localhost:5173"
 
     arb_database_url: str = (
         "postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage"
@@ -30,6 +31,13 @@ class Settings(BaseSettings):
     bybit_api_key: str = ""
     bybit_api_secret: str = ""
 
+    def cors_origins(self) -> list[str]:
+        return [
+            value.strip()
+            for value in self.arb_cors_origins.split(",")
+            if value.strip()
+        ]
+
     def safe_summary(self) -> dict[str, object]:
         return {
             "arb_env": self.arb_env,
@@ -40,6 +48,7 @@ class Settings(BaseSettings):
             "arb_opportunity_max_gap_ms": self.arb_opportunity_max_gap_ms,
             "arb_shadow_batch_size": self.arb_shadow_batch_size,
             "arb_micro_live_batch_size": self.arb_micro_live_batch_size,
+            "arb_cors_origins": self.cors_origins(),
             "bybit_testnet": self.bybit_testnet,
             "bybit_api_key_configured": bool(self.bybit_api_key),
             "bybit_api_secret_configured": bool(self.bybit_api_secret),

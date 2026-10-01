@@ -1,8 +1,10 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.logging import configure_logging
 from api.micro_live import router as micro_live_analytics_router
 from api.opportunities import router as opportunity_analytics_router
+from api.operations import router as operations_router
 from api.paper_trading import router as paper_trading_router
 from api.settings import settings
 from api.shadow import router as shadow_analytics_router
@@ -10,10 +12,19 @@ from api.shadow import router as shadow_analytics_router
 configure_logging(settings.arb_log_level)
 
 app = FastAPI(title="Arbitrage Bot API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins(),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 app.include_router(opportunity_analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(shadow_analytics_router)
 app.include_router(micro_live_analytics_router)
+app.include_router(operations_router)
 
 
 @app.get("/health")
