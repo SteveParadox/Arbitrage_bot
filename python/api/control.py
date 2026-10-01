@@ -151,14 +151,25 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
         and grpc_status["runtime_enabled"]
         and risk_allows_new_orders
     )
-    overall_ok = (
-        database_status == "online"
-        and grpc_status["status"] == "online"
-        and risk.get("available") is not False
+    critical_unhealthy = (
+        database_status != "online"
+        or grpc_status["status"] == "offline"
+        or risk.get("available") is False
+    )
+    degraded = (
+        grpc_status["status"] != "online"
+        or market_status != "connected"
+    )
+    health_status = (
+        "unhealthy"
+        if critical_unhealthy
+        else "degraded"
+        if degraded
+        else "ok"
     )
 
     return {
-        "status": "ok" if overall_ok else "degraded",
+        "status": health_status,
         "generated_at": datetime.now(UTC),
         "environment": settings.arb_env,
         "database_status": database_status,
@@ -223,16 +234,17 @@ async def stop_trading(command: TradingCommand) -> dict[str, Any]:
             "command": result.__dict__,
         }
     except EngineCommandError as error:
-        fallback = write_control_state(
+        write_control_state(
             enabled=False,
             reason=f"gRPC stop fallback: {command.reason}",
         )
-        return {
-            "status": "stopped_fallback",
-            "effective_enabled": False,
-            "warning": f"Rust gRPC unavailable: {error}",
-            "control": fallback,
-        }
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Rust stop command is unconfirmed; the local fail-closed "
+                f"runtime control gate was written disabled: {error}"
+            ),
+        ) from error
 
 
 @router.post(
