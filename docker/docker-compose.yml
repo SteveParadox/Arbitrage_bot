@@ -28,6 +28,19 @@ services:
     volumes:
       - arbitrage-redis:/data
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.python
+    env_file:
+      - ../.env
+    environment:
+      ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@postgres:5432/arbitrage
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   engine-control:
     build:
       context: ..
@@ -68,8 +81,8 @@ services:
       - ../data/risk:/app/data/risk:ro
       - ../data/control:/app/data/control
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       engine-control:
