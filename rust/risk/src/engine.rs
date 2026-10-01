@@ -593,43 +593,61 @@ impl RiskEngine {
             }
         };
 
-        let payload: serde_json::Value = match serde_json::from_str(&raw) {
+        let payload: TradingControlFile = match serde_json::from_str(&raw) {
             Ok(value) => value,
             Err(error) => {
                 return (
                     false,
                     format!(
-                        "runtime trading control is disabled: invalid JSON: {error}"
+                        "runtime trading control is disabled: invalid state: {error}"
                     ),
                 );
             }
         };
 
-        if payload.get("version").and_then(serde_json::Value::as_u64)
-            != Some(1)
-        {
+        if payload.version != 1 {
             return (
                 false,
                 "runtime trading control is disabled: unsupported state version"
                     .to_string(),
             );
         }
+        if payload.reason.trim().is_empty() || payload.reason.len() > 256 {
+            return (
+                false,
+                "runtime trading control is disabled: invalid control reason"
+                    .to_string(),
+            );
+        }
+        if !matches!(
+            payload.source.as_str(),
+            "fastapi_control" | "rust_grpc_control"
+        ) {
+            return (
+                false,
+                "runtime trading control is disabled: invalid control source"
+                    .to_string(),
+            );
+        }
+        if chrono::DateTime::parse_from_rfc3339(&payload.updated_at).is_err() {
+            return (
+                false,
+                "runtime trading control is disabled: invalid control timestamp"
+                    .to_string(),
+            );
+        }
 
-        match payload.get("enabled").and_then(serde_json::Value::as_bool) {
-            Some(true) => (
+        if payload.enabled {
+            (
                 true,
                 "runtime trading control is enabled".to_string(),
-            ),
-            Some(false) => (
+            )
+        } else {
+            (
                 false,
                 "runtime trading control is stopped by the control API"
                     .to_string(),
-            ),
-            None => (
-                false,
-                "runtime trading control is disabled: missing boolean enabled field"
-                    .to_string(),
-            ),
+            )
         }
     }
 
@@ -771,6 +789,15 @@ fn validate_precision(legs: &[ProposedOrderLeg]) -> Option<String> {
         }
     }
     None
+}
+
+#[derive(Debug, Deserialize)]
+struct TradingControlFile {
+    version: u32,
+    enabled: bool,
+    updated_at: String,
+    reason: String,
+    source: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1232,6 +1259,25 @@ mod tests {
             .validate_approval(&approval, "trade-1", now + 20)
             .unwrap_err();
         assert!(matches!(error, RiskError::GateClosed(_)));
+    }
+
+    #[test]
+    fn malformed_runtime_control_state_fails_closed() {
+        let now = 8_982_000;
+        let cfg = config("runtime-control-malformed");
+        fs::write(
+            &cfg.trading_control_file,
+            br#"{"version":1,"enabled":true}"#,
+        )
+        .unwrap();
+        let mut engine = RiskEngine::new(cfg).unwrap();
+
+        let decision = engine.evaluate(&intent(now), &context(now), now).unwrap();
+
+        assert!(!decision.approved);
+        assert!(decision.checks.iter().any(|item| {
+            item.check == RiskCheck::TradingControl && !item.passed
+        }));
     }
 
     #[test]
