@@ -34,12 +34,15 @@ Average latency
 
 Metric semantics are deliberately explicit:
 
-- Account balance is the latest balance snapshot captured with a Phase 13 canary candidate.
-- Today's and weekly P&L use reconciled Phase 13 results.
+- Account balance is the latest balance snapshot captured with a Phase 13 canary candidate and is
+  labeled with its base asset instead of being presented as fiat USD.
+- Today's and weekly P&L use reconciled Phase 13 results. "Today" is the current UTC day.
 - Net return is today's realized P&L divided by today's reconciled starting capital.
 - Detected and rejected opportunity counts use the Phase 7 opportunity ledger over the last 24h.
 - Executed trades count reconciled Phase 13 cycles for the current UTC day.
-- Success rate is profitable reconciled cycles divided by reconciled cycles.
+- Success rate is profitable reconciled cycles divided by reconciled cycles. With no reconciled
+  cycles, it is undefined and the dashboard displays an em dash rather than a false 0%.
+- Net return is likewise undefined when reconciled capital is zero.
 - Average net edge is calculated from accepted opportunity observations.
 - Average latency is actual execution time from reconciled Phase 13 cycles.
 
@@ -134,9 +137,13 @@ engine. It reports:
 ready
 halted
 circuit_breaker
+no_persisted_state
+unavailable
 ```
 
-plus the active breaker and kill-switch detail when present.
+The API no longer treats a missing risk-state file as proof that risk is ready. In Docker Compose,
+the host `data/risk` directory is mounted read-only into the API container so the dashboard can
+observe the same persisted files as the Rust process.
 
 ## API configuration
 
@@ -148,13 +155,18 @@ ARB_CORS_ORIGINS=http://localhost:5173
 
 Multiple frontend origins can be comma-separated.
 
-Frontend:
+Frontend development defaults to:
 
-```env
-VITE_API_URL=http://localhost:8000
+```text
+http://localhost:8000
 ```
 
-Copy `frontend/.env.example` to `frontend/.env` when a non-default backend address is required.
+Production defaults to the same-origin `/api` path, which the bundled Nginx configuration proxies
+to the FastAPI service. `VITE_API_URL` can still override either behavior for separately hosted
+frontends.
+
+Copy `frontend/.env.example` to `frontend/.env` only when an explicit development backend
+address is required.
 
 ## Run locally
 

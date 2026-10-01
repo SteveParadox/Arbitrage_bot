@@ -25,6 +25,8 @@ services:
       ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@postgres:5432/arbitrage
     ports:
       - "8000:8000"
+    volumes:
+      - ../data/risk:/app/data/risk:ro
     depends_on:
       postgres:
         condition: service_healthy

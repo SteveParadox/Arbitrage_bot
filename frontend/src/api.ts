@@ -1,5 +1,12 @@
 export type RiskStatus = {
-  state: "ready" | "halted" | "circuit_breaker" | string;
+  available: boolean;
+  state:
+    | "ready"
+    | "halted"
+    | "circuit_breaker"
+    | "unavailable"
+    | "no_persisted_state"
+    | string;
   kill_switch_active: boolean;
   kill_switch_detail: string | null;
   circuit_breaker: {
@@ -13,6 +20,7 @@ export type RiskStatus = {
 export type DashboardSummary = {
   generated_at: string;
   account: {
+    base_asset: string | null;
     balance: number | null;
     equity_usd: number | null;
     exposure_usd: number | null;
@@ -21,11 +29,11 @@ export type DashboardSummary = {
   performance: {
     today_pnl: number;
     weekly_pnl: number;
-    net_return_pct: number;
+    net_return_pct: number | null;
     detected_opportunities: number;
     executed_trades: number;
     rejected_opportunities: number;
-    success_rate_pct: number;
+    success_rate_pct: number | null;
     average_net_edge_bps: number | null;
     average_latency_ms: number | null;
   };
@@ -48,7 +56,8 @@ export type Opportunity = {
   net_edge_pct: number | null;
   net_edge_bps: number | null;
   capital: number | null;
-  status: "accepted" | "executable" | "rejected" | string;
+  capital_asset: string;
+  status: "accepted" | "rejected" | string;
   reason_rejected: string | null;
 };
 
@@ -58,6 +67,7 @@ export type Execution = {
   triangle: string;
   route_id: string;
   starting_capital: number | null;
+  base_asset: string;
   expected_pnl: number | null;
   realized_pnl: number | null;
   prediction_error: number | null;
@@ -69,18 +79,33 @@ export type Execution = {
   detection_leg_prices: Array<number | null>;
 };
 
-const API_URL = (
-  import.meta.env.VITE_API_URL ?? "http://localhost:8000"
-).replace(/\/$/, "");
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+const defaultApiUrl = import.meta.env.DEV
+  ? "http://localhost:8000"
+  : "/api";
+const API_URL = (configuredApiUrl || defaultApiUrl).replace(/\/$/, "");
 
 async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { Accept: "application/json" },
-  });
-  if (!response.ok) {
-    throw new Error(`API ${response.status}: ${response.statusText}`);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`API ${response.status}: ${response.statusText}`);
+    }
+    return (await response.json()) as T;
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === "AbortError") {
+      throw new Error("Dashboard API request timed out");
+    }
+    throw reason;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-  return response.json() as Promise<T>;
 }
 
 export async function fetchDashboard(): Promise<DashboardSummary> {

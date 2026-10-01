@@ -56,6 +56,17 @@ def _risk_paths() -> tuple[Path, Path]:
 
 def _risk_status() -> dict[str, Any]:
     kill_path, state_path = _risk_paths()
+    runtime_visible = kill_path.parent.exists() and state_path.parent.exists()
+    if not runtime_visible:
+        return {
+            "available": False,
+            "state": "unavailable",
+            "kill_switch_active": False,
+            "kill_switch_detail": "risk runtime files are not mounted into the API process",
+            "circuit_breaker": None,
+            "execution_failures_recorded": 0,
+        }
+
     kill_active = kill_path.exists()
     kill_detail: str | None = None
     if kill_active:
@@ -67,7 +78,8 @@ def _risk_status() -> dict[str, Any]:
 
     breaker = None
     recent_failures = 0
-    if state_path.exists():
+    state_persisted = state_path.exists()
+    if state_persisted:
         try:
             payload = json.loads(state_path.read_text(encoding="utf-8"))
             breaker = payload.get("circuit_breaker")
@@ -84,10 +96,13 @@ def _risk_status() -> dict[str, Any]:
         state = "halted"
     elif breaker:
         state = "circuit_breaker"
-    else:
+    elif state_persisted:
         state = "ready"
+    else:
+        state = "no_persisted_state"
 
     return {
+        "available": True,
         "state": state,
         "kill_switch_active": kill_active,
         "kill_switch_detail": kill_detail,
@@ -165,12 +180,13 @@ def dashboard(db: DatabaseSession) -> dict[str, Any]:
     profitable = int(today_stats[2] or 0)
     capital = float(today_stats[3] or 0)
     pnl_today = float(today_stats[0] or 0)
-    success_rate = (profitable / executed * 100.0) if executed else 0.0
-    net_return = (pnl_today / capital * 100.0) if capital else 0.0
+    success_rate = (profitable / executed * 100.0) if executed else None
+    net_return = (pnl_today / capital * 100.0) if capital else None
 
     return {
         "generated_at": now,
         "account": {
+            "base_asset": latest_cycle.base_asset if latest_cycle else None,
             "balance": _number(
                 latest_cycle.account_balance if latest_cycle else None
             ),
@@ -224,6 +240,7 @@ def recent_opportunities(
             "net_edge_pct": _number(row.net_edge_pct),
             "net_edge_bps": _number(row.net_edge_bps),
             "capital": _number(row.starting_capital),
+            "capital_asset": row.start_asset,
             "status": "accepted" if row.accepted else "rejected",
             "reason_rejected": row.rejection_reason,
         }
@@ -248,6 +265,7 @@ def recent_executions(
             "triangle": row.triangle_id,
             "route_id": row.route_id,
             "starting_capital": _number(row.starting_capital),
+            "base_asset": row.base_asset,
             "expected_pnl": _number(row.expected_pnl),
             "realized_pnl": _number(row.realized_pnl),
             "prediction_error": _number(row.prediction_error),

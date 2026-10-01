@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_URL,
   type DashboardSummary,
@@ -11,19 +11,27 @@ import {
 
 type Tone = "positive" | "negative" | "neutral" | "warning";
 
-function money(value: number | null, digits = 2): string {
+function amount(
+  value: number | null,
+  asset: string | null = "USDT",
+  digits = 2,
+): string {
   if (value === null || Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
+  const formatted = new Intl.NumberFormat("en-US", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(value);
+  return asset ? `${formatted} ${asset}` : formatted;
 }
 
 function percent(value: number | null, digits = 2): string {
   if (value === null || Number.isNaN(value)) return "—";
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
+}
+
+function rate(value: number | null, digits = 2): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${value.toFixed(digits)}%`;
 }
 
 function bps(value: number | null): string {
@@ -45,13 +53,6 @@ function formatTime(value: string | null): string {
     minute: "2-digit",
     second: "2-digit",
   });
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return "No data yet";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No data yet";
-  return date.toLocaleString();
 }
 
 function toneForNumber(value: number): Tone {
@@ -142,8 +143,11 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestInFlight = useRef(false);
 
   const load = useCallback(async (silent = false) => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
     if (silent) setRefreshing(true);
     else setLoading(true);
     try {
@@ -173,6 +177,7 @@ export function App() {
           : "Unable to load operations data",
       );
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -203,17 +208,46 @@ export function App() {
     );
   }
 
-  const performance = summary?.performance;
-  const risk = summary?.system.risk;
-  const apiOnline = !error && summary?.system.api_status === "online";
+  if (!summary) {
+    return (
+      <main className="shell shell--centered">
+        <div className="fatal-state">
+          <div className="eyebrow">OPERATIONS API UNAVAILABLE</div>
+          <h1>No telemetry loaded</h1>
+          <p>
+            {error ?? "The dashboard could not load operational data."}
+          </p>
+          <code>{API_URL}</code>
+          <button
+            className="refresh-button"
+            onClick={() => void load()}
+            type="button"
+          >
+            Retry
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  const performance = summary.performance;
+  const risk = summary.system.risk;
+  const apiOnline = !error && summary.system.api_status === "online";
   const wsState =
-    summary?.system.websocket_status === "connected"
+    summary.system.websocket_status === "connected"
       ? "ok"
-      : summary?.system.websocket_status === "stale"
+      : summary.system.websocket_status === "stale"
         ? "warn"
         : "bad";
   const riskState =
-    risk?.state === "ready" ? "ok" : risk?.state ? "bad" : "muted";
+    risk?.state === "ready"
+      ? "ok"
+      : risk?.state === "unavailable" ||
+          risk?.state === "no_persisted_state"
+        ? "muted"
+        : risk?.state
+          ? "bad"
+          : "muted";
 
   return (
     <main className="shell">
@@ -260,10 +294,10 @@ export function App() {
         />
         <StatusPill
           label="Market stream"
-          value={summary?.system.websocket_status ?? "Unknown"}
+          value={summary.system.websocket_status ?? "Unknown"}
           state={wsState}
           detail={
-            summary?.system.last_market_event
+            summary.system.last_market_event
               ? `Last event ${formatTime(summary.system.last_market_event)}`
               : "No recent opportunity activity"
           }
@@ -271,9 +305,9 @@ export function App() {
         <StatusPill
           label="Trading"
           value={
-            summary?.system.trading_enabled ? "Enabled" : "Disabled"
+            summary.system.trading_enabled ? "Enabled" : "Disabled"
           }
-          state={summary?.system.trading_enabled ? "warn" : "ok"}
+          state={summary.system.trading_enabled ? "warn" : "ok"}
           detail="Global live-trading flag"
         />
         <StatusPill
@@ -281,81 +315,115 @@ export function App() {
           value={risk?.state?.replaceAll("_", " ") ?? "Unknown"}
           state={riskState}
           detail={
-            risk?.circuit_breaker?.kind
-              ? `Breaker: ${risk.circuit_breaker.kind}`
-              : "No active circuit breaker"
+            risk?.state === "unavailable"
+              ? "Risk runtime is not visible to the API"
+              : risk?.state === "no_persisted_state"
+                ? "No persisted breaker state exists yet"
+                : risk?.circuit_breaker?.kind
+                  ? `Breaker: ${risk.circuit_breaker.kind}`
+                  : "No active circuit breaker"
           }
         />
         <StatusPill
           label="Kill switch"
-          value={risk?.kill_switch_active ? "ENGAGED" : "Clear"}
-          state={risk?.kill_switch_active ? "bad" : "ok"}
-          detail={risk?.kill_switch_detail ?? "Operator stop is clear"}
+          value={
+            risk?.available === false
+              ? "Unavailable"
+              : risk?.kill_switch_active
+                ? "ENGAGED"
+                : "Clear"
+          }
+          state={
+            risk?.available === false
+              ? "muted"
+              : risk?.kill_switch_active
+                ? "bad"
+                : "ok"
+          }
+          detail={
+            risk?.available === false
+              ? "API cannot see the Rust risk runtime directory"
+              : risk?.kill_switch_detail ?? "Operator stop is clear"
+          }
         />
       </section>
 
       <section className="kpi-grid" aria-label="Key metrics">
         <KpiCard
           label="Account balance"
-          value={money(summary?.account.balance ?? null)}
+          value={amount(
+            summary.account.balance ?? null,
+            summary.account.base_asset ?? "USDT",
+          )}
           detail={
-            summary?.account.snapshot_at
+            summary.account.snapshot_at
               ? `Snapshot ${formatTime(summary.account.snapshot_at)}`
               : "Awaiting canary account snapshot"
           }
         />
         <KpiCard
           label="Today's P&L"
-          value={money(performance?.today_pnl ?? 0)}
-          tone={toneForNumber(performance?.today_pnl ?? 0)}
-          detail="Reconciled micro-live cycles"
+          value={amount(
+            performance.today_pnl ?? 0,
+            summary.account.base_asset ?? "USDT",
+          )}
+          tone={toneForNumber(performance.today_pnl ?? 0)}
+          detail="Reconciled micro-live cycles · UTC day"
         />
         <KpiCard
           label="Weekly P&L"
-          value={money(performance?.weekly_pnl ?? 0)}
-          tone={toneForNumber(performance?.weekly_pnl ?? 0)}
+          value={amount(
+            performance.weekly_pnl ?? 0,
+            summary.account.base_asset ?? "USDT",
+          )}
+          tone={toneForNumber(performance.weekly_pnl ?? 0)}
           detail="Last 7 days"
         />
         <KpiCard
           label="Net return"
-          value={percent(performance?.net_return_pct ?? 0)}
-          tone={toneForNumber(performance?.net_return_pct ?? 0)}
+          value={percent(performance.net_return_pct ?? null)}
+          tone={
+            performance.net_return_pct == null
+              ? "neutral"
+              : toneForNumber(performance.net_return_pct)
+          }
           detail="P&L ÷ reconciled capital"
         />
         <KpiCard
           label="Detected opportunities"
-          value={(performance?.detected_opportunities ?? 0).toLocaleString()}
+          value={(performance.detected_opportunities ?? 0).toLocaleString()}
           detail="Last 24 hours"
         />
         <KpiCard
           label="Executed trades"
-          value={(performance?.executed_trades ?? 0).toLocaleString()}
-          detail="Reconciled today"
+          value={(performance.executed_trades ?? 0).toLocaleString()}
+          detail="Reconciled · UTC day"
         />
         <KpiCard
           label="Rejected opportunities"
-          value={(performance?.rejected_opportunities ?? 0).toLocaleString()}
+          value={(performance.rejected_opportunities ?? 0).toLocaleString()}
           detail="Last 24 hours"
           tone="warning"
         />
         <KpiCard
           label="Success rate"
-          value={percent(performance?.success_rate_pct ?? 0)}
+          value={rate(performance.success_rate_pct)}
           detail="Profitable reconciled trades"
           tone={
-            (performance?.success_rate_pct ?? 0) >= 50
+            performance.success_rate_pct != null &&
+            performance.success_rate_pct >= 50
               ? "positive"
               : "neutral"
           }
         />
         <KpiCard
           label="Average net edge"
-          value={bps(performance?.average_net_edge_bps ?? null)}
+          value={bps(performance.average_net_edge_bps ?? null)}
           detail="Accepted opportunities"
         />
         <KpiCard
           label="Average latency"
-          value={latency(performance?.average_latency_ms ?? null)}
+          value={latency(performance.average_latency_ms ?? null)}
           detail="Actual execution time today"
         />
       </section>
@@ -393,7 +461,7 @@ export function App() {
                       </td>
                       <td>{percent(item.gross_edge_pct, 3)}</td>
                       <td>{percent(item.net_edge_pct, 3)}</td>
-                      <td>{money(item.capital, 2)}</td>
+                      <td>{amount(item.capital, item.capital_asset, 2)}</td>
                       <td>
                         <span
                           className={`table-status ${statusClass(item.status)}`}
@@ -461,18 +529,30 @@ export function App() {
               <div className="pnl-comparison">
                 <div>
                   <span>Expected</span>
-                  <strong>{money(selectedExecution.expected_pnl, 4)}</strong>
+                  <strong>
+                    {amount(
+                      selectedExecution.expected_pnl,
+                      selectedExecution.base_asset,
+                      4,
+                    )}
+                  </strong>
                 </div>
                 <div>
                   <span>Actual</span>
                   <strong
                     className={
-                      (selectedExecution.realized_pnl ?? 0) >= 0
-                        ? "text-positive"
-                        : "text-negative"
+                      selectedExecution.realized_pnl == null
+                        ? undefined
+                        : selectedExecution.realized_pnl >= 0
+                          ? "text-positive"
+                          : "text-negative"
                     }
                   >
-                    {money(selectedExecution.realized_pnl, 4)}
+                    {amount(
+                      selectedExecution.realized_pnl,
+                      selectedExecution.base_asset,
+                      4,
+                    )}
                   </strong>
                 </div>
               </div>
@@ -480,7 +560,13 @@ export function App() {
               <div className="execution-facts">
                 <div>
                   <span>Prediction error</span>
-                  <strong>{money(selectedExecution.prediction_error, 4)}</strong>
+                  <strong>
+                    {amount(
+                      selectedExecution.prediction_error,
+                      selectedExecution.base_asset,
+                      4,
+                    )}
+                  </strong>
                 </div>
                 <div>
                   <span>Execution time</span>
@@ -492,7 +578,12 @@ export function App() {
                 </div>
                 <div>
                   <span>Capital</span>
-                  <strong>{money(selectedExecution.starting_capital)}</strong>
+                  <strong>
+                    {amount(
+                      selectedExecution.starting_capital,
+                      selectedExecution.base_asset,
+                    )}
+                  </strong>
                 </div>
               </div>
             </>

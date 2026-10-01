@@ -627,3 +627,31 @@ footer {
     font-size: 2rem;
   }
 }
+
+
+.fatal-state {
+  width: min(520px, calc(100vw - 32px));
+  padding: 26px;
+  border: 1px solid #273346;
+  border-radius: 14px;
+  background: rgba(12, 17, 24, 0.96);
+  text-align: left;
+}
+
+.fatal-state h1 {
+  margin: 7px 0 8px;
+  font-size: 1.65rem;
+}
+
+.fatal-state p {
+  margin: 0 0 10px;
+  color: #98a4b6;
+  line-height: 1.5;
+}
+
+.fatal-state code {
+  display: block;
+  margin-bottom: 16px;
+  color: #718097;
+  word-break: break-all;
+}
