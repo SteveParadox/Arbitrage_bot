@@ -612,7 +612,9 @@ impl RiskEngine {
                     .to_string(),
             );
         }
-        if payload.reason.trim().is_empty() || payload.reason.len() > 256 {
+        if payload.reason.trim().is_empty()
+            || payload.reason.chars().count() > 256
+        {
             return (
                 false,
                 "runtime trading control is disabled: invalid control reason"
