@@ -19,7 +19,8 @@
     "approval_ttl_ms",
     "emergency_max_market_data_age_ms",
     "kill_switch_file",
-    "state_file"
+    "state_file",
+    "trading_control_file"
   ],
   "properties": {
     "version": {
@@ -78,6 +79,10 @@
     "emergency_max_market_data_age_ms": {
       "type": "integer",
       "minimum": 1
+    },
+    "trading_control_file": {
+      "type": "string",
+      "minLength": 1
     }
   },
   "additionalProperties": false

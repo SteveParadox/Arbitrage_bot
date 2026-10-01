@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arbitrage-bot.local/schemas/trading-control-state.schema.json",
+  "title": "TradingControlState",
+  "type": "object",
+  "required": ["version", "enabled", "updated_at", "reason", "source"],
+  "properties": {
+    "version": { "const": 1 },
+    "enabled": { "type": "boolean" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "source": { "const": "fastapi_control" }
+  },
+  "additionalProperties": false
+}

@@ -3,18 +3,31 @@
   "$id": "https://arbitrage-bot.local/schemas/risk-decision.schema.json",
   "title": "RiskDecisionAudit",
   "type": "object",
-  "required": ["trade_id", "approved", "checks"],
+  "required": [
+    "trade_id",
+    "approved",
+    "checks"
+  ],
   "properties": {
-    "trade_id": { "type": "string" },
-    "approved": { "type": "boolean" },
+    "trade_id": {
+      "type": "string"
+    },
+    "approved": {
+      "type": "boolean"
+    },
     "checks": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["check", "passed", "detail"],
+        "required": [
+          "check",
+          "passed",
+          "detail"
+        ],
         "properties": {
           "check": {
             "enum": [
+              "trading_control",
               "manual_kill_switch",
               "circuit_breaker",
               "market_data_freshness",
@@ -30,8 +43,12 @@
               "exchange_health"
             ]
           },
-          "passed": { "type": "boolean" },
-          "detail": { "type": "string" }
+          "passed": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          }
         },
         "additionalProperties": false
       }

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     arb_api_port: int = 8000
     arb_live_trading_enabled: bool = False
     arb_cors_origins: str = "http://localhost:5173"
+    arb_control_api_token: str = ""
+    arb_control_state_file: str = "data/control/trading_state.json"
 
     arb_database_url: str = (
         "postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage"
@@ -43,6 +45,8 @@ class Settings(BaseSettings):
             "arb_env": self.arb_env,
             "arb_log_level": self.arb_log_level,
             "arb_live_trading_enabled": self.arb_live_trading_enabled,
+            "arb_control_auth_configured": bool(self.arb_control_api_token),
+            "arb_control_state_file": self.arb_control_state_file,
             "arb_database_configured": bool(self.arb_database_url),
             "arb_opportunity_min_net_bps": self.arb_opportunity_min_net_bps,
             "arb_opportunity_max_gap_ms": self.arb_opportunity_max_gap_ms,

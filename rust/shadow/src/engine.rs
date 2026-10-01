@@ -1107,6 +1107,7 @@ mod tests {
             emergency_max_market_data_age_ms: 2_000,
             kill_switch_file: base.join("KILL"),
             state_file: base.join("STATE"),
+            trading_control_file: base.join("TRADING_CONTROL"),
         };
         let _ = std::fs::remove_dir_all(&base);
         RiskEngine::new(config).unwrap()

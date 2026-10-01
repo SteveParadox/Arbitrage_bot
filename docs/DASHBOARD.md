@@ -48,11 +48,13 @@ Metric semantics are deliberately explicit:
 
 ## Opportunity table
 
-Endpoint:
+Phase 15 endpoint:
 
 ```text
-GET /operations/opportunities
+GET /opportunities
 ```
+
+The older `/operations/opportunities` route remains available for compatibility.
 
 Columns:
 
@@ -70,11 +72,13 @@ Rows are ordered newest first.
 
 ## Execution view
 
-Endpoint:
+Phase 15 endpoint:
 
 ```text
-GET /operations/executions
+GET /trades
 ```
+
+The older `/operations/executions` route remains available for compatibility.
 
 The UI renders the route as a vertical asset path, for example:
 
@@ -97,11 +101,16 @@ individual leg, so the dashboard does not invent per-leg percentages.
 
 ## System status
 
-Endpoint:
+Phase 15 splits the dashboard reads into:
 
 ```text
-GET /operations/dashboard
+GET /performance
+GET /balances
+GET /health
 ```
+
+The React client calls these endpoints directly and combines their typed responses in the browser.
+The older `/operations/dashboard` route remains available for compatibility.
 
 The status strip shows:
 

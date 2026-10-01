@@ -284,8 +284,7 @@ See `docs/MICRO_LIVE.md`.
 
 ### Phase 14: TypeScript operations dashboard
 
-The React + TypeScript frontend is now an operational dashboard backed by a dedicated
-`/operations` API contract.
+The React + TypeScript frontend is an operational dashboard backed by FastAPI.
 
 The main screen includes:
 
@@ -307,6 +306,32 @@ health, trading state, risk state, circuit-breaker state, and the manual kill sw
 The dashboard polls every five seconds and uses `VITE_API_URL` for the backend address.
 
 See `docs/DASHBOARD.md`.
+
+### Phase 15: Python control API
+
+FastAPI is now the public control plane between React, PostgreSQL analytics, and the Rust engine.
+
+The stable Phase 15 surface is:
+
+```text
+GET  /opportunities
+GET  /trades
+GET  /performance
+GET  /balances
+GET  /health
+POST /trading/start
+POST /trading/stop
+```
+
+The Phase 14 React client now consumes the Phase 15 read routes rather than the older aggregate
+operations endpoints.
+
+Only the two mutating trading-control endpoints require a Bearer token. The runtime trading state
+is written atomically to `data/control/trading_state.json` and is a second gate in the Rust risk
+engine. Normal live approvals require both the static deployment flag and the runtime FastAPI
+control state. Shadow preview remains unaffected, and emergency unwind remains available.
+
+See `docs/CONTROL_API.md`.
 
 ## Security
 
@@ -339,7 +364,9 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 14 operations dashboard is implemented above the Phase 13 telemetry layer. The dashboard
+Phase 15 Python control API is implemented as the control plane between React, PostgreSQL, and the
+Rust engine. The Phase 14 operations dashboard now consumes the Phase 15 FastAPI routes instead of
+talking to engine internals. The dashboard
 uses the dedicated operations API to display account, performance, opportunity, execution, and
 risk telemetry. Phase 13 micro-live canary telemetry remains available underneath it. It uses
 mainnet books, read-only account balance/fee data, a 10 USDT default candidate size, and a hard

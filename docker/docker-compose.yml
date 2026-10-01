@@ -27,6 +27,7 @@ services:
       - "8000:8000"
     volumes:
       - ../data/risk:/app/data/risk:ro
+      - ../data/control:/app/data/control
     depends_on:
       postgres:
         condition: service_healthy

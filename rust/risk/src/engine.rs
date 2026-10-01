@@ -21,6 +21,9 @@ pub struct RiskEngine {
 impl RiskEngine {
     pub fn new(config: RiskConfig) -> Result<Self, RiskError> {
         config.validate()?;
+        ensure_parent(&config.kill_switch_file)?;
+        ensure_parent(&config.state_file)?;
+        ensure_parent(&config.trading_control_file)?;
         let state = load_state(&config.state_file)?;
         Ok(Self { config, state })
     }
@@ -55,7 +58,20 @@ impl RiskEngine {
         latch_breakers: bool,
     ) -> Result<RiskDecision, RiskError> {
         self.refresh_state()?;
-        let mut checks = Vec::with_capacity(13);
+        let mut checks = Vec::with_capacity(14);
+
+        if latch_breakers {
+            let (trading_enabled, trading_detail) =
+                self.runtime_trading_control_status();
+            checks.push(check(
+                RiskCheck::TradingControl,
+                trading_enabled,
+                trading_detail,
+            ));
+            if !trading_enabled {
+                return Ok(rejected(intent, checks));
+            }
+        }
 
         let kill_detail = self.manual_kill_switch_detail()?;
         let kill_active = kill_detail.is_some();
@@ -265,6 +281,11 @@ impl RiskEngine {
     ) -> Result<(), RiskError> {
         self.refresh_state()?;
         if approval.kind() == RiskApprovalKind::Normal {
+            let (trading_enabled, trading_detail) =
+                self.runtime_trading_control_status();
+            if !trading_enabled {
+                return Err(RiskError::GateClosed(trading_detail));
+            }
             if self.manual_kill_switch_detail()?.is_some() {
                 return Err(RiskError::GateClosed(
                     "manual kill switch is active".to_string(),
@@ -485,6 +506,66 @@ impl RiskEngine {
         Ok(())
     }
 
+    fn runtime_trading_control_status(&self) -> (bool, String) {
+        let raw = match fs::read_to_string(&self.config.trading_control_file) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return (
+                    false,
+                    "runtime trading control is disabled: state file is missing"
+                        .to_string(),
+                );
+            }
+            Err(error) => {
+                return (
+                    false,
+                    format!(
+                        "runtime trading control is disabled: cannot read state: {error}"
+                    ),
+                );
+            }
+        };
+
+        let payload: serde_json::Value = match serde_json::from_str(&raw) {
+            Ok(value) => value,
+            Err(error) => {
+                return (
+                    false,
+                    format!(
+                        "runtime trading control is disabled: invalid JSON: {error}"
+                    ),
+                );
+            }
+        };
+
+        if payload.get("version").and_then(serde_json::Value::as_u64)
+            != Some(1)
+        {
+            return (
+                false,
+                "runtime trading control is disabled: unsupported state version"
+                    .to_string(),
+            );
+        }
+
+        match payload.get("enabled").and_then(serde_json::Value::as_bool) {
+            Some(true) => (
+                true,
+                "runtime trading control is enabled".to_string(),
+            ),
+            Some(false) => (
+                false,
+                "runtime trading control is stopped by the control API"
+                    .to_string(),
+            ),
+            None => (
+                false,
+                "runtime trading control is disabled: missing boolean enabled field"
+                    .to_string(),
+            ),
+        }
+    }
+
     fn manual_kill_switch_detail(&self) -> Result<Option<String>, RiskError> {
         match fs::read_to_string(&self.config.kill_switch_file) {
             Ok(value) => Ok(Some(value)),
@@ -653,6 +734,16 @@ mod tests {
 
     fn config(name: &str) -> RiskConfig {
         let (kill_switch_file, state_file) = paths(name);
+        let trading_control_file = state_file
+            .parent()
+            .unwrap()
+            .join("trading_state.json");
+        fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
+        fs::write(
+            &trading_control_file,
+            br#"{"version":1,"enabled":true}"#,
+        )
+        .unwrap();
         RiskConfig {
             version: 1,
             max_market_data_age_ms: 500,
@@ -670,6 +761,7 @@ mod tests {
             emergency_max_market_data_age_ms: 2_000,
             kill_switch_file,
             state_file,
+            trading_control_file,
         }
     }
 
@@ -984,6 +1076,55 @@ mod tests {
         intent.unwind_notional = d("4");
         intent.market_data_timestamp_ms = now - 2_001;
         assert!(engine.approve_emergency_unwind(&intent, now).is_err());
+    }
+
+    #[test]
+    fn runtime_control_blocks_live_evaluation_but_not_shadow_preview() {
+        let now = 8_975_000;
+        let cfg = config("runtime-control-preview");
+        fs::write(
+            &cfg.trading_control_file,
+            br#"{"version":1,"enabled":false}"#,
+        )
+        .unwrap();
+        let mut engine = RiskEngine::new(cfg).unwrap();
+
+        let preview = engine
+            .preview(&intent(now), &context(now), now)
+            .unwrap();
+        assert!(preview.approved);
+
+        let decision = engine
+            .evaluate(&intent(now), &context(now), now)
+            .unwrap();
+        assert!(!decision.approved);
+        assert!(decision.checks.iter().any(|item| {
+            item.check == RiskCheck::TradingControl && !item.passed
+        }));
+    }
+
+    #[test]
+    fn stopping_runtime_control_invalidates_existing_normal_approval() {
+        let now = 8_980_000;
+        let cfg = config("runtime-control-existing-approval");
+        let control_file = cfg.trading_control_file.clone();
+        let mut engine = RiskEngine::new(cfg).unwrap();
+        let approval = engine
+            .evaluate(&intent(now), &context(now), now)
+            .unwrap()
+            .into_approval()
+            .unwrap();
+
+        fs::write(
+            control_file,
+            br#"{"version":1,"enabled":false}"#,
+        )
+        .unwrap();
+
+        let error = engine
+            .validate_approval(&approval, "trade-1", now + 20)
+            .unwrap_err();
+        assert!(matches!(error, RiskError::GateClosed(_)));
     }
 
     #[test]

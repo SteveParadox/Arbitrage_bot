@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.control import router as control_router
 from api.logging import configure_logging
 from api.micro_live import router as micro_live_analytics_router
 from api.opportunities import router as opportunity_analytics_router
@@ -25,12 +26,4 @@ app.include_router(paper_trading_router)
 app.include_router(shadow_analytics_router)
 app.include_router(micro_live_analytics_router)
 app.include_router(operations_router)
-
-
-@app.get("/health")
-def health() -> dict[str, str | bool]:
-    return {
-        "status": "ok",
-        "environment": settings.arb_env,
-        "live_trading_enabled": settings.arb_live_trading_enabled,
-    }
+app.include_router(control_router)

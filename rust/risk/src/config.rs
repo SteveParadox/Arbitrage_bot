@@ -26,6 +26,7 @@ pub struct RiskConfig {
     pub emergency_max_market_data_age_ms: u64,
     pub kill_switch_file: PathBuf,
     pub state_file: PathBuf,
+    pub trading_control_file: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +47,7 @@ struct RiskConfigFile {
     emergency_max_market_data_age_ms: u64,
     kill_switch_file: String,
     state_file: String,
+    trading_control_file: String,
 }
 
 pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError> {
@@ -76,6 +78,7 @@ pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError>
         emergency_max_market_data_age_ms: file.emergency_max_market_data_age_ms,
         kill_switch_file: resolve_path(path, &file.kill_switch_file),
         state_file: resolve_path(path, &file.state_file),
+        trading_control_file: resolve_path(path, &file.trading_control_file),
     };
     config.validate()?;
     Ok(config)
@@ -139,6 +142,7 @@ impl RiskConfig {
         }
         if self.kill_switch_file.as_os_str().is_empty()
             || self.state_file.as_os_str().is_empty()
+            || self.trading_control_file.as_os_str().is_empty()
         {
             return Err(RiskError::InvalidConfig(
                 "risk state paths must not be empty".to_string(),

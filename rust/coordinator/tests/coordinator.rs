@@ -86,6 +86,13 @@ fn risk_config(name: &str) -> RiskConfig {
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&base);
+    std::fs::create_dir_all(&base).unwrap();
+    let trading_control_file = base.join("trading_state.json");
+    std::fs::write(
+        &trading_control_file,
+        br#"{"version":1,"enabled":true}"#,
+    )
+    .unwrap();
     RiskConfig {
         version: 1,
         max_market_data_age_ms: 500,
@@ -103,6 +110,7 @@ fn risk_config(name: &str) -> RiskConfig {
         emergency_max_market_data_age_ms: 2_000,
         kill_switch_file: base.join("KILL_SWITCH"),
         state_file: base.join("risk_state.json"),
+        trading_control_file,
     }
 }
 

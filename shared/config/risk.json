@@ -14,5 +14,6 @@
   "approval_ttl_ms": 100,
   "kill_switch_file": "../../data/risk/KILL_SWITCH",
   "state_file": "../../data/risk/risk_state.json",
-  "emergency_max_market_data_age_ms": 2000
+  "emergency_max_market_data_age_ms": 2000,
+  "trading_control_file": "../../data/control/trading_state.json"
 }

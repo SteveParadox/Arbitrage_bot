@@ -50,6 +50,7 @@ pub struct RiskContext {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RiskCheck {
+    TradingControl,
     ManualKillSwitch,
     CircuitBreaker,
     MarketDataFreshness,

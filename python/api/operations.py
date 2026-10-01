@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from analytics.db import get_db
 from analytics.micro_live_models import MicroLiveCycle
 from analytics.models import OpportunityObservation
+from api.runtime_control import read_control_state
 from api.settings import settings
 
 router = APIRouter(prefix="/operations", tags=["operations-dashboard"])
@@ -124,18 +125,40 @@ def _recent_market_activity(db: Session) -> tuple[str, datetime | None]:
     return "offline", latest
 
 
-@router.get("/dashboard")
-def dashboard(db: DatabaseSession) -> dict[str, Any]:
-    now = datetime.now(UTC)
-    today = datetime(now.year, now.month, now.day, tzinfo=UTC)
-    week = now - timedelta(days=7)
-    day_24h = now - timedelta(hours=24)
-
+def _balance_snapshot(db: Session) -> dict[str, Any]:
     latest_cycle = db.scalar(
         select(MicroLiveCycle)
         .order_by(desc(MicroLiveCycle.detected_at))
         .limit(1)
     )
+    return {
+        "base_asset": latest_cycle.base_asset if latest_cycle else None,
+        "balance": _number(
+            latest_cycle.account_balance if latest_cycle else None
+        ),
+        "equity_usd": _number(
+            latest_cycle.account_equity_usd if latest_cycle else None
+        ),
+        "exposure_usd": _number(
+            latest_cycle.account_exposure_usd if latest_cycle else None
+        ),
+        "snapshot_at": latest_cycle.detected_at if latest_cycle else None,
+    }
+
+
+def _performance_snapshot(
+    db: Session,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    current = now or datetime.now(UTC)
+    today = datetime(
+        current.year,
+        current.month,
+        current.day,
+        tzinfo=UTC,
+    )
+    week = current - timedelta(days=7)
+    day_24h = current - timedelta(hours=24)
 
     today_stats = db.execute(
         select(
@@ -146,21 +169,21 @@ def dashboard(db: DatabaseSession) -> dict[str, Any]:
             func.count(MicroLiveCycle.trade_id).filter(
                 MicroLiveCycle.realized_pnl > 0
             ),
-            func.coalesce(func.sum(MicroLiveCycle.starting_capital).filter(
-                MicroLiveCycle.reconciled_at.is_not(None)
-            ), 0),
+            func.coalesce(
+                func.sum(MicroLiveCycle.starting_capital).filter(
+                    MicroLiveCycle.reconciled_at.is_not(None)
+                ),
+                0,
+            ),
             func.avg(MicroLiveCycle.execution_time_ms).filter(
                 MicroLiveCycle.reconciled_at.is_not(None)
             ),
-        ).where(
-            MicroLiveCycle.reconciled_at >= today,
-        )
+        ).where(MicroLiveCycle.reconciled_at >= today)
     ).one()
 
     weekly_pnl = db.scalar(
-        select(func.coalesce(func.sum(MicroLiveCycle.realized_pnl), 0)).where(
-            MicroLiveCycle.reconciled_at >= week,
-        )
+        select(func.coalesce(func.sum(MicroLiveCycle.realized_pnl), 0))
+        .where(MicroLiveCycle.reconciled_at >= week)
     )
 
     opportunity_stats = db.execute(
@@ -175,48 +198,53 @@ def dashboard(db: DatabaseSession) -> dict[str, Any]:
         ).where(OpportunityObservation.detected_at >= day_24h)
     ).one()
 
-    websocket_status, last_market_event = _recent_market_activity(db)
     executed = int(today_stats[1] or 0)
     profitable = int(today_stats[2] or 0)
     capital = float(today_stats[3] or 0)
     pnl_today = float(today_stats[0] or 0)
-    success_rate = (profitable / executed * 100.0) if executed else None
-    net_return = (pnl_today / capital * 100.0) if capital else None
 
     return {
+        "today_pnl": pnl_today,
+        "weekly_pnl": float(weekly_pnl or 0),
+        "net_return_pct": (
+            pnl_today / capital * 100.0 if capital else None
+        ),
+        "detected_opportunities": int(opportunity_stats[0] or 0),
+        "executed_trades": executed,
+        "rejected_opportunities": int(opportunity_stats[1] or 0),
+        "success_rate_pct": (
+            profitable / executed * 100.0 if executed else None
+        ),
+        "average_net_edge_bps": _number(opportunity_stats[2]),
+        "average_latency_ms": _number(today_stats[4]),
+    }
+
+
+def _system_snapshot(db: Session) -> dict[str, Any]:
+    websocket_status, last_market_event = _recent_market_activity(db)
+    control = read_control_state()
+    return {
+        "api_status": "online",
+        "websocket_status": websocket_status,
+        "websocket_status_source": "recent opportunity activity proxy",
+        "last_market_event": last_market_event,
+        "trading_enabled": bool(
+            settings.arb_live_trading_enabled and control["enabled"]
+        ),
+        "trading_deployment_enabled": settings.arb_live_trading_enabled,
+        "trading_runtime_enabled": control["enabled"],
+        "risk": _risk_status(),
+    }
+
+
+@router.get("/dashboard")
+def dashboard(db: DatabaseSession) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    return {
         "generated_at": now,
-        "account": {
-            "base_asset": latest_cycle.base_asset if latest_cycle else None,
-            "balance": _number(
-                latest_cycle.account_balance if latest_cycle else None
-            ),
-            "equity_usd": _number(
-                latest_cycle.account_equity_usd if latest_cycle else None
-            ),
-            "exposure_usd": _number(
-                latest_cycle.account_exposure_usd if latest_cycle else None
-            ),
-            "snapshot_at": latest_cycle.detected_at if latest_cycle else None,
-        },
-        "performance": {
-            "today_pnl": pnl_today,
-            "weekly_pnl": float(weekly_pnl or 0),
-            "net_return_pct": net_return,
-            "detected_opportunities": int(opportunity_stats[0] or 0),
-            "executed_trades": executed,
-            "rejected_opportunities": int(opportunity_stats[1] or 0),
-            "success_rate_pct": success_rate,
-            "average_net_edge_bps": _number(opportunity_stats[2]),
-            "average_latency_ms": _number(today_stats[4]),
-        },
-        "system": {
-            "api_status": "online",
-            "websocket_status": websocket_status,
-            "websocket_status_source": "recent opportunity activity proxy",
-            "last_market_event": last_market_event,
-            "trading_enabled": settings.arb_live_trading_enabled,
-            "risk": _risk_status(),
-        },
+        "account": _balance_snapshot(db),
+        "performance": _performance_snapshot(db, now),
+        "system": _system_snapshot(db),
     }
 
 

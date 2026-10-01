@@ -232,13 +232,22 @@ export function App() {
 
   const performance = summary.performance;
   const risk = summary.system.risk;
-  const apiOnline = !error && summary.system.api_status === "online";
+  const apiState =
+    error
+      ? "bad"
+      : summary.system.api_status === "ok"
+        ? "ok"
+        : summary.system.api_status === "degraded"
+          ? "warn"
+          : "bad";
   const wsState =
     summary.system.websocket_status === "connected"
       ? "ok"
       : summary.system.websocket_status === "stale"
         ? "warn"
-        : "bad";
+        : summary.system.websocket_status === "unknown"
+          ? "muted"
+          : "bad";
   const riskState =
     risk?.state === "ready"
       ? "ok"
@@ -288,9 +297,9 @@ export function App() {
       <section className="status-strip" aria-label="System status">
         <StatusPill
           label="API"
-          value={apiOnline ? "Online" : "Offline"}
-          state={apiOnline ? "ok" : "bad"}
-          detail={API_URL}
+          value={error ? "offline" : summary.system.api_status}
+          state={apiState}
+          detail={`${API_URL} · DB ${summary.system.database_status}`}
         />
         <StatusPill
           label="Market stream"
@@ -304,11 +313,12 @@ export function App() {
         />
         <StatusPill
           label="Trading"
-          value={
-            summary.system.trading_enabled ? "Enabled" : "Disabled"
-          }
+          value={summary.system.trading_enabled ? "Enabled" : "Stopped"}
           state={summary.system.trading_enabled ? "warn" : "ok"}
-          detail="Global live-trading flag"
+          detail={
+            `Runtime ${summary.system.trading_runtime_enabled ? "on" : "off"} · ` +
+            `deployment ${summary.system.trading_deployment_enabled ? "on" : "off"}`
+          }
         />
         <StatusPill
           label="Risk state"
@@ -603,7 +613,7 @@ export function App() {
           Market-stream status is inferred from recent opportunity activity.
         </span>
         <span>
-          Risk and kill-switch state are read from the persisted risk files.
+          Trading controls terminate at FastAPI; Rust reads the shared runtime gate.
         </span>
       </footer>
     </main>
