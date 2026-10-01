@@ -37,6 +37,12 @@ class EngineGrpcClient:
         return (("x-engine-token", self._token),)
 
     async def _call(self, method_name: str, request):
+        timeout = settings.arb_engine_grpc_timeout_seconds
+        if timeout <= 0:
+            raise EngineCommandError(
+                "ARB_ENGINE_GRPC_TIMEOUT_SECONDS must be greater than zero",
+                "INVALID_CONFIGURATION",
+            )
         try:
             async with grpc.aio.insecure_channel(self._target) as channel:
                 stub = engine_control_pb2_grpc.EngineControlStub(channel)
@@ -44,7 +50,7 @@ class EngineGrpcClient:
                 return await method(
                     request,
                     metadata=self._metadata(),
-                    timeout=settings.arb_engine_grpc_timeout_seconds,
+                    timeout=timeout,
                 )
         except grpc.aio.AioRpcError as error:
             detail = error.details() or error.code().name
@@ -62,7 +68,11 @@ class EngineGrpcClient:
                 reason=reason,
             ),
         )
-        return _reply(reply)
+        return _reply(
+            reply,
+            expected_command="start_trading",
+            request_id=request_id,
+        )
 
     async def stop(self, reason: str) -> EngineCommandResult:
         request_id = uuid.uuid4().hex
@@ -73,7 +83,11 @@ class EngineGrpcClient:
                 reason=reason,
             ),
         )
-        return _reply(reply)
+        return _reply(
+            reply,
+            expected_command="stop_trading",
+            request_id=request_id,
+        )
 
     async def update_limits(
         self,
@@ -96,7 +110,11 @@ class EngineGrpcClient:
                 max_daily_loss=max_daily_loss,
             ),
         )
-        return _reply(reply)
+        return _reply(
+            reply,
+            expected_command="update_limits",
+            request_id=request_id,
+        )
 
     async def reload_strategy(self, reason: str) -> EngineCommandResult:
         request_id = uuid.uuid4().hex
@@ -107,7 +125,11 @@ class EngineGrpcClient:
                 reason=reason,
             ),
         )
-        return _reply(reply)
+        return _reply(
+            reply,
+            expected_command="reload_strategy",
+            request_id=request_id,
+        )
 
     async def status(self):
         request_id = uuid.uuid4().hex
@@ -117,9 +139,38 @@ class EngineGrpcClient:
         )
 
 
-def _reply(reply) -> EngineCommandResult:
+def _reply(
+    reply,
+    *,
+    expected_command: str,
+    request_id: str,
+) -> EngineCommandResult:
+    if reply.request_id != request_id:
+        raise EngineCommandError(
+            "gRPC command acknowledgement request_id mismatch",
+            "INVALID_RESPONSE",
+        )
+    if reply.command != expected_command:
+        raise EngineCommandError(
+            (
+                "gRPC command acknowledgement mismatch: "
+                f"expected {expected_command}, received {reply.command}"
+            ),
+            "INVALID_RESPONSE",
+        )
+    if not reply.accepted:
+        raise EngineCommandError(
+            reply.detail or f"{expected_command} was not accepted",
+            "FAILED_PRECONDITION",
+        )
+    if reply.applied_at_ms <= 0:
+        raise EngineCommandError(
+            "gRPC command acknowledgement is missing applied_at_ms",
+            "INVALID_RESPONSE",
+        )
+
     return EngineCommandResult(
-        accepted=reply.accepted,
+        accepted=True,
         command=reply.command,
         request_id=reply.request_id,
         detail=reply.detail,

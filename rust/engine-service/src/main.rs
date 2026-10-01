@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use event_bus::EventPublisher;
 use risk::{current_time_ms, load_risk_config, RiskEngine};
@@ -79,6 +79,12 @@ impl EngineControl for EngineControlService {
             return Err(Status::failed_precondition(
                 "deployment live-trading gate is disabled",
             ));
+        }
+
+        if let Err(error) = read_control(&self.config.control_file) {
+            return Err(Status::failed_precondition(format!(
+                "runtime control state is invalid; issue stop before start: {error}"
+            )));
         }
 
         let risk_config = load_risk_config(&self.config.risk_config_file)
@@ -290,8 +296,10 @@ impl EngineControl for EngineControlService {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
         let control = read_control(&self.config.control_file);
+        let (runtime_enabled, control_source, control_error) =
+            control_snapshot(&control);
         let generation = read_strategy_generation(&self.config.strategy_reload_file);
-        let (healthy, limits_json, detail) =
+        let (mut healthy, limits_json, mut detail) =
             match (
                 read_limits(&self.config.limits_file),
                 load_risk_config(&self.config.risk_config_file),
@@ -323,13 +331,14 @@ impl EngineControl for EngineControlService {
                     format!("static risk configuration invalid: {error}"),
                 ),
             };
+        if let Some(error) = control_error {
+            healthy = false;
+            detail = format!("runtime control state invalid: {error}; {detail}");
+        }
         Ok(Response::new(EngineStatus {
             healthy,
-            runtime_enabled: control.as_ref().map(|value| value.enabled).unwrap_or(false),
-            control_source: control
-                .as_ref()
-                .map(|value| value.source.clone())
-                .unwrap_or_else(|| "default_fail_closed".to_string()),
+            runtime_enabled,
+            control_source,
             generated_at_ms: now_ms() as i64,
             strategy_generation: generation,
             limits_json,
@@ -411,6 +420,8 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         loop {
             let control = read_control(&heartbeat_config.control_file);
+            let (runtime_enabled, control_source, _) =
+                control_snapshot(&control);
             let (healthy, detail) = service_health(&heartbeat_config);
             heartbeat_events.publish(
                 "engine.health",
@@ -418,14 +429,8 @@ async fn main() -> Result<()> {
                     "component": "engine-control",
                     "healthy": healthy,
                     "detail": detail,
-                    "runtime_enabled": control
-                        .as_ref()
-                        .map(|state| state.enabled)
-                        .unwrap_or(false),
-                    "control_source": control
-                        .as_ref()
-                        .map(|state| state.source.clone())
-                        .unwrap_or_else(|| "default_fail_closed".to_string()),
+                    "runtime_enabled": runtime_enabled,
+                    "control_source": control_source,
                     "grpc_addr": addr.to_string(),
                 }),
             );
@@ -491,11 +496,51 @@ fn write_control(path: &Path, enabled: bool, reason: String) -> Result<()> {
     write_json_atomic(path, &payload)
 }
 
-fn read_control(path: &Path) -> Option<ControlState> {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .filter(|state: &ControlState| state.version == 1)
+fn read_control(path: &Path) -> Result<Option<ControlState>> {
+    let raw = match fs::read_to_string(path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let state: ControlState = serde_json::from_str(&raw)?;
+    if state.version != 1 {
+        bail!("unsupported runtime control version {}", state.version);
+    }
+    if state.reason.trim().is_empty() || state.reason.chars().count() > 256 {
+        bail!("runtime control reason must contain 1-256 characters");
+    }
+    if state.source != "fastapi_control"
+        && state.source != "rust_grpc_control"
+    {
+        bail!("unsupported runtime control source {}", state.source);
+    }
+    chrono::DateTime::parse_from_rfc3339(&state.updated_at)
+        .context("runtime control updated_at must be RFC3339")?;
+    Ok(Some(state))
+}
+
+fn control_snapshot(
+    control: &Result<Option<ControlState>>,
+) -> (bool, String, Option<String>) {
+    match control {
+        Ok(Some(state)) => (
+            state.enabled,
+            state.source.clone(),
+            None,
+        ),
+        Ok(None) => (
+            false,
+            "default_fail_closed".to_string(),
+            None,
+        ),
+        Err(error) => (
+            false,
+            "invalid_fail_closed".to_string(),
+            Some(error.to_string()),
+        ),
+    }
 }
 
 fn read_limits(path: &Path) -> Result<RuntimeLimits> {
@@ -652,6 +697,13 @@ fn validate_request_id(request_id: &str) -> Result<(), Status> {
 }
 
 fn service_health(config: &ServiceConfig) -> (bool, String) {
+    if let Err(error) = read_control(&config.control_file) {
+        return (
+            false,
+            format!("runtime control state invalid: {error}"),
+        );
+    }
+
     match (
         read_limits(&config.limits_file),
         load_risk_config(&config.risk_config_file),
@@ -690,6 +742,38 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod boundary_tests {
     use super::*;
+
+    #[test]
+    fn control_state_distinguishes_missing_from_corrupt() {
+        let base = std::env::temp_dir().join(format!(
+            "engine-control-state-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let missing = base.join("missing.json");
+        assert!(matches!(read_control(&missing), Ok(None)));
+
+        fs::create_dir_all(&base).unwrap();
+        let corrupt = base.join("corrupt.json");
+        fs::write(&corrupt, "{not-json").unwrap();
+        assert!(read_control(&corrupt).is_err());
+
+        let valid = base.join("valid.json");
+        let valid_state = ControlState {
+            version: 1,
+            enabled: false,
+            updated_at: "2026-10-01T20:00:00Z".to_string(),
+            reason: "test".to_string(),
+            source: "rust_grpc_control".to_string(),
+        };
+        fs::write(
+            &valid,
+            serde_json::to_vec(&valid_state).unwrap(),
+        )
+        .unwrap();
+        assert!(matches!(read_control(&valid), Ok(Some(_))));
+        let _ = fs::remove_dir_all(base);
+    }
 
     #[test]
     fn request_id_validation_rejects_empty_and_oversized_values() {

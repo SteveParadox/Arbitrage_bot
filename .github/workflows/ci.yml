@@ -91,3 +91,55 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: alembic upgrade head
       - run: pytest tests/test_opportunity_postgres.py
+
+
+  rust-python-boundary:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      ARB_RUN_GRPC_INTEGRATION: "1"
+      ARB_ENGINE_GRPC_ADDR: 127.0.0.1:50051
+      ARB_ENGINE_GRPC_TARGET: 127.0.0.1:50051
+      ARB_ENGINE_GRPC_TOKEN: ci-engine-grpc-token-0123456789-abcdef
+      ARB_ENGINE_GRPC_TIMEOUT_SECONDS: "1"
+      ARB_LIVE_TRADING_ENABLED: "false"
+      ARB_REDIS_URL: redis://127.0.0.1:6379/0
+      ARB_EVENT_STREAM: arb.events
+      ARB_CONTROL_STATE_FILE: data/control/trading_state.json
+      ARB_RUNTIME_LIMITS_FILE: data/control/risk_limits.json
+      ARB_STRATEGY_RELOAD_FILE: data/control/strategy_reload.json
+      ARB_RISK_CONFIG: shared/config/risk.json
+      ARB_TRIANGLE_CONFIG: shared/config/triangles.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pip install -e "./python[dev]"
+      - run: cargo build --manifest-path rust/Cargo.toml -p engine-service
+      - run: mkdir -p data/control data/risk
+      - name: Start Rust engine service
+        run: |
+          ./rust/target/debug/engine-service > /tmp/engine-service.log 2>&1 &
+          echo $! > /tmp/engine-service.pid
+      - name: Rust ↔ Python gRPC and Redis integration
+        run: python -m pytest python/tests/test_engine_grpc_integration.py -q
+      - name: Show engine log on failure
+        if: failure()
+        run: cat /tmp/engine-service.log || true
+      - name: Stop Rust engine service
+        if: always()
+        run: |
+          if [ -f /tmp/engine-service.pid ]; then
+            kill "$(cat /tmp/engine-service.pid)" || true
+          fi

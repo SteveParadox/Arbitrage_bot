@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import redis.asyncio as redis
 from redis.exceptions import ResponseError
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import DataError
 
 from analytics.db import get_session_factory
 from analytics.engine_event_models import EngineEvent
@@ -137,7 +138,31 @@ class EngineEventConsumer:
             )
 
         if events:
-            await asyncio.to_thread(_persist, events)
+            rejected = await asyncio.to_thread(_persist, events)
+            for event, error in rejected:
+                await client.xadd(
+                    settings.arb_event_dead_letter_stream,
+                    {
+                        "original_stream_id": event.stream_id,
+                        "error": f"database rejected event: {error}"[:1000],
+                        "payload": json.dumps(
+                            {
+                                "event_id": event.event_id,
+                                "event_type": event.event_type,
+                                "source": event.source,
+                                "schema_version": event.schema_version,
+                                "occurred_at_ms": event.occurred_at_ms,
+                                "payload": event.payload,
+                            },
+                            separators=(",", ":"),
+                        ),
+                    },
+                )
+                logger.error(
+                    "database-rejected engine event moved to dead-letter stream: %s",
+                    event.stream_id,
+                )
+
             await client.xack(
                 settings.arb_event_stream,
                 settings.arb_event_consumer_group,
@@ -145,12 +170,28 @@ class EngineEventConsumer:
             )
 
 
+MAX_SIGNED_BIGINT = 9_223_372_036_854_775_807
+MAX_IDENTITY_LENGTH = 64
+
+
 def _parse(stream_id: str, fields: dict[str, str]) -> StreamEvent:
+    stream_id = stream_id.strip()
     event_id = fields["event_id"].strip()
     event_type = fields["event_type"].strip()
     source = fields["source"].strip()
-    if not event_id or not event_type or not source:
-        raise ValueError("engine event identity fields must not be empty")
+
+    for name, value in (
+        ("stream_id", stream_id),
+        ("event_id", event_id),
+        ("event_type", event_type),
+        ("source", source),
+    ):
+        if not value:
+            raise ValueError(f"{name} must not be empty")
+        if len(value) > MAX_IDENTITY_LENGTH:
+            raise ValueError(
+                f"{name} exceeds {MAX_IDENTITY_LENGTH} characters"
+            )
 
     schema_version = int(fields.get("schema_version", "1"))
     if schema_version != 1:
@@ -158,7 +199,14 @@ def _parse(stream_id: str, fields: dict[str, str]) -> StreamEvent:
             f"unsupported engine event schema version {schema_version}"
         )
 
-    payload = json.loads(fields.get("payload", "{}"))
+    occurred_at_ms = int(fields["occurred_at_ms"])
+    if occurred_at_ms < 0 or occurred_at_ms > MAX_SIGNED_BIGINT:
+        raise ValueError("occurred_at_ms is outside PostgreSQL BIGINT range")
+
+    payload = json.loads(
+        fields.get("payload", "{}"),
+        parse_constant=_reject_json_constant,
+    )
     if not isinstance(payload, dict):
         raise ValueError("engine event payload must be a JSON object")
 
@@ -168,12 +216,19 @@ def _parse(stream_id: str, fields: dict[str, str]) -> StreamEvent:
         event_type=event_type,
         source=source,
         schema_version=schema_version,
-        occurred_at_ms=int(fields["occurred_at_ms"]),
+        occurred_at_ms=occurred_at_ms,
         payload=payload,
     )
 
 
-def _persist(events: list[StreamEvent]) -> None:
+def _reject_json_constant(value: str):
+    raise ValueError(f"non-finite JSON value is not allowed: {value}")
+
+
+def _persist(
+    events: list[StreamEvent],
+) -> list[tuple[StreamEvent, str]]:
+    rejected: list[tuple[StreamEvent, str]] = []
     with get_session_factory()() as session:
         for event in events:
             statement = (
@@ -189,5 +244,10 @@ def _persist(events: list[StreamEvent]) -> None:
                 )
                 .on_conflict_do_nothing()
             )
-            session.execute(statement)
+            try:
+                with session.begin_nested():
+                    session.execute(statement)
+            except DataError as error:
+                rejected.append((event, str(error)))
         session.commit()
+    return rejected

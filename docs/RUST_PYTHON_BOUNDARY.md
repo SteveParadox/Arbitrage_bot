@@ -51,7 +51,9 @@ GetStatus
 ~~~
 
 FastAPI uses generated protobuf bindings under python/api/grpc/ and calls Rust through
-python/api/engine_client.py.
+python/api/engine_client.py. Command acknowledgements are accepted only when the returned
+request_id matches the request, the command name matches the RPC, accepted=true, and
+applied_at_ms is positive. The configured RPC timeout must also be greater than zero.
 
 ### Authentication
 
@@ -239,7 +241,14 @@ Both event_id and Redis stream_id are unique in PostgreSQL. Replay inserts use c
 semantics for either unique key so an already-seen stream record cannot wedge the consumer group.
 
 Malformed envelopes are copied to the dead-letter stream before they are acknowledged, so one bad
-message cannot permanently block the consumer group.
+message cannot permanently block the consumer group. Envelope validation also enforces the
+PostgreSQL identity-column lengths, signed BIGINT timestamp range, and strict finite JSON values.
+
+If PostgreSQL rejects an individual event with a permanent data error despite those checks, the
+consumer isolates that insert with a savepoint, commits the other valid events, copies the rejected
+event to the dead-letter stream, and then acknowledges it. Infrastructure failures such as a
+database outage still propagate, so those events remain pending for replay rather than being
+misclassified as bad data.
 
 Events are stored in:
 
@@ -257,7 +266,9 @@ event_id is the PostgreSQL primary key, so replay is idempotent.
 
 ## Health
 
-GET /health now also checks the Rust gRPC control service.
+GET /health now also checks the Rust gRPC control service. Missing runtime control state is
+treated as a healthy fail-closed stopped state, while malformed, unsupported, or otherwise corrupt
+control state makes the Rust service unhealthy and keeps runtime trading disabled.
 
 The periodic engine.health stream event uses the same static-risk/runtime-limit validation as the
 control service status instead of merely reporting that the heartbeat task is alive. Its payload
@@ -341,3 +352,26 @@ transport encryption across an untrusted network.
 If Python and Rust are deployed on different hosts, place the service boundary on a private
 network or add TLS/mTLS before exposing port 50051. Do not publish Redis directly to the public
 Internet.
+
+
+## Cross-language CI verification
+
+CI now contains a dedicated `rust-python-boundary` job. It starts a real Rust
+`engine-service` and Redis instance, then exercises the generated Python gRPC client against
+that Rust server.
+
+The integration test verifies:
+
+~~~text
+Python GetStatus -> Rust response
+Python StopTrading -> Rust acknowledgement
+matching request_id / command / applied_at_ms
+Rust command -> Redis engine.health event
+deployment-disabled StartTrading -> FAILED_PRECONDITION
+corrupt control state -> unhealthy + fail closed
+StopTrading repairs corrupt control state
+~~~
+
+The ordinary Python unit tests also verify that the configured gRPC timeout is actually passed to
+the RPC, non-positive timeouts fail before network I/O, and mismatched/negative command
+acknowledgements are rejected.
