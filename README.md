@@ -379,12 +379,12 @@ python scripts/check_profitability_parity.py
 
 ## Current status
 
-Phase 15 Python control API is implemented as the control plane between React, PostgreSQL, and the
-Rust engine. The Phase 14 operations dashboard now consumes the Phase 15 FastAPI routes instead of
-talking to engine internals. The dashboard
-uses the dedicated operations API to display account, performance, opportunity, execution, and
-risk telemetry. Phase 13 micro-live canary telemetry remains available underneath it. It uses
-mainnet books, read-only account balance/fee data, a 10 USDT default candidate size, and a hard
-25 USDT candidate cap. Actual manually executed canary results can be reconciled into PostgreSQL
-for predicted-versus-realized calibration. **The canary crate contains no autonomous order
-submission path.**
+Phase 16 is implemented as an explicit Rust/Python service boundary. FastAPI sends control
+commands to Rust over gRPC, while Rust publishes operational telemetry through Redis Streams for
+durable Python consumption and PostgreSQL persistence.
+
+Phase 15 remains the public control plane for the React dashboard. Normal live execution still
+requires the deployment gate, the runtime trading gate, and the Phase 9 risk gate. Redis delivery
+is telemetry-only and is not allowed to weaken trading safety when the stream is unavailable.
+
+See `docs/RUST_PYTHON_BOUNDARY.md` for the command, event, failure, and deployment semantics.

@@ -73,6 +73,7 @@ impl EngineControl for EngineControlService {
         request: Request<ControlRequest>,
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
+        validate_request_id(&request.get_ref().request_id)?;
         let _guard = self.mutation_lock.lock().await;
         if !self.config.master_live_enabled {
             return Err(Status::failed_precondition(
@@ -132,6 +133,7 @@ impl EngineControl for EngineControlService {
         request: Request<ControlRequest>,
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
+        validate_request_id(&request.get_ref().request_id)?;
         let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
         let now = now_ms();
@@ -164,6 +166,7 @@ impl EngineControl for EngineControlService {
         request: Request<UpdateLimitsRequest>,
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
+        validate_request_id(&request.get_ref().request_id)?;
         let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
         let mut limits = read_limits(&self.config.limits_file).map_err(internal)?;
@@ -243,6 +246,7 @@ impl EngineControl for EngineControlService {
         request: Request<ReloadStrategyRequest>,
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
+        validate_request_id(&request.get_ref().request_id)?;
         let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
         scanner::load_triangle_config(&self.config.triangle_config_file)
@@ -284,6 +288,7 @@ impl EngineControl for EngineControlService {
         request: Request<StatusRequest>,
     ) -> Result<Response<EngineStatus>, Status> {
         self.authorize(&request)?;
+        validate_request_id(&request.get_ref().request_id)?;
         let control = read_control(&self.config.control_file);
         let generation = read_strategy_generation(&self.config.strategy_reload_file);
         let (healthy, limits_json, detail) =
@@ -406,14 +411,21 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         loop {
             let control = read_control(&heartbeat_config.control_file);
+            let (healthy, detail) = service_health(&heartbeat_config);
             heartbeat_events.publish(
                 "engine.health",
                 json!({
-                    "healthy": true,
+                    "component": "engine-control",
+                    "healthy": healthy,
+                    "detail": detail,
                     "runtime_enabled": control
                         .as_ref()
                         .map(|state| state.enabled)
                         .unwrap_or(false),
+                    "control_source": control
+                        .as_ref()
+                        .map(|state| state.source.clone())
+                        .unwrap_or_else(|| "default_fail_closed".to_string()),
                     "grpc_addr": addr.to_string(),
                 }),
             );
@@ -626,6 +638,44 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         == 0
 }
 
+fn validate_request_id(request_id: &str) -> Result<(), Status> {
+    let request_id = request_id.trim();
+    if request_id.is_empty() {
+        return Err(Status::invalid_argument("request_id must not be empty"));
+    }
+    if request_id.len() > 64 || !request_id.is_ascii() {
+        return Err(Status::invalid_argument(
+            "request_id must be ASCII text no longer than 64 bytes",
+        ));
+    }
+    Ok(())
+}
+
+fn service_health(config: &ServiceConfig) -> (bool, String) {
+    match (
+        read_limits(&config.limits_file),
+        load_risk_config(&config.risk_config_file),
+    ) {
+        (Ok(limits), Ok(static_risk)) => {
+            match validate_runtime_limits(&limits, &static_risk) {
+                Ok(()) => (true, "engine control service ready".to_string()),
+                Err(error) => (
+                    false,
+                    format!("runtime risk limits invalid: {error}"),
+                ),
+            }
+        }
+        (Err(error), _) => (
+            false,
+            format!("runtime risk limits unreadable: {error}"),
+        ),
+        (_, Err(error)) => (
+            false,
+            format!("static risk configuration invalid: {error}"),
+        ),
+    }
+}
+
 fn internal(error: impl std::fmt::Display) -> Status {
     Status::internal(error.to_string())
 }
@@ -635,4 +685,17 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+
+    #[test]
+    fn request_id_validation_rejects_empty_and_oversized_values() {
+        assert!(validate_request_id("").is_err());
+        assert!(validate_request_id("   ").is_err());
+        assert!(validate_request_id(&"x".repeat(65)).is_err());
+        assert!(validate_request_id("request-123").is_ok());
+    }
 }

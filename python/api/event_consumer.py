@@ -65,6 +65,7 @@ class EngineEventConsumer:
                 if "BUSYGROUP" not in str(error):
                     raise
 
+            claim_cursor = "0-0"
             while not self._stopping.is_set():
                 claimed = await client.execute_command(
                     "XAUTOCLAIM",
@@ -72,13 +73,23 @@ class EngineEventConsumer:
                     settings.arb_event_consumer_group,
                     self._consumer,
                     30_000,
-                    "0-0",
+                    claim_cursor,
                     "COUNT",
                     settings.arb_event_batch_size,
                 )
+                next_cursor = (
+                    str(claimed[0])
+                    if claimed and claimed[0]
+                    else "0-0"
+                )
                 claimed_messages = claimed[1] if len(claimed) > 1 else []
+                claim_cursor = next_cursor
+
                 if claimed_messages:
                     await self._persist_and_ack(client, claimed_messages)
+                    continue
+
+                if claim_cursor != "0-0":
                     continue
 
                 batches = await client.xreadgroup(
@@ -176,7 +187,7 @@ def _persist(events: list[StreamEvent]) -> None:
                     occurred_at_ms=event.occurred_at_ms,
                     payload=event.payload,
                 )
-                .on_conflict_do_nothing(index_elements=["event_id"])
+                .on_conflict_do_nothing()
             )
             session.execute(statement)
         session.commit()

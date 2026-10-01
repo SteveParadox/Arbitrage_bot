@@ -229,10 +229,14 @@ ARB_EVENT_BATCH_SIZE=100
 The consumer:
 
 1. creates the consumer group if necessary;
-2. reclaims stale pending entries with XAUTOCLAIM;
+2. reclaims stale pending entries with XAUTOCLAIM and follows the returned scan cursor until the
+   pending-entry list has been scanned;
 3. parses the event envelope;
 4. commits the event to PostgreSQL;
 5. acknowledges Redis only after the database commit.
+
+Both event_id and Redis stream_id are unique in PostgreSQL. Replay inserts use conflict-ignore
+semantics for either unique key so an already-seen stream record cannot wedge the consumer group.
 
 Malformed envelopes are copied to the dead-letter stream before they are acknowledged, so one bad
 message cannot permanently block the consumer group.
@@ -254,6 +258,11 @@ event_id is the PostgreSQL primary key, so replay is idempotent.
 ## Health
 
 GET /health now also checks the Rust gRPC control service.
+
+The periodic engine.health stream event uses the same static-risk/runtime-limit validation as the
+control service status instead of merely reporting that the heartbeat task is alive. Its payload
+sets component=engine-control so consumers do not confuse control-plane health with liveness of
+every independently launched scanner/coordinator/execution process.
 
 If gRPC is unavailable:
 
