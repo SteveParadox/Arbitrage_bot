@@ -105,6 +105,19 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: arbitrage_test
+          POSTGRES_USER: arbitrage
+          POSTGRES_PASSWORD: arbitrage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arbitrage -d arbitrage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       ARB_RUN_GRPC_INTEGRATION: "1"
       ARB_ENGINE_GRPC_ADDR: 127.0.0.1:50051
@@ -113,6 +126,7 @@ jobs:
       ARB_ENGINE_GRPC_TIMEOUT_SECONDS: "1"
       ARB_LIVE_TRADING_ENABLED: "false"
       ARB_REDIS_URL: redis://127.0.0.1:6379/0
+      ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@127.0.0.1:5432/arbitrage_test
       ARB_EVENT_STREAM: arb.events
       ARB_CONTROL_STATE_FILE: data/control/trading_state.json
       ARB_RUNTIME_LIMITS_FILE: data/control/risk_limits.json
@@ -126,6 +140,7 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@stable
       - run: pip install -e "./python[dev]"
+      - run: cd python && alembic upgrade head
       - run: cargo build --manifest-path rust/Cargo.toml -p engine-service
       - run: mkdir -p data/control data/risk
       - name: Start Rust engine service
