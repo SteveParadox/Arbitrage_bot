@@ -4,11 +4,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from analytics.db import get_db
 from analytics.micro_live_analytics import recent_cycles, summary
 from analytics.micro_live_models import MicroLiveCycle, MicroLiveRun
+from api.control import require_control_auth
 
 router = APIRouter(prefix="/analytics/micro-live", tags=["micro-live"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -42,13 +44,20 @@ def get_cycles(
     return recent_cycles(db, session_id, limit)
 
 
-@router.post("/reconcile/{trade_id}")
+@router.post(
+    "/reconcile/{trade_id}",
+    dependencies=[Depends(require_control_auth)],
+)
 def reconcile_cycle(
     trade_id: str,
     payload: ReconcileRequest,
     db: DatabaseSession,
 ) -> dict:
-    cycle = db.get(MicroLiveCycle, trade_id)
+    cycle = db.scalar(
+        select(MicroLiveCycle)
+        .where(MicroLiveCycle.trade_id == trade_id)
+        .with_for_update()
+    )
     if cycle is None:
         raise HTTPException(status_code=404, detail="micro-live candidate not found")
     if cycle.reconciled_at is not None:
@@ -71,7 +80,11 @@ def reconcile_cycle(
     cycle.notes = payload.notes
     cycle.reconciled_at = datetime.now(timezone.utc)
 
-    run = db.get(MicroLiveRun, cycle.session_id)
+    run = db.scalar(
+        select(MicroLiveRun)
+        .where(MicroLiveRun.id == cycle.session_id)
+        .with_for_update()
+    )
     if run is not None:
         run.reconciled_cycles += 1
         run.updated_at = datetime.now(timezone.utc)

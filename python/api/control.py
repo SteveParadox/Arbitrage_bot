@@ -8,11 +8,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import desc, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from analytics.db import get_db
+from analytics.engine_event_models import EngineEvent
 from api.engine_client import EngineCommandError, engine_grpc_client
 from api.operations import (
     _balance_snapshot,
@@ -107,6 +108,43 @@ def get_balances(db: DatabaseSession) -> dict[str, Any]:
     }
 
 
+def _engine_event_pipeline_status(db: Session) -> dict[str, Any]:
+    latest = db.scalar(
+        select(EngineEvent)
+        .where(EngineEvent.event_type == "engine.health")
+        .order_by(desc(EngineEvent.occurred_at_ms))
+        .limit(1)
+    )
+    if latest is None:
+        return {
+            "status": "offline",
+            "last_event_id": None,
+            "last_event_at": None,
+            "age_ms": None,
+            "source": None,
+        }
+
+    now_ms = int(datetime.now(UTC).timestamp() * 1000)
+    age_ms = max(now_ms - int(latest.occurred_at_ms), 0)
+    if age_ms <= 15_000:
+        event_status = "online"
+    elif age_ms <= 60_000:
+        event_status = "stale"
+    else:
+        event_status = "offline"
+
+    return {
+        "status": event_status,
+        "last_event_id": latest.event_id,
+        "last_event_at": datetime.fromtimestamp(
+            latest.occurred_at_ms / 1000,
+            tz=UTC,
+        ),
+        "age_ms": age_ms,
+        "source": latest.source,
+    }
+
+
 @router.get("/health")
 async def get_health(db: DatabaseSession) -> dict[str, Any]:
     database_status = "online"
@@ -117,8 +155,26 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
 
     if database_status == "online":
         market_status, last_market_event = _recent_market_activity(db)
+        try:
+            event_pipeline = _engine_event_pipeline_status(db)
+        except SQLAlchemyError as error:
+            event_pipeline = {
+                "status": "unavailable",
+                "last_event_id": None,
+                "last_event_at": None,
+                "age_ms": None,
+                "source": None,
+                "detail": str(error),
+            }
     else:
         market_status, last_market_event = "unknown", None
+        event_pipeline = {
+            "status": "unknown",
+            "last_event_id": None,
+            "last_event_at": None,
+            "age_ms": None,
+            "source": None,
+        }
 
     risk = _risk_status()
     control = read_control_state()
@@ -151,19 +207,32 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
         and grpc_status["runtime_enabled"]
         and risk_allows_new_orders
     )
-    overall_ok = (
-        database_status == "online"
-        and grpc_status["status"] == "online"
-        and risk.get("available") is not False
+    critical_unhealthy = (
+        database_status != "online"
+        or grpc_status["status"] == "offline"
+        or risk.get("available") is False
+    )
+    degraded = (
+        grpc_status["status"] != "online"
+        or market_status != "connected"
+        or event_pipeline["status"] != "online"
+    )
+    health_status = (
+        "unhealthy"
+        if critical_unhealthy
+        else "degraded"
+        if degraded
+        else "ok"
     )
 
     return {
-        "status": "ok" if overall_ok else "degraded",
+        "status": health_status,
         "generated_at": datetime.now(UTC),
         "environment": settings.arb_env,
         "database_status": database_status,
         "market_stream_status": market_status,
         "last_market_event": last_market_event,
+        "event_pipeline": event_pipeline,
         "risk": risk,
         "engine_grpc": grpc_status,
         "trading": {
@@ -223,16 +292,17 @@ async def stop_trading(command: TradingCommand) -> dict[str, Any]:
             "command": result.__dict__,
         }
     except EngineCommandError as error:
-        fallback = write_control_state(
+        write_control_state(
             enabled=False,
             reason=f"gRPC stop fallback: {command.reason}",
         )
-        return {
-            "status": "stopped_fallback",
-            "effective_enabled": False,
-            "warning": f"Rust gRPC unavailable: {error}",
-            "control": fallback,
-        }
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Rust stop command is unconfirmed; the local fail-closed "
+                f"runtime control gate was written disabled: {error}"
+            ),
+        ) from error
 
 
 @router.post(

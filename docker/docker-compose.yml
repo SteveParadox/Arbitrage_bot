@@ -11,7 +11,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - arbitrage-postgres:/var/lib/postgresql/data
 
@@ -27,6 +27,19 @@ services:
       - "127.0.0.1:6379:6379"
     volumes:
       - arbitrage-redis:/data
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.python
+    env_file:
+      - ../.env
+    environment:
+      ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@postgres:5432/arbitrage
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   engine-control:
     build:
@@ -68,8 +81,8 @@ services:
       - ../data/risk:/app/data/risk:ro
       - ../data/control:/app/data/control
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       engine-control:

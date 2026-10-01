@@ -593,43 +593,63 @@ impl RiskEngine {
             }
         };
 
-        let payload: serde_json::Value = match serde_json::from_str(&raw) {
+        let payload: TradingControlFile = match serde_json::from_str(&raw) {
             Ok(value) => value,
             Err(error) => {
                 return (
                     false,
                     format!(
-                        "runtime trading control is disabled: invalid JSON: {error}"
+                        "runtime trading control is disabled: invalid state: {error}"
                     ),
                 );
             }
         };
 
-        if payload.get("version").and_then(serde_json::Value::as_u64)
-            != Some(1)
-        {
+        if payload.version != 1 {
             return (
                 false,
                 "runtime trading control is disabled: unsupported state version"
                     .to_string(),
             );
         }
+        if payload.reason.trim().is_empty()
+            || payload.reason.chars().count() > 256
+        {
+            return (
+                false,
+                "runtime trading control is disabled: invalid control reason"
+                    .to_string(),
+            );
+        }
+        if !matches!(
+            payload.source.as_str(),
+            "fastapi_control" | "rust_grpc_control"
+        ) {
+            return (
+                false,
+                "runtime trading control is disabled: invalid control source"
+                    .to_string(),
+            );
+        }
+        if chrono::DateTime::parse_from_rfc3339(&payload.updated_at).is_err() {
+            return (
+                false,
+                "runtime trading control is disabled: invalid control timestamp"
+                    .to_string(),
+            );
+        }
 
-        match payload.get("enabled").and_then(serde_json::Value::as_bool) {
-            Some(true) => (
+        if payload.enabled {
+            (
                 true,
                 "runtime trading control is enabled".to_string(),
-            ),
-            Some(false) => (
+            )
+        } else {
+            (
                 false,
                 "runtime trading control is stopped by the control API"
                     .to_string(),
-            ),
-            None => (
-                false,
-                "runtime trading control is disabled: missing boolean enabled field"
-                    .to_string(),
-            ),
+            )
         }
     }
 
@@ -774,6 +794,15 @@ fn validate_precision(legs: &[ProposedOrderLeg]) -> Option<String> {
 }
 
 #[derive(Debug, Deserialize)]
+struct TradingControlFile {
+    version: u32,
+    enabled: bool,
+    updated_at: String,
+    reason: String,
+    source: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct RuntimeLimitsFile {
     version: u32,
     min_net_edge_bps: Option<String>,
@@ -847,7 +876,7 @@ mod tests {
         fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
         fs::write(
             &trading_control_file,
-            br#"{"version":1,"enabled":true}"#,
+            br#"{"version":1,"enabled":true,"updated_at":"2026-10-01T21:00:00Z","reason":"test enabled","source":"rust_grpc_control"}"#,
         )
         .unwrap();
         RiskConfig {
@@ -1191,7 +1220,7 @@ mod tests {
         let cfg = config("runtime-control-preview");
         fs::write(
             &cfg.trading_control_file,
-            br#"{"version":1,"enabled":false}"#,
+            br#"{"version":1,"enabled":false,"updated_at":"2026-10-01T21:00:00Z","reason":"test stopped","source":"rust_grpc_control"}"#,
         )
         .unwrap();
         let mut engine = RiskEngine::new(cfg).unwrap();
@@ -1224,7 +1253,7 @@ mod tests {
 
         fs::write(
             control_file,
-            br#"{"version":1,"enabled":false}"#,
+            br#"{"version":1,"enabled":false,"updated_at":"2026-10-01T21:00:00Z","reason":"test stopped","source":"rust_grpc_control"}"#,
         )
         .unwrap();
 
@@ -1232,6 +1261,25 @@ mod tests {
             .validate_approval(&approval, "trade-1", now + 20)
             .unwrap_err();
         assert!(matches!(error, RiskError::GateClosed(_)));
+    }
+
+    #[test]
+    fn malformed_runtime_control_state_fails_closed() {
+        let now = 8_982_000;
+        let cfg = config("runtime-control-malformed");
+        fs::write(
+            &cfg.trading_control_file,
+            br#"{"version":1,"enabled":true}"#,
+        )
+        .unwrap();
+        let mut engine = RiskEngine::new(cfg).unwrap();
+
+        let decision = engine.evaluate(&intent(now), &context(now), now).unwrap();
+
+        assert!(!decision.approved);
+        assert!(decision.checks.iter().any(|item| {
+            item.check == RiskCheck::TradingControl && !item.passed
+        }));
     }
 
     #[test]

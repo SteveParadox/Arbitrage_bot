@@ -90,7 +90,7 @@ fn risk_config(name: &str) -> RiskConfig {
     let trading_control_file = base.join("trading_state.json");
     std::fs::write(
         &trading_control_file,
-        br#"{"version":1,"enabled":true}"#,
+        br#"{"version":1,"enabled":true,"updated_at":"2026-10-01T21:00:00Z","reason":"test enabled","source":"rust_grpc_control"}"#,
     )
     .unwrap();
     RiskConfig {
