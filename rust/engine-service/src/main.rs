@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     env,
     fs,
     net::SocketAddr,
@@ -16,12 +17,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::{sync::Mutex, time::sleep};
 use tonic::{transport::Server, Request, Response, Status};
-use tracing::info;
+use tracing::{info, warn};
 use uuid::Uuid;
+
+mod idempotency;
 
 pub mod proto {
     tonic::include_proto!("arbitrage.engine.v1");
 }
+
+use idempotency::{
+    fingerprint, CachedCommandReply, ClaimOutcome, CommandRecord, CommandStatus,
+    IdempotencyStore,
+};
 
 use proto::engine_control_server::{EngineControl, EngineControlServer};
 use proto::{
@@ -33,6 +41,7 @@ use proto::{
 struct EngineControlService {
     config: Arc<ServiceConfig>,
     events: EventPublisher,
+    idempotency: Arc<IdempotencyStore>,
     mutation_lock: Arc<Mutex<()>>,
 }
 
@@ -54,11 +63,17 @@ struct ControlState {
     updated_at: String,
     reason: String,
     source: String,
+    #[serde(default)]
+    request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct RuntimeLimits {
     version: u32,
+    #[serde(default)]
+    request_id: Option<String>,
+    #[serde(default)]
+    updated_at_ms: Option<u64>,
     min_net_edge_bps: Option<String>,
     max_slippage_bps: Option<String>,
     max_trade_size: Option<String>,
