@@ -16,7 +16,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::{sync::Mutex, time::sleep};
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::{transport::Server, Code, Request, Response, Status};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -526,7 +526,358 @@ impl EngineControl for EngineControlService {
     }
 }
 
+enum BeginCommand {
+    Execute(CommandRecord),
+    Return(CommandReply),
+    Recover(CommandRecord),
+}
+
 impl EngineControlService {
+    fn begin_command(
+        &self,
+        request_id: &str,
+        command_type: &str,
+        request_fingerprint: &str,
+    ) -> Result<BeginCommand, Status> {
+        let outcome = self
+            .idempotency
+            .claim(request_id, command_type, request_fingerprint)
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "gRPC idempotency store unavailable; command not executed: {error}"
+                ))
+            })?;
+        match outcome {
+            ClaimOutcome::New(record) => {
+                info!(
+                    request_id,
+                    command_type,
+                    request_fingerprint,
+                    deduplication_result = "NEW",
+                    execution_status = "IN_PROGRESS",
+                    "gRPC command claimed"
+                );
+                Ok(BeginCommand::Execute(record))
+            }
+            ClaimOutcome::Completed(record) => match record.status {
+                CommandStatus::Succeeded => {
+                    let cached = record.response.ok_or_else(|| {
+                        Status::internal("completed idempotency record is missing response")
+                    })?;
+                    info!(
+                        request_id,
+                        command_type,
+                        request_fingerprint,
+                        deduplication_result = "DUPLICATE_COMPLETED",
+                        execution_status = "SUCCEEDED",
+                        "returning cached gRPC command response"
+                    );
+                    Ok(BeginCommand::Return(command_reply_from_cached(cached)))
+                }
+                CommandStatus::Failed => {
+                    let failure = record.failure.ok_or_else(|| {
+                        Status::internal("failed idempotency record is missing failure")
+                    })?;
+                    info!(
+                        request_id,
+                        command_type,
+                        request_fingerprint,
+                        deduplication_result = "DUPLICATE_COMPLETED",
+                        execution_status = "FAILED",
+                        "returning cached gRPC command failure"
+                    );
+                    Err(status_from_cached(&failure.code, failure.detail))
+                }
+                CommandStatus::InProgress => unreachable!("completed claim cannot be IN_PROGRESS"),
+            },
+            ClaimOutcome::InProgress(record) => {
+                warn!(
+                    request_id,
+                    command_type,
+                    request_fingerprint,
+                    deduplication_result = "DUPLICATE_IN_PROGRESS",
+                    execution_status = "IN_PROGRESS",
+                    "reconciling interrupted gRPC command"
+                );
+                Ok(BeginCommand::Recover(record))
+            }
+            ClaimOutcome::Conflict {
+                existing_command,
+                existing_fingerprint,
+            } => {
+                warn!(
+                    request_id,
+                    command_type,
+                    request_fingerprint,
+                    existing_command,
+                    existing_fingerprint,
+                    deduplication_result = "REQUEST_ID_CONFLICT",
+                    execution_status = "REJECTED",
+                    "request_id reused with a different logical command"
+                );
+                Err(Status::invalid_argument(
+                    "request_id was already used for a different command or payload",
+                ))
+            }
+        }
+    }
+
+    fn emit_command_event(
+        &self,
+        record: &mut CommandRecord,
+        payload: Value,
+    ) -> Result<(), Status> {
+        if record.event_accepted {
+            return Ok(());
+        }
+        self.events
+            .publish_critical_with_id(
+                record.event_id.clone(),
+                "engine.state_changed",
+                payload,
+            )
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "command state changed but critical event persistence failed; retry the same request_id: {error}"
+                ))
+            })?;
+        self.idempotency
+            .mark_event_accepted(record)
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "critical event was accepted but command journal update failed; retry the same request_id: {error}"
+                ))
+            })
+    }
+
+    async fn finish_success(
+        &self,
+        record: &mut CommandRecord,
+        response: CommandReply,
+    ) -> Result<Response<CommandReply>, Status> {
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(record, cached)
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "command executed but idempotency result could not be committed; retry the same request_id: {error}"
+                ))
+            })?;
+        info!(
+            request_id = %record.request_id,
+            command_type = %record.command_type,
+            request_fingerprint = %record.request_fingerprint,
+            deduplication_result = "NEW",
+            execution_status = "SUCCEEDED",
+            "gRPC command completed"
+        );
+
+        #[cfg(debug_assertions)]
+        if let Ok(raw) = env::var("ARB_TEST_GRPC_RESPONSE_DELAY_MS") {
+            if let Ok(delay_ms) = raw.parse::<u64>() {
+                if delay_ms > 0 {
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+            }
+        }
+        Ok(Response::new(response))
+    }
+
+    fn cache_failure(&self, record: &mut CommandRecord, status: Status) -> Status {
+        let code = code_name(status.code()).to_string();
+        let detail = status.message().to_string();
+        if let Err(error) = self.idempotency.complete_failure(record, code, detail) {
+            return Status::unavailable(format!(
+                "command failed before side effects, but idempotency failure could not be committed: {error}"
+            ));
+        }
+        info!(
+            request_id = %record.request_id,
+            command_type = %record.command_type,
+            request_fingerprint = %record.request_fingerprint,
+            deduplication_result = "NEW",
+            execution_status = "FAILED",
+            grpc_code = %code_name(status.code()),
+            "gRPC command failed before side effects"
+        );
+        status
+    }
+
+    fn recover_control_command(
+        &self,
+        mut record: CommandRecord,
+        expected_enabled: bool,
+        command: &str,
+    ) -> Result<Response<CommandReply>, Status> {
+        let state = read_control(&self.config.control_file)
+            .map_err(|error| Status::aborted(format!(
+                "request remains IN_PROGRESS; runtime state cannot be reconciled safely: {error}"
+            )))?
+            .ok_or_else(|| Status::aborted(
+                "request remains IN_PROGRESS; runtime state is missing and cannot be reconciled safely"
+            ))?;
+        if state.request_id.as_deref() != Some(record.request_id.as_str())
+            || state.enabled != expected_enabled
+        {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted engine state does not prove this request completed",
+            ));
+        }
+
+        self.emit_command_event(
+            &mut record,
+            json!({
+                "runtime_enabled": expected_enabled,
+                "command": command,
+                "request_id": record.request_id,
+                "recovered_after_restart": true,
+            }),
+        )?;
+        let applied_at_ms = chrono::DateTime::parse_from_rfc3339(&state.updated_at)
+            .ok()
+            .and_then(|value| value.timestamp_millis().try_into().ok())
+            .unwrap_or_else(now_ms);
+        let response = reply(
+            true,
+            command,
+            record.request_id.clone(),
+            if expected_enabled {
+                "runtime trading gate enabled"
+            } else {
+                "runtime trading gate disabled"
+            },
+            applied_at_ms,
+        );
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(&mut record, cached)
+            .map_err(|error| Status::unavailable(format!(
+                "reconciled command result could not be committed: {error}"
+            )))?;
+        Ok(Response::new(response))
+    }
+
+    fn recover_limits_command(
+        &self,
+        mut record: CommandRecord,
+    ) -> Result<Response<CommandReply>, Status> {
+        let limits = read_limits(&self.config.limits_file).map_err(|error| {
+            Status::aborted(format!(
+                "request remains IN_PROGRESS; runtime limits cannot be reconciled safely: {error}"
+            ))
+        })?;
+        if limits.request_id.as_deref() != Some(record.request_id.as_str()) {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted limits do not prove this request completed",
+            ));
+        }
+        self.emit_command_event(
+            &mut record,
+            json!({
+                "command": "update_limits",
+                "request_id": record.request_id,
+                "runtime_limits": limits,
+                "recovered_after_restart": true,
+            }),
+        )?;
+        let response = reply(
+            true,
+            "update_limits",
+            record.request_id.clone(),
+            "runtime risk limits updated",
+            limits.updated_at_ms.unwrap_or_else(now_ms),
+        );
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(&mut record, cached)
+            .map_err(|error| Status::unavailable(format!(
+                "reconciled command result could not be committed: {error}"
+            )))?;
+        Ok(Response::new(response))
+    }
+
+    fn recover_reload_command(
+        &self,
+        mut record: CommandRecord,
+    ) -> Result<Response<CommandReply>, Status> {
+        let raw = fs::read_to_string(&self.config.strategy_reload_file)
+            .map_err(|error| Status::aborted(format!(
+                "request remains IN_PROGRESS; strategy state cannot be reconciled safely: {error}"
+            )))?;
+        let state: Value = serde_json::from_str(&raw)
+            .map_err(|error| Status::aborted(format!(
+                "request remains IN_PROGRESS; strategy state is invalid: {error}"
+            )))?;
+        if state.get("request_id").and_then(Value::as_str)
+            != Some(record.request_id.as_str())
+        {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted strategy state does not prove this request completed",
+            ));
+        }
+        let generation = state
+            .get("generation")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if generation.is_empty() {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted strategy generation is missing",
+            ));
+        }
+        let applied_at_ms = state
+            .get("requested_at_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(now_ms);
+        self.emit_command_event(
+            &mut record,
+            json!({
+                "command": "reload_strategy",
+                "request_id": record.request_id,
+                "strategy_generation": generation,
+                "recovered_after_restart": true,
+            }),
+        )?;
+        let response = reply(
+            true,
+            "reload_strategy",
+            record.request_id.clone(),
+            "strategy reload requested",
+            applied_at_ms,
+        );
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(&mut record, cached)
+            .map_err(|error| Status::unavailable(format!(
+                "reconciled command result could not be committed: {error}"
+            )))?;
+        Ok(Response::new(response))
+    }
+
     fn authorize<T>(&self, request: &Request<T>) -> Result<(), Status> {
         if self.config.token.len() < 32 {
             return Err(Status::unavailable(
@@ -544,6 +895,7 @@ impl EngineControlService {
         Ok(())
     }
 }
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
