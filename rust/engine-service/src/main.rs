@@ -1008,13 +1008,19 @@ fn reply(
     }
 }
 
-fn write_control(path: &Path, enabled: bool, reason: String) -> Result<()> {
+fn write_control(
+    path: &Path,
+    enabled: bool,
+    reason: String,
+    request_id: Option<String>,
+) -> Result<()> {
     let payload = ControlState {
         version: 1,
         enabled,
         updated_at: Utc::now().to_rfc3339(),
         reason,
         source: "rust_grpc_control".to_string(),
+        request_id,
     };
     write_json_atomic(path, &payload)
 }
@@ -1085,6 +1091,90 @@ fn read_strategy_generation(path: &Path) -> String {
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|value| value.get("generation").and_then(Value::as_str).map(str::to_owned))
         .unwrap_or_default()
+}
+
+fn normalize_limits_payload(message: &UpdateLimitsRequest) -> Result<String, Status> {
+    let mut values = BTreeMap::new();
+    for (name, raw) in [
+        ("min_net_edge_bps", message.min_net_edge_bps.as_str()),
+        ("max_slippage_bps", message.max_slippage_bps.as_str()),
+        ("max_trade_size", message.max_trade_size.as_str()),
+        ("max_total_exposure", message.max_total_exposure.as_str()),
+        ("max_daily_loss", message.max_daily_loss.as_str()),
+    ] {
+        let normalized = if raw.trim().is_empty() {
+            None
+        } else {
+            Some(
+                Decimal::from_str_exact(raw.trim())
+                    .map_err(|_| Status::invalid_argument(format!("{name} must be a decimal")))?
+                    .normalize()
+                    .to_string(),
+            )
+        };
+        values.insert(name, normalized);
+    }
+    if values.values().all(Option::is_none) {
+        return Err(Status::invalid_argument(
+            "at least one runtime risk limit must be supplied",
+        ));
+    }
+    serde_json::to_string(&values).map_err(internal)
+}
+
+fn command_reply_from_cached(cached: CachedCommandReply) -> CommandReply {
+    CommandReply {
+        accepted: cached.accepted,
+        command: cached.command,
+        request_id: cached.request_id,
+        detail: cached.detail,
+        applied_at_ms: cached.applied_at_ms,
+    }
+}
+
+fn code_name(code: Code) -> &'static str {
+    match code {
+        Code::Ok => "OK",
+        Code::Cancelled => "CANCELLED",
+        Code::Unknown => "UNKNOWN",
+        Code::InvalidArgument => "INVALID_ARGUMENT",
+        Code::DeadlineExceeded => "DEADLINE_EXCEEDED",
+        Code::NotFound => "NOT_FOUND",
+        Code::AlreadyExists => "ALREADY_EXISTS",
+        Code::PermissionDenied => "PERMISSION_DENIED",
+        Code::ResourceExhausted => "RESOURCE_EXHAUSTED",
+        Code::FailedPrecondition => "FAILED_PRECONDITION",
+        Code::Aborted => "ABORTED",
+        Code::OutOfRange => "OUT_OF_RANGE",
+        Code::Unimplemented => "UNIMPLEMENTED",
+        Code::Internal => "INTERNAL",
+        Code::Unavailable => "UNAVAILABLE",
+        Code::DataLoss => "DATA_LOSS",
+        Code::Unauthenticated => "UNAUTHENTICATED",
+    }
+}
+
+fn status_from_cached(code: &str, detail: String) -> Status {
+    let code = match code {
+        "OK" => Code::Ok,
+        "CANCELLED" => Code::Cancelled,
+        "INVALID_ARGUMENT" => Code::InvalidArgument,
+        "DEADLINE_EXCEEDED" => Code::DeadlineExceeded,
+        "NOT_FOUND" => Code::NotFound,
+        "ALREADY_EXISTS" => Code::AlreadyExists,
+        "PERMISSION_DENIED" => Code::PermissionDenied,
+        "RESOURCE_EXHAUSTED" => Code::ResourceExhausted,
+        "FAILED_PRECONDITION" => Code::FailedPrecondition,
+        "ABORTED" => Code::Aborted,
+        "OUT_OF_RANGE" => Code::OutOfRange,
+        "UNIMPLEMENTED" => Code::Unimplemented,
+        "INTERNAL" => Code::Internal,
+        "UNAVAILABLE" => Code::Unavailable,
+        "DATA_LOSS" => Code::DataLoss,
+        "UNAUTHENTICATED" => Code::Unauthenticated,
+        _ => Code::Unknown,
+    };
+    Status::new(code, detail)
 }
 
 fn merge_limit(
@@ -1288,6 +1378,7 @@ mod boundary_tests {
             updated_at: "2026-10-01T20:00:00Z".to_string(),
             reason: "test".to_string(),
             source: "rust_grpc_control".to_string(),
+            request_id: None,
         };
         fs::write(
             &valid,
