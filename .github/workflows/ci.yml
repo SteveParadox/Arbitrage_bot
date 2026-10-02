@@ -158,10 +158,14 @@ jobs:
       - run: cargo build --manifest-path rust/Cargo.toml -p engine-service
       - run: mkdir -p data/control data/risk data/event-outbox
       - run: cd python && alembic upgrade head
-      - name: Redis event-outbox integration tests
+      - name: Redis event-outbox outage test
         run: >-
           cargo test --manifest-path rust/Cargo.toml -p event-bus
           redis_pause_preserves_critical_event_and_recovers
+          -- --ignored --nocapture
+      - name: Redis event-outbox restart test
+        run: >-
+          cargo test --manifest-path rust/Cargo.toml -p event-bus
           restart_recovery_delivers_same_event_ids_to_redis_when_enabled
           -- --ignored --nocapture
       - name: PostgreSQL event idempotency integration
