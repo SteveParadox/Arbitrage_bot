@@ -68,7 +68,7 @@ impl ShadowConfig {
                 .to_string(),
             ));
         }
-        if self.latency_ms.is_empty() || self.latency_ms.iter().any(|value| *value == 0) {
+        if self.latency_ms.is_empty() || self.latency_ms.contains(&0) {
             return Err(ShadowError::InvalidConfig(
                 "latency_ms must contain positive delays".to_string(),
             ));
