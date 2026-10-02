@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -38,9 +39,19 @@ class TradingCommand(BaseModel):
         min_length=1,
         max_length=256,
     )
+    request_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+    )
 
 
 class RiskLimitsCommand(BaseModel):
+    request_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+    )
     min_net_edge_bps: Decimal | None = Field(default=None, ge=0)
     max_slippage_bps: Decimal | None = Field(default=None, ge=0)
     max_trade_size: Decimal | None = Field(default=None, gt=0)
@@ -229,12 +240,19 @@ async def start_trading(command: TradingCommand) -> dict[str, Any]:
             ),
         )
 
+    request_id = command.request_id or uuid.uuid4().hex
     try:
-        result = await engine_grpc_client.start(command.reason)
+        result = await engine_grpc_client.start(
+            command.reason,
+            request_id=request_id,
+        )
     except EngineCommandError as error:
         raise HTTPException(
             status_code=_command_http_status(error),
-            detail=f"Rust engine command failed: {error}",
+            detail={
+                "message": f"Rust engine command failed: {error}",
+                "request_id": request_id,
+            },
         ) from error
 
     return {
@@ -249,8 +267,12 @@ async def start_trading(command: TradingCommand) -> dict[str, Any]:
     dependencies=[Depends(require_control_auth)],
 )
 async def stop_trading(command: TradingCommand) -> dict[str, Any]:
+    request_id = command.request_id or uuid.uuid4().hex
     try:
-        result = await engine_grpc_client.stop(command.reason)
+        result = await engine_grpc_client.stop(
+            command.reason,
+            request_id=request_id,
+        )
         return {
             "status": "stopped",
             "effective_enabled": False,
@@ -261,11 +283,13 @@ async def stop_trading(command: TradingCommand) -> dict[str, Any]:
         fallback = write_control_state(
             enabled=False,
             reason=f"gRPC stop fallback: {command.reason}",
+            request_id=request_id,
         )
         return {
             "status": "stop_requested_fallback",
             "effective_enabled": None,
             "engine_state_confirmed": False,
+            "request_id": request_id,
             "warning": (
                 "Rust gRPC did not confirm the stop command. A local fail-closed "
                 "control state was written, but engine state remains unconfirmed: "
@@ -280,7 +304,8 @@ async def stop_trading(command: TradingCommand) -> dict[str, Any]:
     dependencies=[Depends(require_control_auth)],
 )
 async def update_limits(command: RiskLimitsCommand) -> dict[str, Any]:
-    values = command.model_dump()
+    request_id = command.request_id or uuid.uuid4().hex
+    values = command.model_dump(exclude={"request_id"})
     if not any(value is not None for value in values.values()):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -291,12 +316,16 @@ async def update_limits(command: RiskLimitsCommand) -> dict[str, Any]:
             **{
                 key: "" if value is None else str(value)
                 for key, value in values.items()
-            }
+            },
+            request_id=request_id,
         )
     except EngineCommandError as error:
         raise HTTPException(
             status_code=_command_http_status(error),
-            detail=f"Rust engine command failed: {error}",
+            detail={
+                "message": f"Rust engine command failed: {error}",
+                "request_id": request_id,
+            },
         ) from error
     return {"status": "updated", "command": result.__dict__}
 
@@ -306,12 +335,19 @@ async def update_limits(command: RiskLimitsCommand) -> dict[str, Any]:
     dependencies=[Depends(require_control_auth)],
 )
 async def reload_strategy(command: TradingCommand) -> dict[str, Any]:
+    request_id = command.request_id or uuid.uuid4().hex
     try:
-        result = await engine_grpc_client.reload_strategy(command.reason)
+        result = await engine_grpc_client.reload_strategy(
+            command.reason,
+            request_id=request_id,
+        )
     except EngineCommandError as error:
         raise HTTPException(
             status_code=_command_http_status(error),
-            detail=f"Rust engine command failed: {error}",
+            detail={
+                "message": f"Rust engine command failed: {error}",
+                "request_id": request_id,
+            },
         ) from error
     return {"status": "reload_requested", "command": result.__dict__}
 
