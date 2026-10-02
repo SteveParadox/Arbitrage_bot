@@ -377,5 +377,7 @@ data-quality counters
 FastAPI response contract and query validation
 ```
 
-The integration-style analytics tests use an isolated SQLAlchemy database so the aggregation logic
-is exercised through the same ORM queries used by the API.
+Fast analytics tests use an isolated SQLAlchemy database for deterministic aggregation coverage.
+CI also runs `test_performance_analytics_postgres.py` against PostgreSQL 16 after Alembic migrations,
+covering PostgreSQL JSON/Numeric behavior, engine/canary deduplication, exact opportunity attribution,
+turnover aggregation, distributions, and the Phase 17 data-quality contract.
