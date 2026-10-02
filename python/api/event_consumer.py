@@ -259,7 +259,11 @@ def _persist(
             )
             try:
                 with session.begin_nested():
-                    session.execute(statement)
+                    result = session.execute(statement)
+                    if result.rowcount == 0:
+                        _CONSUMER_METRICS[
+                            "database_duplicate_events_total"
+                        ] += 1
             except DataError as error:
                 rejected.append((event, str(error)))
         session.commit()
