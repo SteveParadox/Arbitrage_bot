@@ -1,3 +1,7 @@
+// tonic::Status is the required error type at the gRPC service boundary; boxing it would
+// complicate the control API without reducing runtime risk.
+#![allow(clippy::result_large_err)]
+
 use std::{
     collections::BTreeMap,
     env,
