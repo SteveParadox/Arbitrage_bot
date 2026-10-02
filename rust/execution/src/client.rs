@@ -35,10 +35,12 @@ impl BybitExecutionClient {
             .timeout(config.request_timeout)
             .build()
             .map_err(|error| ExecutionError::InvalidConfig(error.to_string()))?;
+        let events = EventPublisher::try_from_env("execution")
+            .map_err(|error| ExecutionError::InvalidConfig(error.to_string()))?;
         Ok(Self {
             config,
             http,
-            events: EventPublisher::from_env("execution"),
+            events,
         })
     }
 
@@ -52,6 +54,9 @@ impl BybitExecutionClient {
         prepared: &PreparedExecution,
         request: &ExecutionOrderRequest,
     ) -> Result<PlaceOrderAck, ExecutionError> {
+        self.events
+            .ensure_critical_ready()
+            .map_err(|error| ExecutionError::EventPipeline(error.to_string()))?;
         self.validate_execution_environment(prepared)?;
         risk_engine
             .validate_approval(
@@ -259,7 +264,8 @@ impl BybitExecutionClient {
             coins: entries,
             synchronized_at_ms: time,
         };
-        self.events.publish(
+        self.events
+            .publish_critical(
             "balance.updated",
             json!({
                 "account_type": snapshot.account_type.clone(),
@@ -279,7 +285,8 @@ impl BybitExecutionClient {
                     })
                 }).collect::<Vec<_>>(),
             }),
-        );
+        )
+        .map_err(|error| ExecutionError::EventPipeline(error.to_string()))?;
         Ok(snapshot)
     }
 
@@ -300,6 +307,14 @@ impl BybitExecutionClient {
         prepared: &PreparedExecution,
         request: &ExecutionOrderRequest,
     ) -> Result<ExecutionResult, ExecutionAttemptError> {
+        self.events
+            .ensure_critical_ready()
+            .map_err(|error| ExecutionAttemptError {
+                stage: ExecutionStage::Submission,
+                place_ack: None,
+                source: ExecutionError::EventPipeline(error.to_string()),
+            })?;
+
         let result = self
             .execute_with_risk_tracking_detailed_inner(
                 risk_engine,
@@ -308,12 +323,12 @@ impl BybitExecutionClient {
             )
             .await;
 
-        match &result {
+        let publish_result = match &result {
             Ok(execution)
                 if execution.monitor.state.fully_filled
                     && execution.monitor.state.fills_confirmed =>
             {
-                self.events.publish(
+                self.events.publish_critical(
                     "order.executed",
                     json!({
                         "trade_id": prepared.trade_id(),
@@ -332,42 +347,62 @@ impl BybitExecutionClient {
                             .collect::<BTreeMap<_, _>>(),
                         "updated_at_ms": execution.monitor.state.updated_at_ms,
                     }),
-                );
+                )
             }
-            Ok(execution) => {
-                self.events.publish(
-                    "order.failed",
-                    json!({
-                        "trade_id": prepared.trade_id(),
-                        "symbol": request.symbol.clone(),
-                        "side": format!("{:?}", request.side),
-                        "requested_quantity": request.requested_quantity.to_string(),
-                        "filled_quantity": execution.monitor.state.filled_quantity.to_string(),
-                        "remaining_quantity": execution.monitor.state.remaining_quantity.to_string(),
-                        "status": execution.monitor.state.status.clone(),
-                        "fully_filled": execution.monitor.state.fully_filled,
-                        "fills_confirmed": execution.monitor.state.fills_confirmed,
-                        "timed_out": execution.monitor.timed_out,
-                        "reason": "execution did not finish as a confirmed full fill",
-                        "updated_at_ms": execution.monitor.state.updated_at_ms,
-                    }),
-                );
-            }
-            Err(error) => {
-                self.events.publish(
-                    "order.failed",
-                    json!({
-                        "trade_id": prepared.trade_id(),
-                        "symbol": request.symbol.clone(),
-                        "side": format!("{:?}", request.side),
-                        "requested_quantity": request.requested_quantity.to_string(),
-                        "stage": format!("{:?}", error.stage),
-                        "error": error.source.to_string(),
-                        "order_state_unknown": error.order_state_unknown(),
-                    }),
-                );
-            }
+            Ok(execution) => self.events.publish_critical(
+                "order.failed",
+                json!({
+                    "trade_id": prepared.trade_id(),
+                    "symbol": request.symbol.clone(),
+                    "side": format!("{:?}", request.side),
+                    "requested_quantity": request.requested_quantity.to_string(),
+                    "filled_quantity": execution.monitor.state.filled_quantity.to_string(),
+                    "remaining_quantity": execution.monitor.state.remaining_quantity.to_string(),
+                    "status": execution.monitor.state.status.clone(),
+                    "fully_filled": execution.monitor.state.fully_filled,
+                    "fills_confirmed": execution.monitor.state.fills_confirmed,
+                    "timed_out": execution.monitor.timed_out,
+                    "reason": "execution did not finish as a confirmed full fill",
+                    "updated_at_ms": execution.monitor.state.updated_at_ms,
+                }),
+            ),
+            Err(error) => self.events.publish_critical(
+                "order.failed",
+                json!({
+                    "trade_id": prepared.trade_id(),
+                    "symbol": request.symbol.clone(),
+                    "side": format!("{:?}", request.side),
+                    "requested_quantity": request.requested_quantity.to_string(),
+                    "stage": format!("{:?}", error.stage),
+                    "error": error.source.to_string(),
+                    "order_state_unknown": error.order_state_unknown(),
+                }),
+            ),
+        };
+
+        if let Err(publish_error) = publish_result {
+            let (stage, place_ack, original) = match &result {
+                Ok(execution) => (
+                    ExecutionStage::Monitoring,
+                    Some(execution.place_ack.clone()),
+                    "order execution completed but its critical event was not durably accepted"
+                        .to_string(),
+                ),
+                Err(error) => (
+                    error.stage,
+                    error.place_ack.clone(),
+                    format!("original execution outcome: {error}"),
+                ),
+            };
+            return Err(ExecutionAttemptError {
+                stage,
+                place_ack,
+                source: ExecutionError::EventPipeline(format!(
+                    "{publish_error}; {original}"
+                )),
+            });
         }
+
         result
     }
 
