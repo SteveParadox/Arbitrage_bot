@@ -170,6 +170,11 @@ export type PerformanceAnalytics = {
     actual_profit_total: number;
     attempt_to_actual_known_pct: number | null;
     aggregate_profit_capture_pct: number | null;
+    matched_opportunity_windows: number;
+    matched_actual_cycles: number;
+    matched_expected_profit_total: number;
+    matched_actual_profit_total: number;
+    matched_profit_capture_pct: number | null;
     population_note: string;
   };
   distributions: {
@@ -199,6 +204,7 @@ export type PerformanceAnalytics = {
     engine_events_total: number;
     engine_events_sampled: boolean;
     engine_turnover_fallbacks: number;
+    engine_attributed_terminal_events: number;
     micro_canary_cycles: number;
     micro_canary_cycles_loaded: number;
     micro_canary_cycles_total: number;
