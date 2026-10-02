@@ -813,7 +813,7 @@ export function App() {
                   analytics.window.base_asset,
                   4,
                 )}
-                detail={analytics.profit.turnover_basis}
+                detail="Unwind-aware base-flow estimate"
                 tone={toneForNumber(
                   analytics.profit.profit_per_1000_turnover ?? 0,
                 )}
