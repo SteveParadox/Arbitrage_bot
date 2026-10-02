@@ -37,6 +37,8 @@ services:
     environment:
       ARB_ENGINE_GRPC_ADDR: 0.0.0.0:50051
       ARB_REDIS_URL: redis://redis:6379/0
+      ARB_EVENT_OUTBOX_PATH: /app/data/event-outbox
+      ARB_GRPC_IDEMPOTENCY_STORE: /app/data/control/grpc-idempotency
       ARB_RISK_CONFIG: /app/shared/config/risk.json
       ARB_TRIANGLE_CONFIG: /app/shared/config/triangles.json
       ARB_CONTROL_STATE_FILE: /app/data/control/trading_state.json
@@ -48,6 +50,7 @@ services:
       - ../shared:/app/shared:ro
       - ../data/risk:/app/data/risk:ro
       - ../data/control:/app/data/control
+      - ../data/event-outbox:/app/data/event-outbox
     depends_on:
       redis:
         condition: service_healthy
