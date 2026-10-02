@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
@@ -131,11 +132,34 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
     grpc_status: dict[str, Any]
     try:
         engine = await engine_grpc_client.status()
+        try:
+            detail_payload = json.loads(engine.detail)
+        except (TypeError, ValueError):
+            detail_payload = {"summary": engine.detail}
+        event_pipeline = detail_payload.get("event_pipeline", {})
         grpc_status = {
             "status": "online" if engine.healthy else "degraded",
             "runtime_enabled": engine.runtime_enabled,
             "strategy_generation": engine.strategy_generation,
-            "detail": engine.detail,
+            "detail": detail_payload.get("summary", engine.detail),
+            "event_pipeline_status": event_pipeline.get(
+                "event_pipeline_status",
+                "unknown",
+            ),
+            "critical_event_backlog": event_pipeline.get(
+                "critical_events_pending",
+            ),
+            "oldest_pending_event_age_ms": event_pipeline.get(
+                "oldest_pending_event_age_ms",
+            ),
+            "event_pipeline": event_pipeline,
+            "grpc_idempotency_store_status": detail_payload.get(
+                "grpc_idempotency_store_status",
+                "unknown",
+            ),
+            "grpc_idempotency_in_progress": detail_payload.get(
+                "grpc_idempotency_in_progress",
+            ),
         }
     except EngineCommandError as error:
         grpc_status = {
@@ -143,6 +167,12 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
             "runtime_enabled": control["enabled"],
             "strategy_generation": "",
             "detail": str(error),
+            "event_pipeline_status": "unknown",
+            "critical_event_backlog": None,
+            "oldest_pending_event_age_ms": None,
+            "event_pipeline": {},
+            "grpc_idempotency_store_status": "unknown",
+            "grpc_idempotency_in_progress": None,
         }
 
     effective = bool(
