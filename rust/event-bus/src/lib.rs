@@ -940,11 +940,80 @@ mod tests {
     }
 
     #[test]
-    fn restart_recovery_delivers_same_event_ids_to_redis_when_enabled() {
-        if env::var("ARB_RUN_REDIS_INTEGRATION").ok().as_deref() != Some("1") {
-            return;
-        }
+    #[ignore = "requires Redis integration service"]
+    fn redis_pause_preserves_critical_event_and_recovers() {
+        let redis_url = env::var("ARB_REDIS_URL")
+            .unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string());
+        let stream = format!("arb.events.test.pause.{}", Uuid::new_v4());
+        let path = temp_outbox("redis-pause");
 
+        let client = redis::Client::open(redis_url.clone()).unwrap();
+        let mut connection = client.get_connection().unwrap();
+        let _: String = redis::cmd("CLIENT")
+            .arg("PAUSE")
+            .arg(600)
+            .arg("ALL")
+            .query(&mut connection)
+            .unwrap();
+
+        let publisher = EventPublisher::from_config(
+            "test-pause".to_string(),
+            PublisherConfig {
+                redis_url: redis_url.clone(),
+                stream: stream.clone(),
+                maxlen: 10_000,
+                capacity: 1,
+                outbox_path: path.clone(),
+                retry_initial_ms: 25,
+                retry_max_ms: 100,
+                max_pending: 100,
+            },
+        )
+        .unwrap();
+
+        let event_id = publisher
+            .publish_critical(
+                "trade.executed",
+                serde_json::json!({"trade_id": "pause-test"}),
+            )
+            .unwrap();
+
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(publisher.outbox.pending_count(), 1);
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while publisher.outbox.pending_count() != 0
+            && std::time::Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(25));
+        }
+        assert_eq!(publisher.outbox.pending_count(), 0);
+
+        let rows: Vec<(String, Vec<(String, String)>)> = redis::cmd("XRANGE")
+            .arg(&stream)
+            .arg("-")
+            .arg("+")
+            .query(&mut connection)
+            .unwrap();
+        let delivered = rows
+            .iter()
+            .filter_map(|(_, fields)| {
+                fields
+                    .iter()
+                    .find(|(key, _)| key == "event_id")
+                    .map(|(_, value)| value.clone())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(delivered, vec![event_id]);
+
+        let _: redis::RedisResult<i64> =
+            redis::cmd("DEL").arg(&stream).query(&mut connection);
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[test]
+    #[ignore = "requires Redis integration service"]
+    fn restart_recovery_delivers_same_event_ids_to_redis_when_enabled() {
         let redis_url = env::var("ARB_REDIS_URL")
             .unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string());
         let stream = format!("arb.events.test.{}", Uuid::new_v4());
