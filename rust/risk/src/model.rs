@@ -83,6 +83,20 @@ pub struct RiskDecision {
 }
 
 impl RiskDecision {
+    pub(crate) fn new(
+        trade_id: String,
+        approved: bool,
+        checks: Vec<RiskCheckResult>,
+        approval: Option<RiskApproval>,
+    ) -> Self {
+        Self {
+            trade_id,
+            approved,
+            checks,
+            approval,
+        }
+    }
+
     pub fn into_approval(self) -> Option<RiskApproval> {
         self.approval
     }
@@ -103,6 +117,20 @@ pub struct RiskApproval {
 }
 
 impl RiskApproval {
+    pub(crate) fn new(
+        trade_id: String,
+        approved_at_ms: u64,
+        expires_at_ms: u64,
+        kind: RiskApprovalKind,
+    ) -> Self {
+        Self {
+            trade_id,
+            approved_at_ms,
+            expires_at_ms,
+            kind,
+        }
+    }
+
     pub fn trade_id(&self) -> &str {
         &self.trade_id
     }
