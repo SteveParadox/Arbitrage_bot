@@ -704,7 +704,8 @@ where
                         "status": format!("{:?}", report.status),
                         "leg_count": report.legs.len(),
                         "unwind_count": report.unwind_orders.len(),
-                        "estimated_turnover_base": estimated_report_turnover_base(report).to_string(),
+                        "estimated_turnover_base": estimated_report_turnover_base(report)
+                            .to_string(),
                         "turnover_basis": "base-flow estimate with cross-leg fill-ratio proxy",
                         "execution_time_ms": execution_time_ms,
                     }),
@@ -724,7 +725,8 @@ where
                     "failure_reason": report.failure_reason.clone(),
                     "leg_count": report.legs.len(),
                     "unwind_count": report.unwind_orders.len(),
-                    "estimated_turnover_base": estimated_report_turnover_base(report).to_string(),
+                    "estimated_turnover_base": estimated_report_turnover_base(report)
+                        .to_string(),
                     "turnover_basis": "base-flow estimate with cross-leg fill-ratio proxy",
                     "execution_time_ms": execution_time_ms,
                 }),
