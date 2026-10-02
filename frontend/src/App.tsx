@@ -160,6 +160,7 @@ function DistributionCard({
     1,
     ...distribution.bins.map((item) => item.count),
   );
+  const sampled = distribution.sample_count < distribution.count;
 
   return (
     <article className="analytics-card">
@@ -168,7 +169,11 @@ function DistributionCard({
           <div className="eyebrow">DISTRIBUTION</div>
           <h3>{title}</h3>
         </div>
-        <span>{distribution.count.toLocaleString()} samples</span>
+        <span>
+          {sampled
+            ? `${distribution.sample_count.toLocaleString()} sampled from ${distribution.count.toLocaleString()}`
+            : `${distribution.count.toLocaleString()} samples`}
+        </span>
       </div>
       <div className="distribution-stats">
         <div>
@@ -802,13 +807,13 @@ export function App() {
                 )}
               />
               <KpiCard
-                label="Profit per 1,000 turnover"
+                label="Profit per $1,000 turnover"
                 value={amount(
                   analytics.profit.profit_per_1000_turnover,
                   analytics.window.base_asset,
                   4,
                 )}
-                detail="Estimated three-leg turnover basis"
+                detail={analytics.profit.turnover_basis}
                 tone={toneForNumber(
                   analytics.profit.profit_per_1000_turnover ?? 0,
                 )}
@@ -856,7 +861,7 @@ export function App() {
                 <FunnelStage
                   label="Trade attempted"
                   count={analytics.funnel.trade_attempted}
-                  detail="Distinct terminal/canary trade ids"
+                  detail="Distinct route attempts and unique canary trades"
                 />
                 <FunnelStage
                   label="Actual profit"
@@ -882,6 +887,9 @@ export function App() {
                     {rate(analytics.funnel.aggregate_profit_capture_pct)}
                   </strong>
                 </span>
+                <small className="funnel-population-note">
+                  {analytics.funnel.population_note}
+                </small>
               </div>
             </article>
 
@@ -995,8 +1003,17 @@ export function App() {
                 {analytics.data_quality.engine_events_loaded.toLocaleString()} of{" "}
                 {analytics.data_quality.engine_events_total.toLocaleString()};
                 canary cycles loaded{" "}
-                {analytics.data_quality.micro_canary_cycles.toLocaleString()} of{" "}
+                {analytics.data_quality.micro_canary_cycles_loaded.toLocaleString()} of{" "}
                 {analytics.data_quality.micro_canary_cycles_total.toLocaleString()}.
+              </div>
+            ) : null}
+
+            {analytics.data_quality.engine_turnover_fallbacks > 0 ? (
+              <div className="analytics-warning">
+                {analytics.data_quality.engine_turnover_fallbacks.toLocaleString()}{" "}
+                historical engine cycles use the legacy turnover estimate
+                based on starting capital × (legs + unwinds). New coordinator
+                events use the unwind-aware base-flow estimate.
               </div>
             ) : null}
 
