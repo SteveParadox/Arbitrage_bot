@@ -14,7 +14,7 @@ from api.engine_client import EngineCommandError
 
 
 class FakeEngineClient:
-    async def start(self, _reason: str):
+    async def start(self, _reason: str, *, request_id: str | None = None):
         return SimpleNamespace(
             accepted=True,
             command="start_trading",
@@ -23,7 +23,7 @@ class FakeEngineClient:
             applied_at_ms=1,
         )
 
-    async def stop(self, _reason: str):
+    async def stop(self, _reason: str, *, request_id: str | None = None):
         return SimpleNamespace(
             accepted=True,
             command="stop_trading",
@@ -41,7 +41,7 @@ class FakeEngineClient:
             applied_at_ms=3,
         )
 
-    async def reload_strategy(self, _reason: str):
+    async def reload_strategy(self, _reason: str, *, request_id: str | None = None):
         return SimpleNamespace(
             accepted=True,
             command="reload_strategy",
@@ -163,7 +163,7 @@ def test_stop_falls_back_fail_closed_when_grpc_is_down(
     tmp_path: Path,
 ) -> None:
     class BrokenEngine:
-        async def stop(self, _reason: str):
+        async def stop(self, _reason: str, *, request_id: str | None = None):
             raise EngineCommandError("unavailable")
 
     path = tmp_path / "control" / "trading_state.json"
