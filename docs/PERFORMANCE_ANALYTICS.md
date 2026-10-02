@@ -59,11 +59,27 @@ Exact exchange turnover is not reconstructable from every historical record curr
 
 Phase 17 therefore labels this as an estimate.
 
-For engine terminal events:
+For new engine terminal events, the Rust coordinator emits `estimated_turnover_base`.
+The estimate includes normal route fills and unwind fills:
 
 ```text
-estimated turnover = starting capital × completed leg count
+base-asset input leg      -> actual base input spent
+base-asset output leg     -> actual base output received
+cross-asset leg           -> starting capital × actual fill ratio
+unwind returning to base  -> actual base output received
 ```
+
+This makes the estimate unwind-aware and scales partially filled cross legs instead of assuming
+that every reported leg moved a full cycle notional.
+
+Historical engine events created before `estimated_turnover_base` existed fall back to:
+
+```text
+estimated turnover = starting capital × (completed legs + unwind orders)
+```
+
+The API reports how many terminal engine events used that historical fallback under
+`data_quality.engine_turnover_fallbacks`.
 
 For reconciled three-leg micro-canary cycles:
 
@@ -221,6 +237,10 @@ Aggregate opportunity counts and expected-profit sums remain database aggregates
 micro-canary metrics are sampled. When `profit_metrics_sampled=true`, the dashboard displays an
 explicit warning rather than presenting the partial totals as complete economics.
 
+Every distribution card also compares `sample_count` with `count`. When a histogram or quantile
+set is sampled, the dashboard shows `N sampled from M` instead of incorrectly calling the full
+population the number of analyzed samples.
+
 ## Dashboard
 
 The TypeScript dashboard refreshes core operational telemetry every five seconds.
@@ -255,7 +275,9 @@ sampled distribution flags
 engine terminal event count
 engine event loaded/total counts
 engine-event sampling flag
+engine turnover historical-fallback count
 micro-canary loaded/total counts
+micro-canary cycles retained after engine/canary deduplication
 profit-metric sampling flag
 deduplicated canary IDs
 orphan order attempts without terminal route events
@@ -313,5 +335,31 @@ The first measures how many distinct attempted trade IDs have a known realized P
 The second compares aggregate realized P&L with aggregate maximum expected P&L across profitable
 opportunity windows in the selected period. It is a diagnostic, not a one-to-one attribution,
 because opportunity windows and execution trade IDs are distinct populations. The API returns this
-caveat as `funnel.population_note` rather than pretending every execution can currently be joined
-back to one exact opportunity-window record.
+caveat as `funnel.population_note`, and the dashboard renders that caveat directly beneath the
+funnel diagnostics rather than visually implying one-to-one attribution.
+
+A true opportunity-to-execution capture ratio still requires an execution runner to carry a stable
+opportunity identifier from selection through the coordinator. The repository deliberately does
+not invent that join while the autonomous live-execution runner does not yet exist.
+
+## Verification coverage
+
+Phase 17 tests now cover more than histogram helpers. The test suite exercises:
+
+```text
+observed and expected opportunity aggregation
+explicit trade.attempted counting
+terminal-event fallback for historical attempts
+engine/canary trade-ID deduplication
+known and unknown realized outcomes
+profit per cycle
+unwind-aware and historical turnover handling
+profit per $1,000 turnover
+base funnel counts and conversion diagnostics
+slippage and survival distributions
+data-quality counters
+FastAPI response contract and query validation
+```
+
+The integration-style analytics tests use an isolated SQLAlchemy database so the aggregation logic
+is exercised through the same ORM queries used by the API.
