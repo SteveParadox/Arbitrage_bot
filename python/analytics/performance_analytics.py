@@ -110,6 +110,7 @@ def build_performance_analytics(
         orphan_order_attempts,
         attempted_event_count,
         engine_events_loaded,
+        turnover_fallback_count,
     ) = _engine_cycles(
         db,
         start_ms=start_ms,
@@ -250,7 +251,9 @@ def build_performance_analytics(
                 else None
             ),
             "turnover_basis": (
-                "estimated: starting capital multiplied by completed/attempted leg count; "
+                "estimated: new engine events use base-asset execution flows plus a "
+                "fill-ratio proxy for cross legs and include unwind orders; older "
+                "engine events fall back to starting capital × (legs + unwinds); "
                 "manual canary cycles assume three legs"
             ),
             "daily": daily,
@@ -364,7 +367,9 @@ def build_performance_analytics(
             "engine_events_sampled": (
                 engine_events_loaded < int(engine_event_total)
             ),
+            "engine_turnover_fallbacks": turnover_fallback_count,
             "micro_canary_cycles": len(unique_canary_cycles),
+            "micro_canary_cycles_loaded": len(canary_cycles),
             "micro_canary_cycles_total": int(canary_cycle_total),
             "micro_canary_cycles_sampled": (
                 len(canary_cycles) < int(canary_cycle_total)
@@ -412,7 +417,7 @@ def _engine_cycles(
     start_ms: int,
     base_asset: str,
     limit: int,
-) -> tuple[list[ActualCycle], set[str], int, int, int]:
+) -> tuple[list[ActualCycle], set[str], int, int, int, int]:
     rows = db.scalars(
         select(EngineEvent)
         .where(
@@ -436,6 +441,7 @@ def _engine_cycles(
     attempted_all_ids: set[str] = set()
     attempted_engine_ids: set[str] = set()
     attempted_event_count = 0
+    turnover_fallback_count = 0
     terminal: dict[str, ActualCycle] = {}
 
     for event in reversed(rows):
@@ -464,11 +470,13 @@ def _engine_cycles(
             else event.payload.get("realized_base_pnl")
         )
         leg_count = _int(event.payload.get("leg_count"))
-        estimated_turnover = (
-            abs(starting) * leg_count
-            if starting is not None and leg_count > 0
-            else Decimal.ZERO
+        estimated_turnover, used_turnover_fallback = _engine_turnover(
+            event.payload,
+            starting=starting,
+            leg_count=leg_count,
         )
+        if used_turnover_fallback:
+            turnover_fallback_count += 1
         attempted_engine_ids.add(trade_id)
         terminal[trade_id] = ActualCycle(
             trade_id=trade_id,
@@ -496,7 +504,27 @@ def _engine_cycles(
         orphan_order_attempts,
         attempted_event_count,
         len(rows),
+        turnover_fallback_count,
     )
+
+
+def _engine_turnover(
+    payload: dict[str, Any],
+    *,
+    starting: Decimal | None,
+    leg_count: int,
+) -> tuple[Decimal, bool]:
+    explicit = _decimal(payload.get("estimated_turnover_base"))
+    if explicit is not None and explicit > 0:
+        return abs(explicit), False
+
+    unwind_count = _int(payload.get("unwind_count"))
+    order_count = leg_count + unwind_count
+    if starting is None or order_count <= 0:
+        return Decimal.ZERO, True
+
+    return abs(starting) * order_count, True
+
 
 def _canary_cycles(
     db: Session,
