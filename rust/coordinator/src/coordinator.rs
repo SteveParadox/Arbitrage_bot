@@ -704,6 +704,8 @@ where
                         "status": format!("{:?}", report.status),
                         "leg_count": report.legs.len(),
                         "unwind_count": report.unwind_orders.len(),
+                        "estimated_turnover_base": estimated_report_turnover_base(report).to_string(),
+                        "turnover_basis": "base-flow estimate with cross-leg fill-ratio proxy",
                         "execution_time_ms": execution_time_ms,
                     }),
                 )
@@ -722,6 +724,8 @@ where
                     "failure_reason": report.failure_reason.clone(),
                     "leg_count": report.legs.len(),
                     "unwind_count": report.unwind_orders.len(),
+                    "estimated_turnover_base": estimated_report_turnover_base(report).to_string(),
+                    "turnover_basis": "base-flow estimate with cross-leg fill-ratio proxy",
                     "execution_time_ms": execution_time_ms,
                 }),
             ),
@@ -915,6 +919,53 @@ fn engage_unresolved_kill_switch(
     risk_engine
         .engage_manual_kill_switch(reason, current_time_ms())
         .map_err(|error| CoordinatorError::Risk(error.to_string()))
+}
+
+fn estimated_report_turnover_base(report: &RouteExecutionReport) -> Decimal {
+    let starting_amount = nonnegative_decimal(report.starting_amount);
+    let mut turnover = Decimal::ZERO;
+
+    for leg in &report.legs {
+        if leg.filled_quantity <= Decimal::ZERO {
+            continue;
+        }
+
+        let base_equivalent = if leg.from_asset == report.base_asset {
+            nonnegative_decimal(leg.actual_input_spent)
+        } else if leg.to_asset == report.base_asset {
+            nonnegative_decimal(leg.actual_output_received)
+        } else if leg.requested_quantity > Decimal::ZERO
+            && starting_amount > Decimal::ZERO
+        {
+            let ratio = leg.filled_quantity / leg.requested_quantity;
+            let capped_ratio = if ratio > Decimal::ONE {
+                Decimal::ONE
+            } else {
+                ratio
+            };
+            starting_amount * capped_ratio
+        } else {
+            Decimal::ZERO
+        };
+
+        turnover += base_equivalent;
+    }
+
+    for unwind in &report.unwind_orders {
+        if unwind.filled_quantity > Decimal::ZERO {
+            turnover += nonnegative_decimal(unwind.output_base_received);
+        }
+    }
+
+    turnover
+}
+
+fn nonnegative_decimal(value: Decimal) -> Decimal {
+    if value < Decimal::ZERO {
+        -value
+    } else {
+        value
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
