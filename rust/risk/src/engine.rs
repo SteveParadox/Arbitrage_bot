@@ -9,10 +9,12 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    BreakerKind, CircuitBreakerState, EmergencyUnwindIntent, PersistentRiskState,
-    ProposedOrderLeg, RiskApproval, RiskApprovalKind, RiskCheck, RiskCheckResult, RiskConfig,
-    RiskContext, RiskDecision, RiskError, RiskStatus, ServiceHealth, TradeIntent,
+    BreakerKind, CircuitBreakerState, EmergencyUnwindIntent, ProposedOrderLeg, RiskApproval,
+    RiskApprovalKind, RiskCheck, RiskCheckResult, RiskConfig, RiskContext, RiskDecision, RiskError,
+    RiskStatus, ServiceHealth, TradeIntent,
 };
+
+use crate::model::PersistentRiskState;
 
 pub struct RiskEngine {
     config: RiskConfig,
