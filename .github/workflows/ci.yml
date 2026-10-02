@@ -90,6 +90,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: alembic upgrade head
+      - name: Phase 17 PostgreSQL analytics integration
+        run: pytest tests/test_performance_analytics_postgres.py -q
       - run: pytest tests/test_opportunity_postgres.py
 
 
