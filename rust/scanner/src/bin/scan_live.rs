@@ -33,7 +33,8 @@ fn main() -> Result<()> {
     let mut scanner = ArbitrageScanner::new(triangle_config, scanner_settings, profitability)
         .map_err(anyhow::Error::msg)?;
     let mut recorder = NdjsonRecorder::open(&record_path)?;
-    let events = EventPublisher::from_env("scanner");
+    let events = EventPublisher::try_from_env("scanner")
+        .map_err(|error| anyhow::anyhow!("failed to initialize event publisher: {error}"))?;
     let reload_path = std::env::var("ARB_STRATEGY_RELOAD_FILE")
         .map(|value| resolve_path(&repo_root, &value))
         .unwrap_or_else(|_| repo_root.join("data/control/strategy_reload.json"));
