@@ -39,12 +39,14 @@ where
         authorizer: A,
     ) -> Result<Self, CoordinatorError> {
         config.validate()?;
+        let events = EventPublisher::try_from_env("coordinator")
+            .map_err(|error| CoordinatorError::InvalidConfig(error.to_string()))?;
         Ok(Self {
             config,
             venue,
             planner,
             authorizer,
-            events: EventPublisher::from_env("coordinator"),
+            events,
         })
     }
 
@@ -55,6 +57,9 @@ where
         route: &TriangleRoute,
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
+        self.events
+            .ensure_critical_ready()
+            .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
         let started = Instant::now();
         let result = self
             .execute_route_inner(
@@ -65,14 +70,17 @@ where
             )
             .await;
         let execution_time_ms = started.elapsed().as_millis() as u64;
-        self.publish_trade_event(
+        let event_result = self.publish_trade_event(
             trade_id,
             route,
             starting_amount,
             execution_time_ms,
             &result,
         );
-        result
+        match event_result {
+            Ok(()) => result,
+            Err(error) => Err(error),
+        }
     }
 
     async fn execute_route_inner(
@@ -83,7 +91,8 @@ where
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
         validate_route(route, trade_id, starting_amount)?;
-        self.events.publish(
+        self.events
+            .publish_critical(
             "trade.attempted",
             json!({
                 "trade_id": trade_id,
@@ -93,7 +102,8 @@ where
                 "starting_amount": starting_amount.to_string(),
                 "asset_path": route.assets.clone(),
             }),
-        );
+        )
+        .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
 
         let mut holdings = BTreeMap::new();
         holdings.insert(route.start_asset.clone(), starting_amount);
@@ -670,7 +680,7 @@ where
         starting_amount: Decimal,
         execution_time_ms: u64,
         result: &Result<RouteExecutionReport, CoordinatorError>,
-    ) {
+    ) -> Result<(), CoordinatorError> {
         match result {
             Ok(report)
                 if matches!(
@@ -679,7 +689,7 @@ where
                         | CoordinatorStatus::CompletedWithResidualCleanup
                 ) =>
             {
-                self.events.publish(
+                self.events.publish_critical(
                     "trade.executed",
                     json!({
                         "trade_id": report.trade_id.clone(),
@@ -697,7 +707,7 @@ where
                 );
             }
             Ok(report) => {
-                self.events.publish(
+                self.events.publish_critical(
                     "trade.failed",
                     json!({
                         "trade_id": report.trade_id.clone(),
@@ -716,7 +726,7 @@ where
                 );
             }
             Err(error) => {
-                self.events.publish(
+                self.events.publish_critical(
                     "trade.failed",
                     json!({
                         "trade_id": trade_id,
@@ -730,6 +740,8 @@ where
                 );
             }
         }
+        .map(|_| ())
+        .map_err(|error| CoordinatorError::Execution(error.to_string()))
     }
 
     async fn positive_residual_value_base(
