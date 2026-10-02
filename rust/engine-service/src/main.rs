@@ -89,64 +89,114 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
+        let message = request.into_inner();
+        let normalized_reason = clean_reason(&message.reason, "gRPC start_trading");
+        let request_fingerprint = fingerprint(
+            "start_trading",
+            &serde_json::json!({"reason": normalized_reason}).to_string(),
+        );
+
         let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "start_trading",
+            &request_fingerprint,
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_control_command(record, true, "start_trading");
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
         if !self.config.master_live_enabled {
-            return Err(Status::failed_precondition(
-                "deployment live-trading gate is disabled",
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition("deployment live-trading gate is disabled"),
+            ));
+        }
+        if let Err(error) = read_control(&self.config.control_file) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition(format!(
+                    "runtime control state is invalid; issue stop before start: {error}"
+                )),
             ));
         }
 
-        if let Err(error) = read_control(&self.config.control_file) {
-            return Err(Status::failed_precondition(format!(
-                "runtime control state is invalid; issue stop before start: {error}"
-            )));
+        let risk_config = match load_risk_config(&self.config.risk_config_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        let limits = match read_limits(&self.config.limits_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        if let Err(detail) = validate_runtime_limits(&limits, &risk_config) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition(format!(
+                    "runtime risk limits are invalid: {detail}"
+                )),
+            ));
         }
-
-        let risk_config = load_risk_config(&self.config.risk_config_file)
-            .map_err(internal)?;
-        let limits = read_limits(&self.config.limits_file).map_err(internal)?;
-        validate_runtime_limits(&limits, &risk_config).map_err(|detail| {
-            Status::failed_precondition(format!(
-                "runtime risk limits are invalid: {detail}"
-            ))
-        })?;
-        let mut risk_engine = RiskEngine::new(risk_config).map_err(internal)?;
-        let risk_status = risk_engine.status(current_time_ms()).map_err(internal)?;
+        let mut risk_engine = match RiskEngine::new(risk_config) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        let risk_status = match risk_engine.status(current_time_ms()) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
         if risk_status.manual_kill_switch_active {
-            return Err(Status::failed_precondition(
-                "manual kill switch is active",
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition("manual kill switch is active"),
             ));
         }
         if risk_status.circuit_breaker.is_some() {
-            return Err(Status::failed_precondition(
-                "risk circuit breaker is active",
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition("risk circuit breaker is active"),
+            ));
+        }
+        if let Err(error) = self.events.ensure_critical_ready() {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::unavailable(format!("critical event pipeline unavailable: {error}")),
             ));
         }
 
-        let message = request.into_inner();
-        let now = now_ms();
-        write_control(
+        if let Err(error) = write_control(
             &self.config.control_file,
             true,
-            clean_reason(&message.reason, "gRPC start_trading"),
-        )
-        .map_err(internal)?;
-        self.events.publish(
-            "engine.health",
+            normalized_reason,
+            Some(message.request_id.clone()),
+        ) {
+            return Err(Status::unavailable(format!(
+                "start_trading state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        let applied_at_ms = now_ms();
+        self.emit_command_event(
+            &mut record,
             json!({
                 "runtime_enabled": true,
                 "command": "start_trading",
-                "request_id": message.request_id.clone(),
+                "request_id": message.request_id,
             }),
-        );
-
-        Ok(Response::new(reply(
-            true,
-            "start_trading",
-            message.request_id,
-            "runtime trading gate enabled",
-            now,
-        )))
+        )?;
+        self.finish_success(
+            &mut record,
+            reply(
+                true,
+                "start_trading",
+                record.request_id.clone(),
+                "runtime trading gate enabled",
+                applied_at_ms,
+            ),
+        )
     }
 
     async fn stop_trading(
@@ -155,31 +205,56 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
-        let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
-        let now = now_ms();
-        write_control(
+        let normalized_reason = clean_reason(&message.reason, "gRPC stop_trading");
+        let request_fingerprint = fingerprint(
+            "stop_trading",
+            &serde_json::json!({"reason": normalized_reason}).to_string(),
+        );
+
+        let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "stop_trading",
+            &request_fingerprint,
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_control_command(record, false, "stop_trading");
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
+        if let Err(error) = write_control(
             &self.config.control_file,
             false,
-            clean_reason(&message.reason, "gRPC stop_trading"),
-        )
-        .map_err(internal)?;
-        self.events.publish(
-            "engine.health",
+            normalized_reason,
+            Some(message.request_id.clone()),
+        ) {
+            return Err(Status::unavailable(format!(
+                "stop_trading state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        let applied_at_ms = now_ms();
+        self.emit_command_event(
+            &mut record,
             json!({
                 "runtime_enabled": false,
                 "command": "stop_trading",
-                "request_id": message.request_id.clone(),
+                "request_id": message.request_id,
             }),
-        );
-
-        Ok(Response::new(reply(
-            true,
-            "stop_trading",
-            message.request_id,
-            "runtime trading gate disabled",
-            now,
-        )))
+        )?;
+        self.finish_success(
+            &mut record,
+            reply(
+                true,
+                "stop_trading",
+                record.request_id.clone(),
+                "runtime trading gate disabled",
+                applied_at_ms,
+            ),
+        )
     }
 
     async fn update_limits(
@@ -188,78 +263,112 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
-        let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
-        let mut limits = read_limits(&self.config.limits_file).map_err(internal)?;
-        merge_limit(
+        let normalized_payload = normalize_limits_payload(&message)?;
+
+        let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "update_limits",
+            &fingerprint("update_limits", &normalized_payload),
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_limits_command(record);
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
+        let mut limits = match read_limits(&self.config.limits_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        if let Err(status) = merge_limit(
             "min_net_edge_bps",
             &message.min_net_edge_bps,
             &mut limits.min_net_edge_bps,
             false,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_slippage_bps",
             &message.max_slippage_bps,
             &mut limits.max_slippage_bps,
             false,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_trade_size",
             &message.max_trade_size,
             &mut limits.max_trade_size,
             true,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_total_exposure",
             &message.max_total_exposure,
             &mut limits.max_total_exposure,
             true,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_daily_loss",
             &message.max_daily_loss,
             &mut limits.max_daily_loss,
             true,
-        )?;
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
 
-        if [
-            &message.min_net_edge_bps,
-            &message.max_slippage_bps,
-            &message.max_trade_size,
-            &message.max_total_exposure,
-            &message.max_daily_loss,
-        ]
-        .iter()
-        .all(|value| value.trim().is_empty())
-        {
-            return Err(Status::invalid_argument(
-                "at least one runtime risk limit must be supplied",
+        let static_risk = match load_risk_config(&self.config.risk_config_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        limits.version = 1;
+        if let Err(detail) = validate_runtime_limits(&limits, &static_risk) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::invalid_argument(detail),
+            ));
+        }
+        if let Err(error) = self.events.ensure_critical_ready() {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::unavailable(format!("critical event pipeline unavailable: {error}")),
             ));
         }
 
-        let static_risk = load_risk_config(&self.config.risk_config_file)
-            .map_err(internal)?;
-        limits.version = 1;
-        validate_runtime_limits(&limits, &static_risk)
-            .map_err(Status::invalid_argument)?;
-        write_json_atomic(&self.config.limits_file, &limits).map_err(internal)?;
-        let now = now_ms();
-        self.events.publish(
-            "engine.health",
+        let applied_at_ms = now_ms();
+        limits.request_id = Some(message.request_id.clone());
+        limits.updated_at_ms = Some(applied_at_ms);
+        if let Err(error) = write_json_atomic(&self.config.limits_file, &limits) {
+            return Err(Status::unavailable(format!(
+                "update_limits state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        self.emit_command_event(
+            &mut record,
             json!({
                 "command": "update_limits",
-                "request_id": message.request_id.clone(),
+                "request_id": message.request_id,
                 "runtime_limits": limits,
             }),
-        );
-
-        Ok(Response::new(reply(
-            true,
-            "update_limits",
-            message.request_id,
-            "runtime risk limits updated",
-            now,
-        )))
+        )?;
+        self.finish_success(
+            &mut record,
+            reply(
+                true,
+                "update_limits",
+                record.request_id.clone(),
+                "runtime risk limits updated",
+                applied_at_ms,
+            ),
+        )
     }
 
     async fn reload_strategy(
@@ -268,40 +377,74 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
-        let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
-        scanner::load_triangle_config(&self.config.triangle_config_file)
-            .map_err(|error| {
+        let normalized_reason = clean_reason(&message.reason, "gRPC reload_strategy");
+        let request_fingerprint = fingerprint(
+            "reload_strategy",
+            &serde_json::json!({"reason": normalized_reason}).to_string(),
+        );
+
+        let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "reload_strategy",
+            &request_fingerprint,
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_reload_command(record);
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
+        if let Err(error) = scanner::load_triangle_config(&self.config.triangle_config_file) {
+            return Err(self.cache_failure(
+                &mut record,
                 Status::failed_precondition(format!(
                     "triangle strategy config is invalid: {error}"
-                ))
-            })?;
+                )),
+            ));
+        }
+        if let Err(error) = self.events.ensure_critical_ready() {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::unavailable(format!("critical event pipeline unavailable: {error}")),
+            ));
+        }
+
         let generation = Uuid::new_v4().to_string();
+        let applied_at_ms = now_ms();
         let payload = json!({
             "version": 1,
             "generation": generation.clone(),
-            "requested_at_ms": now_ms(),
-            "reason": clean_reason(&message.reason, "gRPC reload_strategy"),
+            "requested_at_ms": applied_at_ms,
+            "request_id": message.request_id.clone(),
+            "reason": normalized_reason,
         });
-        write_json_atomic(&self.config.strategy_reload_file, &payload)
-            .map_err(internal)?;
-        let now = now_ms();
-        self.events.publish(
-            "engine.health",
+        if let Err(error) = write_json_atomic(&self.config.strategy_reload_file, &payload) {
+            return Err(Status::unavailable(format!(
+                "reload_strategy state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        self.emit_command_event(
+            &mut record,
             json!({
                 "command": "reload_strategy",
-                "request_id": message.request_id.clone(),
-                "strategy_generation": generation.clone(),
+                "request_id": message.request_id,
+                "strategy_generation": generation,
             }),
-        );
-
-        Ok(Response::new(reply(
-            true,
-            "reload_strategy",
-            message.request_id,
-            "strategy reload requested",
-            now,
-        )))
+        )?;
+        self.finish_success(
+            &mut record,
+            reply(
+                true,
+                "reload_strategy",
+                record.request_id.clone(),
+                "strategy reload requested",
+                applied_at_ms,
+            ),
+        )
     }
 
     async fn get_status(
@@ -314,7 +457,7 @@ impl EngineControl for EngineControlService {
         let (runtime_enabled, control_source, control_error) =
             control_snapshot(&control);
         let generation = read_strategy_generation(&self.config.strategy_reload_file);
-        let (mut healthy, limits_json, mut detail) =
+        let (mut healthy, limits_json, mut summary) =
             match (
                 read_limits(&self.config.limits_file),
                 load_risk_config(&self.config.risk_config_file),
@@ -348,8 +491,29 @@ impl EngineControl for EngineControlService {
             };
         if let Some(error) = control_error {
             healthy = false;
-            detail = format!("runtime control state invalid: {error}; {detail}");
+            summary = format!("runtime control state invalid: {error}; {summary}");
         }
+
+        let event_health = self.events.health_snapshot();
+        let idempotency_health = self.idempotency.health();
+        if event_health.event_pipeline_status != "healthy" || !idempotency_health.healthy {
+            healthy = false;
+        }
+        let detail = serde_json::to_string(&json!({
+            "summary": summary,
+            "event_pipeline": event_health,
+            "grpc_idempotency_store_status": if idempotency_health.healthy {
+                "healthy"
+            } else {
+                "unhealthy"
+            },
+            "grpc_idempotency_in_progress": idempotency_health.in_progress,
+            "grpc_idempotency_detail": idempotency_health.detail,
+        }))
+        .unwrap_or_else(|error| {
+            format!("{{\"summary\":\"failed to serialize health detail: {error}\"}}")
+        });
+
         Ok(Response::new(EngineStatus {
             healthy,
             runtime_enabled,
