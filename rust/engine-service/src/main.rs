@@ -937,15 +937,36 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "0.0.0.0:50051".to_string())
         .parse()
         .context("invalid ARB_ENGINE_GRPC_ADDR")?;
-    let events = EventPublisher::from_env("engine-service");
+    let events = EventPublisher::try_from_env("engine-service")
+        .map_err(|error| anyhow::anyhow!("failed to initialize durable event pipeline: {error}"))?;
+    let idempotency_path = env_path(
+        &repo_root,
+        "ARB_GRPC_IDEMPOTENCY_STORE",
+        "data/control/grpc-idempotency",
+    );
+    let retention_seconds = env::var("ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS")
+        .unwrap_or_else(|_| "604800".to_string())
+        .parse::<u64>()
+        .context("ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS must be a positive integer")?;
+    let idempotency = Arc::new(IdempotencyStore::open(
+        idempotency_path,
+        retention_seconds,
+    )?);
+
     let heartbeat_events = events.clone();
+    let heartbeat_idempotency = idempotency.clone();
     let heartbeat_config = config.clone();
     tokio::spawn(async move {
         loop {
             let control = read_control(&heartbeat_config.control_file);
             let (runtime_enabled, control_source, _) =
                 control_snapshot(&control);
-            let (healthy, detail) = service_health(&heartbeat_config);
+            let (base_healthy, detail) = service_health(&heartbeat_config);
+            let event_health = heartbeat_events.health_snapshot();
+            let idempotency_health = heartbeat_idempotency.health();
+            let healthy = base_healthy
+                && event_health.event_pipeline_status == "healthy"
+                && idempotency_health.healthy;
             heartbeat_events.publish(
                 "engine.health",
                 json!({
@@ -955,6 +976,13 @@ async fn main() -> Result<()> {
                     "runtime_enabled": runtime_enabled,
                     "control_source": control_source,
                     "grpc_addr": addr.to_string(),
+                    "event_pipeline": event_health,
+                    "grpc_idempotency_store_status": if idempotency_health.healthy {
+                        "healthy"
+                    } else {
+                        "unhealthy"
+                    },
+                    "grpc_idempotency_in_progress": idempotency_health.in_progress,
                 }),
             );
             sleep(Duration::from_secs(5)).await;
@@ -966,6 +994,7 @@ async fn main() -> Result<()> {
         .add_service(EngineControlServer::new(EngineControlService {
             config,
             events,
+            idempotency,
             mutation_lock: Arc::new(Mutex::new(())),
         }))
         .serve(addr)
