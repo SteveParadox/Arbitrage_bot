@@ -987,7 +987,6 @@ fn decimal_text(value: Decimal) -> String {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     use orderbook::PriceLevel;
     use risk::RiskConfig;
