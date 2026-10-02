@@ -16,6 +16,9 @@ from analytics.models import OpportunityWindow
 from api.settings import settings
 
 
+ZERO = Decimal("0")
+
+
 @dataclass(frozen=True)
 class ActualCycle:
     trade_id: str
@@ -82,7 +85,7 @@ def build_performance_analytics(
             OpportunityWindow.start_asset == base_asset,
             OpportunityWindow.max_net_profit > 0,
         )
-    ) or Decimal.ZERO
+    ) or ZERO
 
     engine_event_total = db.scalar(
         select(func.count(EngineEvent.event_id)).where(
@@ -155,11 +158,11 @@ def build_performance_analytics(
     ]
     total_actual_profit = sum(
         (cycle.pnl for cycle in known_profit_cycles if cycle.pnl is not None),
-        Decimal.ZERO,
+        ZERO,
     )
     total_turnover = sum(
         (cycle.estimated_turnover for cycle in known_profit_cycles),
-        Decimal.ZERO,
+        ZERO,
     )
 
     daily = _profit_per_day(
@@ -225,11 +228,11 @@ def build_performance_analytics(
     ]
     engine_profit = sum(
         (cycle.pnl for cycle in engine_known if cycle.pnl is not None),
-        Decimal.ZERO,
+        ZERO,
     )
     canary_profit = sum(
         (cycle.pnl for cycle in canary_known if cycle.pnl is not None),
-        Decimal.ZERO,
+        ZERO,
     )
 
     return {
@@ -501,7 +504,7 @@ def _engine_cycles(
                 tz=UTC,
             ),
             base_asset=event_asset,
-            starting_amount=starting or Decimal.ZERO,
+            starting_amount=starting or ZERO,
             pnl=pnl,
             execution_time_ms=_int_or_none(
                 event.payload.get("execution_time_ms")
@@ -537,7 +540,7 @@ def _engine_turnover(
     unwind_count = _int(payload.get("unwind_count"))
     order_count = leg_count + unwind_count
     if starting is None or order_count <= 0:
-        return Decimal.ZERO, True
+        return ZERO, True
 
     return abs(starting) * order_count, True
 
@@ -627,7 +630,7 @@ def _matched_opportunity_capture(
     ]
     expected_total = sum(
         expected_by_window.values(),
-        Decimal.ZERO,
+        ZERO,
     )
     actual_total = sum(
         (
@@ -635,7 +638,7 @@ def _matched_opportunity_capture(
             for cycle in matched_cycles
             if cycle.pnl is not None
         ),
-        Decimal.ZERO,
+        ZERO,
     )
 
     return {
@@ -658,7 +661,7 @@ def _profit_per_day(
     end: datetime,
 ) -> list[dict[str, Any]]:
     by_day: dict[date, dict[str, Any]] = defaultdict(
-        lambda: {"profit": Decimal.ZERO, "cycles": 0}
+        lambda: {"profit": ZERO, "cycles": 0}
     )
     for cycle in cycles:
         if cycle.pnl is None:
