@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     arb_engine_grpc_target: str = "127.0.0.1:50051"
     arb_engine_grpc_token: str = ""
     arb_engine_grpc_timeout_seconds: float = 2.0
+    arb_engine_grpc_max_retries: int = 2
+    arb_engine_grpc_retry_initial_seconds: float = 0.1
+    arb_engine_grpc_retry_max_seconds: float = 1.0
     arb_redis_url: str = "redis://127.0.0.1:6379/0"
     arb_event_stream: str = "arb.events"
     arb_event_consumer_group: str = "python-api"
@@ -58,6 +61,7 @@ class Settings(BaseSettings):
             "arb_control_auth_configured": bool(self.arb_control_api_token),
             "arb_control_state_file": self.arb_control_state_file,
             "arb_engine_grpc_target": self.arb_engine_grpc_target,
+            "arb_engine_grpc_max_retries": self.arb_engine_grpc_max_retries,
             "arb_engine_grpc_auth_configured": (
                 len(self.arb_engine_grpc_token.encode("utf-8")) >= 32
             ),
