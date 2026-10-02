@@ -276,6 +276,7 @@ engine terminal event count
 engine event loaded/total counts
 engine-event sampling flag
 engine turnover historical-fallback count
+engine terminal events with explicit opportunity attribution
 micro-canary loaded/total counts
 micro-canary cycles retained after engine/canary deduplication
 profit-metric sampling flag
@@ -328,19 +329,33 @@ The response also exposes:
 ```text
 attempt_to_actual_known_pct
 aggregate_profit_capture_pct
+matched_opportunity_windows
+matched_actual_cycles
+matched_expected_profit_total
+matched_actual_profit_total
+matched_profit_capture_pct
 ```
 
-The first measures how many distinct attempted trade IDs have a known realized P&L.
+`attempt_to_actual_known_pct` measures how many distinct attempted trade IDs have a known realized
+P&L.
 
-The second compares aggregate realized P&L with aggregate maximum expected P&L across profitable
-opportunity windows in the selected period. It is a diagnostic, not a one-to-one attribution,
-because opportunity windows and execution trade IDs are distinct populations. The API returns this
-caveat as `funnel.population_note`, and the dashboard renders that caveat directly beneath the
-funnel diagnostics rather than visually implying one-to-one attribution.
+`aggregate_profit_capture_pct` compares aggregate realized P&L with aggregate maximum expected P&L
+across profitable opportunity windows in the selected period. It is a diagnostic, not a one-to-one
+attribution, because opportunity windows and execution trade IDs are distinct populations. The API
+returns this caveat as `funnel.population_note`, and the dashboard renders that caveat directly
+beneath the funnel diagnostics.
 
-A true opportunity-to-execution capture ratio still requires an execution runner to carry a stable
-opportunity identifier from selection through the coordinator. The repository deliberately does
-not invent that join while the autonomous live-execution runner does not yet exist.
+For exact attribution, the Rust coordinator now exposes
+`execute_route_for_opportunity(..., opportunity_window_id)`. When a caller supplies the stable
+Phase 7 opportunity-window ID, the coordinator carries it through `trade.attempted`,
+`trade.executed`, and `trade.failed`. Phase 17 then joins terminal outcomes back to the exact
+`opportunity_windows.id` and computes `matched_profit_capture_pct` from only those matched
+records.
+
+The existing `execute_route(...)` entry point remains backward compatible and produces unattributed
+events. The current repository still does not package an autonomous live-execution runner, so the
+dashboard reports attribution coverage and keeps unattributed history in aggregate diagnostics
+instead of pretending it can reconstruct a join that was never recorded.
 
 ## Verification coverage
 
@@ -356,6 +371,7 @@ profit per cycle
 unwind-aware and historical turnover handling
 profit per $1,000 turnover
 base funnel counts and conversion diagnostics
+exact opportunity-to-terminal-trade attribution
 slippage and survival distributions
 data-quality counters
 FastAPI response contract and query validation
