@@ -722,12 +722,13 @@ impl EngineControlService {
             ));
         }
 
+        let request_id = record.request_id.clone();
         self.emit_command_event(
             &mut record,
             json!({
                 "runtime_enabled": expected_enabled,
                 "command": command,
-                "request_id": record.request_id.clone(),
+                "request_id": request_id,
                 "recovered_after_restart": true,
             }),
         )?;
@@ -775,11 +776,12 @@ impl EngineControlService {
                 "request remains IN_PROGRESS; persisted limits do not prove this request completed",
             ));
         }
+        let request_id = record.request_id.clone();
         self.emit_command_event(
             &mut record,
             json!({
                 "command": "update_limits",
-                "request_id": record.request_id.clone(),
+                "request_id": request_id,
                 "runtime_limits": limits.clone(),
                 "recovered_after_restart": true,
             }),
@@ -839,11 +841,12 @@ impl EngineControlService {
             .get("requested_at_ms")
             .and_then(Value::as_u64)
             .unwrap_or_else(now_ms);
+        let request_id = record.request_id.clone();
         self.emit_command_event(
             &mut record,
             json!({
                 "command": "reload_strategy",
-                "request_id": record.request_id.clone(),
+                "request_id": request_id,
                 "strategy_generation": generation,
                 "recovered_after_restart": true,
             }),
@@ -1311,7 +1314,7 @@ fn write_json_atomic(path: &Path, payload: &impl Serialize) -> Result<()> {
 
     match fs::rename(&temp, path) {
         Ok(()) => {}
-        Err(error) if path.exists() => {
+        Err(_error) if path.exists() => {
             fs::remove_file(path)?;
             fs::rename(&temp, path)?;
         }
