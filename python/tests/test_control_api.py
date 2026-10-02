@@ -176,7 +176,9 @@ def test_stop_falls_back_fail_closed_when_grpc_is_down(
         )
     )
 
-    assert result["status"] == "stopped_fallback"
+    assert result["status"] == "stop_requested_fallback"
+    assert result["engine_state_confirmed"] is False
+    assert result["effective_enabled"] is None
     assert runtime_control.read_control_state()["enabled"] is False
 
 
