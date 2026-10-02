@@ -58,6 +58,48 @@ where
         route: &TriangleRoute,
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
+        self.execute_route_with_opportunity(
+            risk_engine,
+            trade_id,
+            route,
+            starting_amount,
+            None,
+        )
+        .await
+    }
+
+    pub async fn execute_route_for_opportunity(
+        &mut self,
+        risk_engine: &mut RiskEngine,
+        trade_id: &str,
+        route: &TriangleRoute,
+        starting_amount: Decimal,
+        opportunity_window_id: &str,
+    ) -> Result<RouteExecutionReport, CoordinatorError> {
+        let opportunity_window_id = opportunity_window_id.trim();
+        if opportunity_window_id.is_empty() {
+            return Err(CoordinatorError::InvalidRoute(
+                "opportunity_window_id must not be empty".to_string(),
+            ));
+        }
+        self.execute_route_with_opportunity(
+            risk_engine,
+            trade_id,
+            route,
+            starting_amount,
+            Some(opportunity_window_id),
+        )
+        .await
+    }
+
+    async fn execute_route_with_opportunity(
+        &mut self,
+        risk_engine: &mut RiskEngine,
+        trade_id: &str,
+        route: &TriangleRoute,
+        starting_amount: Decimal,
+        opportunity_window_id: Option<&str>,
+    ) -> Result<RouteExecutionReport, CoordinatorError> {
         self.events
             .ensure_critical_ready()
             .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
@@ -68,6 +110,7 @@ where
                 trade_id,
                 route,
                 starting_amount,
+                opportunity_window_id,
             )
             .await;
         let execution_time_ms = started.elapsed().as_millis() as u64;
@@ -76,6 +119,7 @@ where
             route,
             starting_amount,
             execution_time_ms,
+            opportunity_window_id,
             &result,
         );
         match event_result {
@@ -90,6 +134,7 @@ where
         trade_id: &str,
         route: &TriangleRoute,
         starting_amount: Decimal,
+        opportunity_window_id: Option<&str>,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
         validate_route(route, trade_id, starting_amount)?;
         self.events
@@ -102,6 +147,7 @@ where
                 "base_asset": route.start_asset.clone(),
                 "starting_amount": starting_amount.to_string(),
                 "asset_path": route.assets.clone(),
+                "opportunity_window_id": opportunity_window_id,
             }),
         )
         .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
@@ -681,6 +727,7 @@ where
         route: &TriangleRoute,
         starting_amount: Decimal,
         execution_time_ms: u64,
+        opportunity_window_id: Option<&str>,
         result: &Result<RouteExecutionReport, CoordinatorError>,
     ) -> Result<(), CoordinatorError> {
         let persisted = match result {
@@ -707,6 +754,7 @@ where
                         "estimated_turnover_base": estimated_report_turnover_base(report)
                             .to_string(),
                         "turnover_basis": "base-flow estimate with cross-leg fill-ratio proxy",
+                        "opportunity_window_id": opportunity_window_id,
                         "execution_time_ms": execution_time_ms,
                     }),
                 )
@@ -728,6 +776,7 @@ where
                     "estimated_turnover_base": estimated_report_turnover_base(report)
                         .to_string(),
                     "turnover_basis": "base-flow estimate with cross-leg fill-ratio proxy",
+                    "opportunity_window_id": opportunity_window_id,
                     "execution_time_ms": execution_time_ms,
                 }),
             ),
@@ -740,6 +789,7 @@ where
                     "starting_amount": starting_amount.to_string(),
                     "status": "coordinator_error",
                     "failure_reason": error.to_string(),
+                    "opportunity_window_id": opportunity_window_id,
                     "execution_time_ms": execution_time_ms,
                 }),
             ),
