@@ -187,16 +187,14 @@ impl EngineControl for EngineControlService {
                 "request_id": message.request_id,
             }),
         )?;
-        self.finish_success(
-            &mut record,
-            reply(
-                true,
-                "start_trading",
-                record.request_id.clone(),
-                "runtime trading gate enabled",
-                applied_at_ms,
-            ),
-        )
+        let response = reply(
+            true,
+            "start_trading",
+            record.request_id.clone(),
+            "runtime trading gate enabled",
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn stop_trading(
@@ -245,16 +243,14 @@ impl EngineControl for EngineControlService {
                 "request_id": message.request_id,
             }),
         )?;
-        self.finish_success(
-            &mut record,
-            reply(
-                true,
-                "stop_trading",
-                record.request_id.clone(),
-                "runtime trading gate disabled",
-                applied_at_ms,
-            ),
-        )
+        let response = reply(
+            true,
+            "stop_trading",
+            record.request_id.clone(),
+            "runtime trading gate disabled",
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn update_limits(
@@ -359,16 +355,14 @@ impl EngineControl for EngineControlService {
                 "runtime_limits": limits,
             }),
         )?;
-        self.finish_success(
-            &mut record,
-            reply(
-                true,
-                "update_limits",
-                record.request_id.clone(),
-                "runtime risk limits updated",
-                applied_at_ms,
-            ),
-        )
+        let response = reply(
+            true,
+            "update_limits",
+            record.request_id.clone(),
+            "runtime risk limits updated",
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn reload_strategy(
@@ -435,16 +429,14 @@ impl EngineControl for EngineControlService {
                 "strategy_generation": generation,
             }),
         )?;
-        self.finish_success(
-            &mut record,
-            reply(
-                true,
-                "reload_strategy",
-                record.request_id.clone(),
-                "strategy reload requested",
-                applied_at_ms,
-            ),
-        )
+        let response = reply(
+            true,
+            "reload_strategy",
+            record.request_id.clone(),
+            "strategy reload requested",
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn get_status(
@@ -735,7 +727,7 @@ impl EngineControlService {
             json!({
                 "runtime_enabled": expected_enabled,
                 "command": command,
-                "request_id": record.request_id,
+                "request_id": record.request_id.clone(),
                 "recovered_after_restart": true,
             }),
         )?;
@@ -787,7 +779,7 @@ impl EngineControlService {
             &mut record,
             json!({
                 "command": "update_limits",
-                "request_id": record.request_id,
+                "request_id": record.request_id.clone(),
                 "runtime_limits": limits,
                 "recovered_after_restart": true,
             }),
@@ -851,7 +843,7 @@ impl EngineControlService {
             &mut record,
             json!({
                 "command": "reload_strategy",
-                "request_id": record.request_id,
+                "request_id": record.request_id.clone(),
                 "strategy_generation": generation,
                 "recovered_after_restart": true,
             }),
