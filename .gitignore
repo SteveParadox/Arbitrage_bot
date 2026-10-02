@@ -36,3 +36,5 @@ data/control/*.json
 data/control/*.tmp
 data/control/risk_limits.json
 data/control/strategy_reload.json
+
+data/event-outbox/
