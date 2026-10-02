@@ -173,6 +173,7 @@ def test_decimal_parser_rejects_invalid_values() -> None:
 def test_actual_cycle_is_immutable_value_object() -> None:
     cycle = ActualCycle(
         trade_id="trade-1",
+        opportunity_window_id=None,
         occurred_at=datetime.now(UTC),
         base_asset="USDT",
         starting_amount=Decimal("10"),
@@ -257,6 +258,7 @@ def test_build_performance_analytics_tracks_funnel_and_deduplicates(db_factory) 
                 "leg_count": 3,
                 "unwind_count": 0,
                 "estimated_turnover_base": "250",
+                "opportunity_window_id": "window-profitable",
                 "execution_time_ms": 50,
             },
         )
@@ -316,6 +318,13 @@ def test_build_performance_analytics_tracks_funnel_and_deduplicates(db_factory) 
     assert analytics["funnel"]["attempt_to_actual_known_pct"] == pytest.approx(
         200 / 3
     )
+    assert analytics["funnel"]["matched_opportunity_windows"] == 1
+    assert analytics["funnel"]["matched_actual_cycles"] == 1
+    assert analytics["funnel"]["matched_expected_profit_total"] == pytest.approx(1.5)
+    assert analytics["funnel"]["matched_actual_profit_total"] == pytest.approx(1.0)
+    assert analytics["funnel"]["matched_profit_capture_pct"] == pytest.approx(
+        200 / 3
+    )
 
     assert analytics["profit"]["total_profit"] == pytest.approx(3.0)
     assert analytics["profit"]["profit_per_cycle"] == pytest.approx(1.5)
@@ -336,6 +345,7 @@ def test_build_performance_analytics_tracks_funnel_and_deduplicates(db_factory) 
     assert quality["engine_trade_attempt_events"] == 1
     assert quality["engine_terminal_events"] == 2
     assert quality["engine_turnover_fallbacks"] == 1
+    assert quality["engine_attributed_terminal_events"] == 1
     assert quality["micro_canary_cycles_loaded"] == 2
     assert quality["micro_canary_cycles"] == 1
     assert quality["deduplicated_canary_trade_ids"] == 1
