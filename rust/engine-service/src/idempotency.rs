@@ -1,6 +1,6 @@
 use std::{
     fmt::Write as FmtWrite,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -310,7 +310,7 @@ fn hex_digest(bytes: &[u8]) -> String {
 fn sync_directory(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
-        File::open(path)?.sync_all()
+        fs::File::open(path)?.sync_all()
     }
     #[cfg(not(unix))]
     {
