@@ -681,7 +681,7 @@ where
         execution_time_ms: u64,
         result: &Result<RouteExecutionReport, CoordinatorError>,
     ) -> Result<(), CoordinatorError> {
-        match result {
+        let persisted = match result {
             Ok(report)
                 if matches!(
                     report.status,
@@ -704,44 +704,42 @@ where
                         "unwind_count": report.unwind_orders.len(),
                         "execution_time_ms": execution_time_ms,
                     }),
-                );
+                )
             }
-            Ok(report) => {
-                self.events.publish_critical(
-                    "trade.failed",
-                    json!({
-                        "trade_id": report.trade_id.clone(),
-                        "route_id": report.route_id.clone(),
-                        "base_asset": report.base_asset.clone(),
-                        "starting_amount": report.starting_amount.to_string(),
-                        "final_base_amount": report.final_base_amount.to_string(),
-                        "realized_base_pnl": report.realized_base_pnl.to_string(),
-                        "economic_pnl": report.economic_pnl.map(|value| value.to_string()),
-                        "status": format!("{:?}", report.status),
-                        "failure_reason": report.failure_reason.clone(),
-                        "leg_count": report.legs.len(),
-                        "unwind_count": report.unwind_orders.len(),
-                        "execution_time_ms": execution_time_ms,
-                    }),
-                );
-            }
-            Err(error) => {
-                self.events.publish_critical(
-                    "trade.failed",
-                    json!({
-                        "trade_id": trade_id,
-                        "route_id": route.id.clone(),
-                        "base_asset": route.start_asset.clone(),
-                        "starting_amount": starting_amount.to_string(),
-                        "status": "coordinator_error",
-                        "failure_reason": error.to_string(),
-                        "execution_time_ms": execution_time_ms,
-                    }),
-                );
-            }
-        }
-        .map(|_| ())
-        .map_err(|error| CoordinatorError::Execution(error.to_string()))
+            Ok(report) => self.events.publish_critical(
+                "trade.failed",
+                json!({
+                    "trade_id": report.trade_id.clone(),
+                    "route_id": report.route_id.clone(),
+                    "base_asset": report.base_asset.clone(),
+                    "starting_amount": report.starting_amount.to_string(),
+                    "final_base_amount": report.final_base_amount.to_string(),
+                    "realized_base_pnl": report.realized_base_pnl.to_string(),
+                    "economic_pnl": report.economic_pnl.map(|value| value.to_string()),
+                    "status": format!("{:?}", report.status),
+                    "failure_reason": report.failure_reason.clone(),
+                    "leg_count": report.legs.len(),
+                    "unwind_count": report.unwind_orders.len(),
+                    "execution_time_ms": execution_time_ms,
+                }),
+            ),
+            Err(error) => self.events.publish_critical(
+                "trade.failed",
+                json!({
+                    "trade_id": trade_id,
+                    "route_id": route.id.clone(),
+                    "base_asset": route.start_asset.clone(),
+                    "starting_amount": starting_amount.to_string(),
+                    "status": "coordinator_error",
+                    "failure_reason": error.to_string(),
+                    "execution_time_ms": execution_time_ms,
+                }),
+            ),
+        };
+
+        persisted
+            .map(|_| ())
+            .map_err(|error| CoordinatorError::Execution(error.to_string()))
     }
 
     async fn positive_residual_value_base(
