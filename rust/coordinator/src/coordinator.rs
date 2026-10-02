@@ -7,6 +7,7 @@ use risk::{
 };
 use rust_decimal::Decimal;
 use scanner::{TradeSide, TriangleRoute};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use tracing::error;
 
