@@ -19,6 +19,7 @@ from api.settings import settings
 @dataclass(frozen=True)
 class ActualCycle:
     trade_id: str
+    opportunity_window_id: str | None
     occurred_at: datetime
     base_asset: str
     starting_amount: Decimal
@@ -137,6 +138,12 @@ def build_performance_analytics(
     actual_cycles = sorted(
         by_trade_id.values(),
         key=lambda cycle: cycle.occurred_at,
+    )
+    matched_capture = _matched_opportunity_capture(
+        db,
+        actual_cycles,
+        start=start,
+        base_asset=base_asset,
     )
     attempted_ids = set(attempted_engine_ids)
     attempted_ids.update(
@@ -294,6 +301,7 @@ def build_performance_analytics(
                 if Decimal(str(expected_profit_total)) > 0
                 else None
             ),
+            **matched_capture,
             "population_note": (
                 "opportunity stages are distinct Phase 7 windows; trade stages "
                 "are distinct execution trade ids over the same time window, "
@@ -368,6 +376,11 @@ def build_performance_analytics(
                 engine_events_loaded < int(engine_event_total)
             ),
             "engine_turnover_fallbacks": turnover_fallback_count,
+            "engine_attributed_terminal_events": sum(
+                1
+                for cycle in engine_cycles
+                if cycle.opportunity_window_id is not None
+            ),
             "micro_canary_cycles": len(unique_canary_cycles),
             "micro_canary_cycles_loaded": len(canary_cycles),
             "micro_canary_cycles_total": int(canary_cycle_total),
@@ -480,6 +493,9 @@ def _engine_cycles(
         attempted_engine_ids.add(trade_id)
         terminal[trade_id] = ActualCycle(
             trade_id=trade_id,
+            opportunity_window_id=_text_or_none(
+                event.payload.get("opportunity_window_id")
+            ),
             occurred_at=datetime.fromtimestamp(
                 event.occurred_at_ms / 1000,
                 tz=UTC,
@@ -550,6 +566,9 @@ def _canary_cycles(
         cycles.append(
             ActualCycle(
                 trade_id=row.trade_id,
+                opportunity_window_id=_text_or_none(
+                    row.raw_candidate_event.get("opportunity_window_id")
+                ),
                 occurred_at=row.reconciled_at or row.detected_at,
                 base_asset=row.base_asset,
                 starting_amount=starting,
@@ -561,6 +580,75 @@ def _canary_cycles(
             )
         )
     return cycles
+
+
+def _matched_opportunity_capture(
+    db: Session,
+    cycles: Iterable[ActualCycle],
+    *,
+    start: datetime,
+    base_asset: str,
+) -> dict[str, Any]:
+    cycles_by_window: dict[str, list[ActualCycle]] = defaultdict(list)
+    for cycle in cycles:
+        if cycle.opportunity_window_id is None or cycle.pnl is None:
+            continue
+        cycles_by_window[cycle.opportunity_window_id].append(cycle)
+
+    if not cycles_by_window:
+        return {
+            "matched_opportunity_windows": 0,
+            "matched_actual_cycles": 0,
+            "matched_expected_profit_total": 0.0,
+            "matched_actual_profit_total": 0.0,
+            "matched_profit_capture_pct": None,
+        }
+
+    windows = db.scalars(
+        select(OpportunityWindow).where(
+            OpportunityWindow.id.in_(cycles_by_window),
+            OpportunityWindow.started_at >= start,
+            OpportunityWindow.start_asset == base_asset,
+            OpportunityWindow.max_net_profit.is_not(None),
+            OpportunityWindow.max_net_profit > 0,
+        )
+    ).all()
+
+    expected_by_window = {
+        window.id: Decimal(window.max_net_profit)
+        for window in windows
+        if window.max_net_profit is not None
+    }
+    matched_ids = set(expected_by_window)
+    matched_cycles = [
+        cycle
+        for window_id in matched_ids
+        for cycle in cycles_by_window[window_id]
+    ]
+    expected_total = sum(
+        expected_by_window.values(),
+        Decimal.ZERO,
+    )
+    actual_total = sum(
+        (
+            cycle.pnl
+            for cycle in matched_cycles
+            if cycle.pnl is not None
+        ),
+        Decimal.ZERO,
+    )
+
+    return {
+        "matched_opportunity_windows": len(matched_ids),
+        "matched_actual_cycles": len(matched_cycles),
+        "matched_expected_profit_total": _float(expected_total),
+        "matched_actual_profit_total": _float(actual_total),
+        "matched_profit_capture_pct": (
+            _float(actual_total / expected_total * Decimal(100))
+            if expected_total > 0
+            else None
+        ),
+    }
 
 
 def _profit_per_day(
@@ -676,6 +764,13 @@ def _decimal(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+
+
+def _text_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _int(value: Any) -> int:
