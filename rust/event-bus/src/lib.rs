@@ -22,6 +22,8 @@ use serde_json::Value;
 use tracing::{error, warn};
 use uuid::Uuid;
 
+static OUTBOX_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineEvent {
     pub event_id: String,
@@ -155,8 +157,9 @@ impl Outbox {
 
     fn persist(&self, event: &EngineEvent) -> Result<PathBuf, EventPublishError> {
         let sequence = now_ns();
+        let ordinal = OUTBOX_SEQUENCE.fetch_add(1, Ordering::SeqCst);
         let file_name = format!(
-            "{sequence:030}-{}.json",
+            "{sequence:030}-{ordinal:020}-{}.json",
             event.event_id.replace('-', "")
         );
         let final_path = self.pending_dir.join(file_name);
