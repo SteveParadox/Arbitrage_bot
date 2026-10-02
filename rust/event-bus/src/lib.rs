@@ -2,7 +2,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     env,
     fmt,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     hash::{Hash, Hasher},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -263,7 +263,7 @@ impl Outbox {
                 self.pending_dir.display()
             ))
         })?;
-        let _ = self.pending_count.fetch_update(
+        let _ = self.pending_count.try_update(
             Ordering::SeqCst,
             Ordering::SeqCst,
             |value| Some(value.saturating_sub(1)),
@@ -762,7 +762,7 @@ fn retry_delay(
 }
 
 fn decrement_queue_depth(metrics: &Metrics) {
-    let _ = metrics.queue_depth.fetch_update(
+    let _ = metrics.queue_depth.try_update(
         Ordering::SeqCst,
         Ordering::SeqCst,
         |value| Some(value.saturating_sub(1)),
@@ -826,7 +826,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 fn sync_directory(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
-        File::open(path)?.sync_all()
+        fs::File::open(path)?.sync_all()
     }
     #[cfg(not(unix))]
     {
