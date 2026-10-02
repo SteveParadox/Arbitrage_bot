@@ -93,7 +93,7 @@ impl EngineControl for EngineControlService {
         let normalized_reason = clean_reason(&message.reason, "gRPC start_trading");
         let request_fingerprint = fingerprint(
             "start_trading",
-            &serde_json::json!({"reason": normalized_reason}).to_string(),
+            &serde_json::json!({"reason": normalized_reason.clone()}).to_string(),
         );
 
         let _guard = self.mutation_lock.lock().await;
@@ -207,7 +207,7 @@ impl EngineControl for EngineControlService {
         let normalized_reason = clean_reason(&message.reason, "gRPC stop_trading");
         let request_fingerprint = fingerprint(
             "stop_trading",
-            &serde_json::json!({"reason": normalized_reason}).to_string(),
+            &serde_json::json!({"reason": normalized_reason.clone()}).to_string(),
         );
 
         let _guard = self.mutation_lock.lock().await;
@@ -375,7 +375,7 @@ impl EngineControl for EngineControlService {
         let normalized_reason = clean_reason(&message.reason, "gRPC reload_strategy");
         let request_fingerprint = fingerprint(
             "reload_strategy",
-            &serde_json::json!({"reason": normalized_reason}).to_string(),
+            &serde_json::json!({"reason": normalized_reason.clone()}).to_string(),
         );
 
         let _guard = self.mutation_lock.lock().await;
@@ -780,7 +780,7 @@ impl EngineControlService {
             json!({
                 "command": "update_limits",
                 "request_id": record.request_id.clone(),
-                "runtime_limits": limits,
+                "runtime_limits": limits.clone(),
                 "recovered_after_restart": true,
             }),
         )?;
@@ -1295,24 +1295,45 @@ fn effective_decimal(
 }
 
 fn write_json_atomic(path: &Path, payload: &impl Serialize) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    use std::io::Write as _;
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
     let temp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
     let bytes = serde_json::to_vec_pretty(payload)?;
-    fs::write(&temp, bytes)?;
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temp)?;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    drop(file);
+
     match fs::rename(&temp, path) {
-        Ok(()) => Ok(()),
+        Ok(()) => {}
         Err(error) if path.exists() => {
             fs::remove_file(path)?;
             fs::rename(&temp, path)?;
-            Ok(())
         }
         Err(error) => {
             let _ = fs::remove_file(&temp);
-            Err(error.into())
+            return Err(error.into());
         }
     }
+    sync_directory(parent)?;
+    Ok(())
+}
+
+fn sync_directory(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(path)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
