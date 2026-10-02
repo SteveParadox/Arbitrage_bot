@@ -201,7 +201,9 @@ def test_phase17_aggregates_correctly_on_postgres() -> None:
         assert analytics["funnel"]["actual_profit_total"] == pytest.approx(1.75)
         assert analytics["funnel"]["matched_opportunity_windows"] == 1
         assert analytics["funnel"]["matched_actual_cycles"] == 1
-        assert analytics["funnel"]["matched_expected_profit_total"] == pytest.approx(2.0)
+        assert analytics["funnel"]["matched_expected_profit_total"] == pytest.approx(
+            2.0
+        )
         assert analytics["funnel"]["matched_actual_profit_total"] == pytest.approx(1.25)
         assert analytics["funnel"]["matched_profit_capture_pct"] == pytest.approx(62.5)
 
