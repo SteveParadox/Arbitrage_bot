@@ -18,6 +18,15 @@ from api.settings import settings
 
 logger = logging.getLogger(__name__)
 
+_CONSUMER_METRICS = {
+    "dead_letter_events_total": 0,
+    "database_duplicate_events_total": 0,
+}
+
+
+def consumer_metrics_snapshot() -> dict[str, int]:
+    return dict(_CONSUMER_METRICS)
+
 
 @dataclass(frozen=True)
 class StreamEvent:
@@ -120,11 +129,13 @@ class EngineEventConsumer:
                     settings.arb_event_dead_letter_stream,
                     {
                         "original_stream_id": stream_id,
+                        "retry_count": "1",
                         "error": str(error),
                         "payload": json.dumps(fields, separators=(",", ":")),
                     },
                 )
                 invalid_ids.append(stream_id)
+                _CONSUMER_METRICS["dead_letter_events_total"] += 1
                 logger.error(
                     "invalid engine event moved to dead-letter stream: %s",
                     stream_id,
@@ -144,6 +155,7 @@ class EngineEventConsumer:
                     settings.arb_event_dead_letter_stream,
                     {
                         "original_stream_id": event.stream_id,
+                        "retry_count": "1",
                         "error": f"database rejected event: {error}"[:1000],
                         "payload": json.dumps(
                             {
@@ -158,6 +170,7 @@ class EngineEventConsumer:
                         ),
                     },
                 )
+                _CONSUMER_METRICS["dead_letter_events_total"] += 1
                 logger.error(
                     "database-rejected engine event moved to dead-letter stream: %s",
                     event.stream_id,
