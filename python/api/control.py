@@ -31,11 +31,7 @@ bearer = HTTPBearer(auto_error=False)
 
 
 class TradingCommand(BaseModel):
-    reason: str = Field(
-        default="operator control request",
-        min_length=1,
-        max_length=256,
-    )
+    reason: str = Field(default="operator control request", min_length=1, max_length=256)
 
 
 class RiskLimitsCommand(BaseModel):
@@ -46,65 +42,34 @@ class RiskLimitsCommand(BaseModel):
     max_daily_loss: Decimal | None = Field(default=None, gt=0)
 
 
-def require_control_auth(
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None,
-        Depends(bearer),
-    ],
-) -> None:
+def require_control_auth(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> None:
     expected = settings.arb_control_api_token
     if len(expected.encode("utf-8")) < 32:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="control bearer token must be configured with at least 32 bytes",
-        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="control bearer token must be configured with at least 32 bytes")
     if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="missing control bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not hmac.compare_digest(
-        credentials.credentials.encode("utf-8"),
-        expected.encode("utf-8"),
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="invalid control bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing control bearer token", headers={"WWW-Authenticate": "Bearer"})
+    if not hmac.compare_digest(credentials.credentials.encode("utf-8"), expected.encode("utf-8")):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid control bearer token", headers={"WWW-Authenticate": "Bearer"})
 
 
 @router.get("/opportunities")
-def get_opportunities(
-    db: DatabaseSession,
-    limit: int = Query(default=50, ge=1, le=500),
-) -> list[dict[str, Any]]:
+def get_opportunities(db: DatabaseSession, limit: int = Query(default=50, ge=1, le=500)) -> list[dict[str, Any]]:
     return recent_opportunities(db, limit)
 
 
 @router.get("/trades")
-def get_trades(
-    db: DatabaseSession,
-    limit: int = Query(default=50, ge=1, le=500),
-) -> list[dict[str, Any]]:
+def get_trades(db: DatabaseSession, limit: int = Query(default=50, ge=1, le=500)) -> list[dict[str, Any]]:
     return recent_executions(db, limit)
 
 
 @router.get("/performance")
 def get_performance(db: DatabaseSession) -> dict[str, Any]:
-    return {
-        "generated_at": datetime.now(UTC),
-        **_performance_snapshot(db),
-    }
+    return {"generated_at": datetime.now(UTC), **_performance_snapshot(db)}
 
 
 @router.get("/balances")
 def get_balances(db: DatabaseSession) -> dict[str, Any]:
-    return {
-        "generated_at": datetime.now(UTC),
-        **_balance_snapshot(db),
-    }
+    return {"generated_at": datetime.now(UTC), **_balance_snapshot(db)}
 
 
 @router.get("/health")
@@ -150,9 +115,11 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
         and grpc_status["status"] == "online"
         and grpc_status["runtime_enabled"]
         and risk_allows_new_orders
+        and market_status == "online"
     )
     overall_ok = (
         database_status == "online"
+        and market_status == "online"
         and grpc_status["status"] == "online"
         and risk.get("available") is not False
     )
@@ -175,106 +142,64 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
             "reason": control["reason"],
             "source": control["source"],
         },
-        "control_auth_configured": (
-            len(settings.arb_control_api_token.encode("utf-8")) >= 32
-        ),
+        "control_auth_configured": len(settings.arb_control_api_token.encode("utf-8")) >= 32,
     }
 
 
-@router.post(
-    "/trading/start",
-    dependencies=[Depends(require_control_auth)],
-)
+@router.post("/trading/start", dependencies=[Depends(require_control_auth)])
 async def start_trading(command: TradingCommand) -> dict[str, Any]:
     if not settings.arb_live_trading_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "deployment live-trading gate is disabled; "
-                "ARB_LIVE_TRADING_ENABLED must be true"
-            ),
-        )
-
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="deployment live-trading gate is disabled; ARB_LIVE_TRADING_ENABLED must be true")
     try:
         result = await engine_grpc_client.start(command.reason)
     except EngineCommandError as error:
-        raise HTTPException(
-            status_code=_command_http_status(error),
-            detail=f"Rust engine command failed: {error}",
-        ) from error
-
-    return {
-        "status": "started",
-        "effective_enabled": result.accepted,
-        "command": result.__dict__,
-    }
+        raise HTTPException(status_code=_command_http_status(error), detail=f"Rust engine command failed: {error}") from error
+    return {"status": "started", "effective_enabled": result.accepted, "command": result.__dict__}
 
 
-@router.post(
-    "/trading/stop",
-    dependencies=[Depends(require_control_auth)],
-)
+@router.post("/trading/stop", dependencies=[Depends(require_control_auth)])
 async def stop_trading(command: TradingCommand) -> dict[str, Any]:
     try:
         result = await engine_grpc_client.stop(command.reason)
         return {
             "status": "stopped",
             "effective_enabled": False,
+            "engine_state_confirmed": True,
             "command": result.__dict__,
         }
     except EngineCommandError as error:
-        fallback = write_control_state(
-            enabled=False,
-            reason=f"gRPC stop fallback: {command.reason}",
-        )
+        fallback = write_control_state(enabled=False, reason=f"gRPC stop fallback: {command.reason}")
         return {
-            "status": "stopped_fallback",
-            "effective_enabled": False,
-            "warning": f"Rust gRPC unavailable: {error}",
+            "status": "stop_requested_fallback",
+            "effective_enabled": None,
+            "engine_state_confirmed": False,
+            "warning": (
+                "Rust gRPC did not confirm the stop command. A local fail-closed "
+                f"control state was written, but engine state remains unconfirmed: {error}"
+            ),
             "control": fallback,
         }
 
 
-@router.post(
-    "/engine/limits",
-    dependencies=[Depends(require_control_auth)],
-)
+@router.post("/engine/limits", dependencies=[Depends(require_control_auth)])
 async def update_limits(command: RiskLimitsCommand) -> dict[str, Any]:
     values = command.model_dump()
     if not any(value is not None for value in values.values()):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="at least one risk limit must be supplied",
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="at least one risk limit must be supplied")
     try:
-        result = await engine_grpc_client.update_limits(
-            **{
-                key: "" if value is None else str(value)
-                for key, value in values.items()
-            }
-        )
+        result = await engine_grpc_client.update_limits(**{key: "" if value is None else str(value) for key, value in values.items()})
     except EngineCommandError as error:
-        raise HTTPException(
-            status_code=_command_http_status(error),
-            detail=f"Rust engine command failed: {error}",
-        ) from error
+        raise HTTPException(status_code=_command_http_status(error), detail=f"Rust engine command failed: {error}") from error
     return {"status": "updated", "command": result.__dict__}
 
 
-@router.post(
-    "/engine/reload-strategy",
-    dependencies=[Depends(require_control_auth)],
-)
+@router.post("/engine/reload-strategy", dependencies=[Depends(require_control_auth)])
 async def reload_strategy(command: TradingCommand) -> dict[str, Any]:
     try:
         result = await engine_grpc_client.reload_strategy(command.reason)
     except EngineCommandError as error:
-        raise HTTPException(
-            status_code=_command_http_status(error),
-            detail=f"Rust engine command failed: {error}",
-        ) from error
+        raise HTTPException(status_code=_command_http_status(error), detail=f"Rust engine command failed: {error}") from error
     return {"status": "reload_requested", "command": result.__dict__}
-
 
 
 def _command_http_status(error: EngineCommandError) -> int:
