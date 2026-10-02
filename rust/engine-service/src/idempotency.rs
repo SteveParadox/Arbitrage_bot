@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write as FmtWrite,
     fs::{self, File, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -310,7 +311,11 @@ pub fn stable_event_id(request_id: &str, command_type: &str) -> String {
 
 fn hex_digest(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    digest.iter().map(|value| format!("{value:02x}")).collect()
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for value in digest {
+        write!(&mut encoded, "{value:02x}").expect("writing to String cannot fail");
+    }
+    encoded
 }
 
 fn sync_directory(path: &Path) -> io::Result<()> {
