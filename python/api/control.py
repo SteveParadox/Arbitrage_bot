@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from analytics.db import get_db
 from api.engine_client import EngineCommandError, engine_grpc_client
+from api.event_consumer import consumer_metrics_snapshot
 from api.operations import (
     _balance_snapshot,
     _performance_snapshot,
@@ -198,6 +199,7 @@ async def get_health(db: DatabaseSession) -> dict[str, Any]:
         "last_market_event": last_market_event,
         "risk": risk,
         "engine_grpc": grpc_status,
+        "event_consumer": consumer_metrics_snapshot(),
         "trading": {
             "deployment_enabled": settings.arb_live_trading_enabled,
             "runtime_enabled": grpc_status["runtime_enabled"],
