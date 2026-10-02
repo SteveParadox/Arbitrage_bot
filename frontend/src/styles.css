@@ -978,3 +978,10 @@ footer {
   color: #d8e0ea;
   margin-left: 4px;
 }
+
+.funnel-population-note {
+  flex-basis: 100%;
+  max-width: 980px;
+  color: #59667a;
+  line-height: 1.45;
+}
