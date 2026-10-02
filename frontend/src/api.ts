@@ -198,7 +198,9 @@ export type PerformanceAnalytics = {
     engine_events_loaded: number;
     engine_events_total: number;
     engine_events_sampled: boolean;
+    engine_turnover_fallbacks: number;
     micro_canary_cycles: number;
+    micro_canary_cycles_loaded: number;
     micro_canary_cycles_total: number;
     micro_canary_cycles_sampled: boolean;
     profit_metrics_sampled: boolean;
