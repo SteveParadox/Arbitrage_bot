@@ -386,7 +386,28 @@ impl EventPublisher {
         event_type: &str,
         payload: Value,
     ) -> Result<String, EventPublishError> {
-        let event = self.new_event(event_type, payload);
+        self.publish_critical_with_id(Uuid::new_v4().to_string(), event_type, payload)
+    }
+
+    pub fn publish_critical_with_id(
+        &self,
+        event_id: String,
+        event_type: &str,
+        payload: Value,
+    ) -> Result<String, EventPublishError> {
+        if event_id.trim().is_empty() || event_id.len() > 64 || !event_id.is_ascii() {
+            return Err(EventPublishError::new(
+                "critical event_id must be non-empty ASCII text no longer than 64 bytes",
+            ));
+        }
+        let event = EngineEvent {
+            event_id,
+            event_type: event_type.to_string(),
+            occurred_at_ms: now_ms(),
+            source: self.source.clone(),
+            schema_version: 1,
+            payload,
+        };
         if let Err(error) = self.outbox.persist(&event) {
             self.metrics
                 .outbox_available
