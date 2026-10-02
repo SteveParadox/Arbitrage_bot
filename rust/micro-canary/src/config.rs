@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::MicroCanaryError;
 
-pub const ABSOLUTE_MAX_CYCLE_NOTIONAL: Decimal = Decimal::new(25, 0);
+pub const ABSOLUTE_MAX_CYCLE_NOTIONAL: Decimal = Decimal::from_parts(25, 0, 0, false, 0);
 
 #[derive(Debug, Clone)]
 pub struct MicroCanaryConfig {
