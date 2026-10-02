@@ -262,19 +262,21 @@ impl RiskEngine {
         }
 
         let approved = market_fresh && checks.iter().all(|item| item.passed);
-        let approval = approved.then(|| RiskApproval {
-            trade_id: intent.trade_id.clone(),
-            approved_at_ms: now_ms,
-            expires_at_ms: now_ms.saturating_add(self.config.approval_ttl_ms),
-            kind: RiskApprovalKind::Normal,
+        let approval = approved.then(|| {
+            RiskApproval::new(
+                intent.trade_id.clone(),
+                now_ms,
+                now_ms.saturating_add(self.config.approval_ttl_ms),
+                RiskApprovalKind::Normal,
+            )
         });
 
-        Ok(RiskDecision {
-            trade_id: intent.trade_id.clone(),
+        Ok(RiskDecision::new(
+            intent.trade_id.clone(),
             approved,
             checks,
             approval,
-        })
+        ))
     }
 
     pub fn validate_approval(
@@ -380,12 +382,12 @@ impl RiskEngine {
             return Err(RiskError::GateClosed(exchange_detail));
         }
 
-        Ok(RiskApproval {
-            trade_id: intent.trade_id.clone(),
-            approved_at_ms: now_ms,
-            expires_at_ms: now_ms.saturating_add(self.config.approval_ttl_ms),
-            kind: RiskApprovalKind::EmergencyUnwind,
-        })
+        Ok(RiskApproval::new(
+            intent.trade_id.clone(),
+            now_ms,
+            now_ms.saturating_add(self.config.approval_ttl_ms),
+            RiskApprovalKind::EmergencyUnwind,
+        ))
     }
 
     pub fn record_execution_failure(
@@ -683,12 +685,7 @@ fn ensure_parent(path: &Path) -> Result<(), RiskError> {
 }
 
 fn rejected(intent: &TradeIntent, checks: Vec<RiskCheckResult>) -> RiskDecision {
-    RiskDecision {
-        trade_id: intent.trade_id.clone(),
-        approved: false,
-        checks,
-        approval: None,
-    }
+    RiskDecision::new(intent.trade_id.clone(), false, checks, None)
 }
 
 fn check(check: RiskCheck, passed: bool, detail: String) -> RiskCheckResult {
