@@ -105,15 +105,44 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: arbitrage_test
+          POSTGRES_USER: arbitrage
+          POSTGRES_PASSWORD: arbitrage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arbitrage -d arbitrage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       ARB_RUN_GRPC_INTEGRATION: "1"
+      ARB_RUN_RELIABILITY_INTEGRATION: "1"
+      ARB_RUN_REDIS_INTEGRATION: "1"
       ARB_ENGINE_GRPC_ADDR: 127.0.0.1:50051
       ARB_ENGINE_GRPC_TARGET: 127.0.0.1:50051
       ARB_ENGINE_GRPC_TOKEN: ci-engine-grpc-token-0123456789-abcdef
       ARB_ENGINE_GRPC_TIMEOUT_SECONDS: "1"
+      ARB_ENGINE_GRPC_MAX_RETRIES: "2"
+      ARB_ENGINE_GRPC_RETRY_INITIAL_SECONDS: "0.05"
+      ARB_ENGINE_GRPC_RETRY_MAX_SECONDS: "0.2"
+      ARB_TEST_GRPC_RESPONSE_DELAY_MS: "250"
+      ARB_ENGINE_BINARY: ./rust/target/debug/engine-service
+      ARB_ENGINE_PID_FILE: /tmp/engine-service.pid
+      ARB_ENGINE_LOG_FILE: /tmp/engine-service.log
       ARB_LIVE_TRADING_ENABLED: "false"
       ARB_REDIS_URL: redis://127.0.0.1:6379/0
       ARB_EVENT_STREAM: arb.events
+      ARB_EVENT_OUTBOX_PATH: data/event-outbox
+      ARB_EVENT_RETRY_INITIAL_MS: "25"
+      ARB_EVENT_RETRY_MAX_MS: "100"
+      ARB_EVENT_MAX_PENDING: "10000"
+      ARB_GRPC_IDEMPOTENCY_STORE: data/control/grpc-idempotency
+      ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS: "604800"
+      ARB_DATABASE_URL: postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage_test
       ARB_CONTROL_STATE_FILE: data/control/trading_state.json
       ARB_RUNTIME_LIMITS_FILE: data/control/risk_limits.json
       ARB_STRATEGY_RELOAD_FILE: data/control/strategy_reload.json
@@ -127,13 +156,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: pip install -e "./python[dev]"
       - run: cargo build --manifest-path rust/Cargo.toml -p engine-service
-      - run: mkdir -p data/control data/risk
+      - run: mkdir -p data/control data/risk data/event-outbox
+      - run: cd python && alembic upgrade head
+      - name: Redis event-outbox outage test
+        run: >-
+          cargo test --manifest-path rust/Cargo.toml -p event-bus
+          redis_pause_preserves_critical_event_and_recovers
+          -- --ignored --nocapture
+      - name: Redis event-outbox restart test
+        run: >-
+          cargo test --manifest-path rust/Cargo.toml -p event-bus
+          restart_recovery_delivers_same_event_ids_to_redis_when_enabled
+          -- --ignored --nocapture
+      - name: PostgreSQL event idempotency integration
+        run: >-
+          python -m pytest
+          python/tests/test_event_idempotency_integration.py
+          -q
       - name: Start Rust engine service
         run: |
           ./rust/target/debug/engine-service > /tmp/engine-service.log 2>&1 &
           echo $! > /tmp/engine-service.pid
-      - name: Rust ↔ Python gRPC and Redis integration
-        run: python -m pytest python/tests/test_engine_grpc_integration.py -q
+      - name: Rust ↔ Python reliability integration
+        run: python -m pytest python/tests/test_engine_grpc_integration.py -q -rs
       - name: Show engine log on failure
         if: failure()
         run: cat /tmp/engine-service.log || true

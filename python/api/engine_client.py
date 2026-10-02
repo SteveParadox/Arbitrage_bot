@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 
@@ -59,14 +60,42 @@ class EngineGrpcClient:
                 error.code().name,
             ) from error
 
-    async def start(self, reason: str) -> EngineCommandResult:
-        request_id = uuid.uuid4().hex
-        reply = await self._call(
+    async def _command_call(self, method_name: str, request):
+        max_retries = settings.arb_engine_grpc_max_retries
+        initial = settings.arb_engine_grpc_retry_initial_seconds
+        maximum = settings.arb_engine_grpc_retry_max_seconds
+        if max_retries < 0 or initial <= 0 or maximum <= 0 or initial > maximum:
+            raise EngineCommandError(
+                "invalid gRPC retry configuration",
+                "INVALID_CONFIGURATION",
+            )
+
+        retryable = {"UNAVAILABLE", "DEADLINE_EXCEEDED", "CANCELLED"}
+        attempt = 0
+        while True:
+            try:
+                return await self._call(method_name, request)
+            except EngineCommandError as error:
+                if error.code_name not in retryable or attempt >= max_retries:
+                    raise
+                delay = min(initial * (2**attempt), maximum)
+                attempt += 1
+                await asyncio.sleep(delay)
+
+    async def start(
+        self,
+        reason: str,
+        *,
+        request_id: str | None = None,
+    ) -> EngineCommandResult:
+        request_id = request_id or uuid.uuid4().hex
+        request = engine_control_pb2.ControlRequest(
+            request_id=request_id,
+            reason=reason,
+        )
+        reply = await self._command_call(
             "StartTrading",
-            engine_control_pb2.ControlRequest(
-                request_id=request_id,
-                reason=reason,
-            ),
+            request,
         )
         return _reply(
             reply,
@@ -74,15 +103,18 @@ class EngineGrpcClient:
             request_id=request_id,
         )
 
-    async def stop(self, reason: str) -> EngineCommandResult:
-        request_id = uuid.uuid4().hex
-        reply = await self._call(
-            "StopTrading",
-            engine_control_pb2.ControlRequest(
-                request_id=request_id,
-                reason=reason,
-            ),
+    async def stop(
+        self,
+        reason: str,
+        *,
+        request_id: str | None = None,
+    ) -> EngineCommandResult:
+        request_id = request_id or uuid.uuid4().hex
+        request = engine_control_pb2.ControlRequest(
+            request_id=request_id,
+            reason=reason,
         )
+        reply = await self._command_call("StopTrading", request)
         return _reply(
             reply,
             expected_command="stop_trading",
@@ -97,34 +129,36 @@ class EngineGrpcClient:
         max_trade_size: str = "",
         max_total_exposure: str = "",
         max_daily_loss: str = "",
+        request_id: str | None = None,
     ) -> EngineCommandResult:
-        request_id = uuid.uuid4().hex
-        reply = await self._call(
-            "UpdateLimits",
-            engine_control_pb2.UpdateLimitsRequest(
-                request_id=request_id,
-                min_net_edge_bps=min_net_edge_bps,
-                max_slippage_bps=max_slippage_bps,
-                max_trade_size=max_trade_size,
-                max_total_exposure=max_total_exposure,
-                max_daily_loss=max_daily_loss,
-            ),
+        request_id = request_id or uuid.uuid4().hex
+        request = engine_control_pb2.UpdateLimitsRequest(
+            request_id=request_id,
+            min_net_edge_bps=min_net_edge_bps,
+            max_slippage_bps=max_slippage_bps,
+            max_trade_size=max_trade_size,
+            max_total_exposure=max_total_exposure,
+            max_daily_loss=max_daily_loss,
         )
+        reply = await self._command_call("UpdateLimits", request)
         return _reply(
             reply,
             expected_command="update_limits",
             request_id=request_id,
         )
 
-    async def reload_strategy(self, reason: str) -> EngineCommandResult:
-        request_id = uuid.uuid4().hex
-        reply = await self._call(
-            "ReloadStrategy",
-            engine_control_pb2.ReloadStrategyRequest(
-                request_id=request_id,
-                reason=reason,
-            ),
+    async def reload_strategy(
+        self,
+        reason: str,
+        *,
+        request_id: str | None = None,
+    ) -> EngineCommandResult:
+        request_id = request_id or uuid.uuid4().hex
+        request = engine_control_pb2.ReloadStrategyRequest(
+            request_id=request_id,
+            reason=reason,
         )
+        reply = await self._command_call("ReloadStrategy", request)
         return _reply(
             reply,
             expected_command="reload_strategy",

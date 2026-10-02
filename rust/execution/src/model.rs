@@ -207,7 +207,8 @@ impl ExecutionAttemptError {
             | ExecutionError::InvalidOrder(_)
             | ExecutionError::EnvironmentMismatch(_)
             | ExecutionError::Authentication(_)
-            | ExecutionError::RiskState(_) => true,
+            | ExecutionError::RiskState(_)
+            | ExecutionError::EventPipeline(_) => true,
             ExecutionError::HttpStatus { status, .. } => {
                 *status < 500 && *status != 429
             }

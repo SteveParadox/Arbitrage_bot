@@ -77,6 +77,8 @@ pub enum ExecutionError {
     OrderNotFound(String),
     #[error("risk state update failed after execution: {0}")]
     RiskState(String),
+    #[error("critical event pipeline unavailable: {0}")]
+    EventPipeline(String),
 }
 
 impl ExecutionError {
@@ -105,6 +107,7 @@ impl ExecutionError {
                 | Self::Decode(_)
                 | Self::MissingData(_)
                 | Self::OrderNotFound(_)
+                | Self::EventPipeline(_)
         )
     }
 }

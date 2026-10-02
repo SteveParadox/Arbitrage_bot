@@ -39,12 +39,14 @@ where
         authorizer: A,
     ) -> Result<Self, CoordinatorError> {
         config.validate()?;
+        let events = EventPublisher::try_from_env("coordinator")
+            .map_err(|error| CoordinatorError::InvalidConfig(error.to_string()))?;
         Ok(Self {
             config,
             venue,
             planner,
             authorizer,
-            events: EventPublisher::from_env("coordinator"),
+            events,
         })
     }
 
@@ -55,6 +57,9 @@ where
         route: &TriangleRoute,
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
+        self.events
+            .ensure_critical_ready()
+            .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
         let started = Instant::now();
         let result = self
             .execute_route_inner(
@@ -65,14 +70,17 @@ where
             )
             .await;
         let execution_time_ms = started.elapsed().as_millis() as u64;
-        self.publish_trade_event(
+        let event_result = self.publish_trade_event(
             trade_id,
             route,
             starting_amount,
             execution_time_ms,
             &result,
         );
-        result
+        match event_result {
+            Ok(()) => result,
+            Err(error) => Err(error),
+        }
     }
 
     async fn execute_route_inner(
@@ -83,7 +91,8 @@ where
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
         validate_route(route, trade_id, starting_amount)?;
-        self.events.publish(
+        self.events
+            .publish_critical(
             "trade.attempted",
             json!({
                 "trade_id": trade_id,
@@ -93,7 +102,8 @@ where
                 "starting_amount": starting_amount.to_string(),
                 "asset_path": route.assets.clone(),
             }),
-        );
+        )
+        .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
 
         let mut holdings = BTreeMap::new();
         holdings.insert(route.start_asset.clone(), starting_amount);
@@ -670,8 +680,8 @@ where
         starting_amount: Decimal,
         execution_time_ms: u64,
         result: &Result<RouteExecutionReport, CoordinatorError>,
-    ) {
-        match result {
+    ) -> Result<(), CoordinatorError> {
+        let persisted = match result {
             Ok(report)
                 if matches!(
                     report.status,
@@ -679,7 +689,7 @@ where
                         | CoordinatorStatus::CompletedWithResidualCleanup
                 ) =>
             {
-                self.events.publish(
+                self.events.publish_critical(
                     "trade.executed",
                     json!({
                         "trade_id": report.trade_id.clone(),
@@ -694,42 +704,42 @@ where
                         "unwind_count": report.unwind_orders.len(),
                         "execution_time_ms": execution_time_ms,
                     }),
-                );
+                )
             }
-            Ok(report) => {
-                self.events.publish(
-                    "trade.failed",
-                    json!({
-                        "trade_id": report.trade_id.clone(),
-                        "route_id": report.route_id.clone(),
-                        "base_asset": report.base_asset.clone(),
-                        "starting_amount": report.starting_amount.to_string(),
-                        "final_base_amount": report.final_base_amount.to_string(),
-                        "realized_base_pnl": report.realized_base_pnl.to_string(),
-                        "economic_pnl": report.economic_pnl.map(|value| value.to_string()),
-                        "status": format!("{:?}", report.status),
-                        "failure_reason": report.failure_reason.clone(),
-                        "leg_count": report.legs.len(),
-                        "unwind_count": report.unwind_orders.len(),
-                        "execution_time_ms": execution_time_ms,
-                    }),
-                );
-            }
-            Err(error) => {
-                self.events.publish(
-                    "trade.failed",
-                    json!({
-                        "trade_id": trade_id,
-                        "route_id": route.id.clone(),
-                        "base_asset": route.start_asset.clone(),
-                        "starting_amount": starting_amount.to_string(),
-                        "status": "coordinator_error",
-                        "failure_reason": error.to_string(),
-                        "execution_time_ms": execution_time_ms,
-                    }),
-                );
-            }
-        }
+            Ok(report) => self.events.publish_critical(
+                "trade.failed",
+                json!({
+                    "trade_id": report.trade_id.clone(),
+                    "route_id": report.route_id.clone(),
+                    "base_asset": report.base_asset.clone(),
+                    "starting_amount": report.starting_amount.to_string(),
+                    "final_base_amount": report.final_base_amount.to_string(),
+                    "realized_base_pnl": report.realized_base_pnl.to_string(),
+                    "economic_pnl": report.economic_pnl.map(|value| value.to_string()),
+                    "status": format!("{:?}", report.status),
+                    "failure_reason": report.failure_reason.clone(),
+                    "leg_count": report.legs.len(),
+                    "unwind_count": report.unwind_orders.len(),
+                    "execution_time_ms": execution_time_ms,
+                }),
+            ),
+            Err(error) => self.events.publish_critical(
+                "trade.failed",
+                json!({
+                    "trade_id": trade_id,
+                    "route_id": route.id.clone(),
+                    "base_asset": route.start_asset.clone(),
+                    "starting_amount": starting_amount.to_string(),
+                    "status": "coordinator_error",
+                    "failure_reason": error.to_string(),
+                    "execution_time_ms": execution_time_ms,
+                }),
+            ),
+        };
+
+        persisted
+            .map(|_| ())
+            .map_err(|error| CoordinatorError::Execution(error.to_string()))
     }
 
     async fn positive_residual_value_base(

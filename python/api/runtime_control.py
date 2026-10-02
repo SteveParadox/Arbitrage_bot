@@ -60,10 +60,16 @@ def read_control_state() -> dict[str, Any]:
         "updated_at": payload.get("updated_at"),
         "reason": payload.get("reason"),
         "source": payload.get("source", "control_api"),
+        "request_id": payload.get("request_id"),
     }
 
 
-def write_control_state(*, enabled: bool, reason: str) -> dict[str, Any]:
+def write_control_state(
+    *,
+    enabled: bool,
+    reason: str,
+    request_id: str | None = None,
+) -> dict[str, Any]:
     path = control_state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -73,6 +79,7 @@ def write_control_state(*, enabled: bool, reason: str) -> dict[str, Any]:
         "updated_at": datetime.now(UTC).isoformat(),
         "reason": reason.strip(),
         "source": "fastapi_control",
+        "request_id": request_id,
     }
 
     with NamedTemporaryFile(
@@ -91,6 +98,12 @@ def write_control_state(*, enabled: bool, reason: str) -> dict[str, Any]:
 
     try:
         os.replace(temporary, path)
+        if os.name != "nt":
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     except Exception:
         temporary.unlink(missing_ok=True)
         raise

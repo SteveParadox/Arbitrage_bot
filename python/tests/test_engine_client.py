@@ -165,3 +165,79 @@ def test_deadline_exceeded_is_mapped_to_engine_command_error(
 
     assert error.value.code_name == "DEADLINE_EXCEEDED"
     assert "deadline exceeded" in str(error.value)
+
+
+def test_command_retry_reuses_same_request_id(monkeypatch) -> None:
+    attempts: list[str] = []
+    client = engine_client.EngineGrpcClient()
+
+    async def fake_call(method_name, request):
+        assert method_name == "StopTrading"
+        attempts.append(request.request_id)
+        if len(attempts) == 1:
+            raise engine_client.EngineCommandError(
+                "response was lost",
+                "DEADLINE_EXCEEDED",
+            )
+        return SimpleNamespace(
+            accepted=True,
+            command="stop_trading",
+            request_id=request.request_id,
+            detail="runtime trading gate disabled",
+            applied_at_ms=123,
+        )
+
+    monkeypatch.setattr(client, "_call", fake_call)
+    monkeypatch.setattr(
+        engine_client.settings,
+        "arb_engine_grpc_max_retries",
+        2,
+    )
+    monkeypatch.setattr(
+        engine_client.settings,
+        "arb_engine_grpc_retry_initial_seconds",
+        0.001,
+    )
+    monkeypatch.setattr(
+        engine_client.settings,
+        "arb_engine_grpc_retry_max_seconds",
+        0.001,
+    )
+
+    result = asyncio.run(
+        client.stop("retry test", request_id="stable-request-id")
+    )
+
+    assert result.request_id == "stable-request-id"
+    assert attempts == ["stable-request-id", "stable-request-id"]
+
+
+def test_command_retry_does_not_retry_non_transient_error(monkeypatch) -> None:
+    attempts = 0
+    client = engine_client.EngineGrpcClient()
+
+    async def fake_call(_method_name, _request):
+        nonlocal attempts
+        attempts += 1
+        raise engine_client.EngineCommandError(
+            "bad command",
+            "INVALID_ARGUMENT",
+        )
+
+    monkeypatch.setattr(client, "_call", fake_call)
+    monkeypatch.setattr(
+        engine_client.settings,
+        "arb_engine_grpc_max_retries",
+        3,
+    )
+
+    with pytest.raises(engine_client.EngineCommandError) as error:
+        asyncio.run(
+            client.reload_strategy(
+                "bad retry test",
+                request_id="stable-request-id",
+            )
+        )
+
+    assert error.value.code_name == "INVALID_ARGUMENT"
+    assert attempts == 1

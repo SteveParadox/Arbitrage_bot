@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     env,
     fs,
     net::SocketAddr,
@@ -15,13 +16,20 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::{sync::Mutex, time::sleep};
-use tonic::{transport::Server, Request, Response, Status};
-use tracing::info;
+use tonic::{transport::Server, Code, Request, Response, Status};
+use tracing::{info, warn};
 use uuid::Uuid;
+
+mod idempotency;
 
 pub mod proto {
     tonic::include_proto!("arbitrage.engine.v1");
 }
+
+use idempotency::{
+    fingerprint, CachedCommandReply, ClaimOutcome, CommandRecord, CommandStatus,
+    IdempotencyStore,
+};
 
 use proto::engine_control_server::{EngineControl, EngineControlServer};
 use proto::{
@@ -33,6 +41,7 @@ use proto::{
 struct EngineControlService {
     config: Arc<ServiceConfig>,
     events: EventPublisher,
+    idempotency: Arc<IdempotencyStore>,
     mutation_lock: Arc<Mutex<()>>,
 }
 
@@ -54,11 +63,17 @@ struct ControlState {
     updated_at: String,
     reason: String,
     source: String,
+    #[serde(default)]
+    request_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct RuntimeLimits {
     version: u32,
+    #[serde(default)]
+    request_id: Option<String>,
+    #[serde(default)]
+    updated_at_ms: Option<u64>,
     min_net_edge_bps: Option<String>,
     max_slippage_bps: Option<String>,
     max_trade_size: Option<String>,
@@ -74,64 +89,112 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
+        let message = request.into_inner();
+        let normalized_reason = clean_reason(&message.reason, "gRPC start_trading");
+        let request_fingerprint = fingerprint(
+            "start_trading",
+            &serde_json::json!({"reason": normalized_reason.clone()}).to_string(),
+        );
+
         let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "start_trading",
+            &request_fingerprint,
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_control_command(record, true, "start_trading");
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
         if !self.config.master_live_enabled {
-            return Err(Status::failed_precondition(
-                "deployment live-trading gate is disabled",
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition("deployment live-trading gate is disabled"),
+            ));
+        }
+        if let Err(error) = read_control(&self.config.control_file) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition(format!(
+                    "runtime control state is invalid; issue stop before start: {error}"
+                )),
             ));
         }
 
-        if let Err(error) = read_control(&self.config.control_file) {
-            return Err(Status::failed_precondition(format!(
-                "runtime control state is invalid; issue stop before start: {error}"
-            )));
+        let risk_config = match load_risk_config(&self.config.risk_config_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        let limits = match read_limits(&self.config.limits_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        if let Err(detail) = validate_runtime_limits(&limits, &risk_config) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition(format!(
+                    "runtime risk limits are invalid: {detail}"
+                )),
+            ));
         }
-
-        let risk_config = load_risk_config(&self.config.risk_config_file)
-            .map_err(internal)?;
-        let limits = read_limits(&self.config.limits_file).map_err(internal)?;
-        validate_runtime_limits(&limits, &risk_config).map_err(|detail| {
-            Status::failed_precondition(format!(
-                "runtime risk limits are invalid: {detail}"
-            ))
-        })?;
-        let mut risk_engine = RiskEngine::new(risk_config).map_err(internal)?;
-        let risk_status = risk_engine.status(current_time_ms()).map_err(internal)?;
+        let mut risk_engine = match RiskEngine::new(risk_config) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        let risk_status = match risk_engine.status(current_time_ms()) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
         if risk_status.manual_kill_switch_active {
-            return Err(Status::failed_precondition(
-                "manual kill switch is active",
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition("manual kill switch is active"),
             ));
         }
         if risk_status.circuit_breaker.is_some() {
-            return Err(Status::failed_precondition(
-                "risk circuit breaker is active",
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition("risk circuit breaker is active"),
+            ));
+        }
+        if let Err(error) = self.events.ensure_critical_ready() {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::unavailable(format!("critical event pipeline unavailable: {error}")),
             ));
         }
 
-        let message = request.into_inner();
-        let now = now_ms();
-        write_control(
+        if let Err(error) = write_control(
             &self.config.control_file,
             true,
-            clean_reason(&message.reason, "gRPC start_trading"),
-        )
-        .map_err(internal)?;
-        self.events.publish(
-            "engine.health",
+            normalized_reason,
+            Some(message.request_id.clone()),
+        ) {
+            return Err(Status::unavailable(format!(
+                "start_trading state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        let applied_at_ms = now_ms();
+        self.emit_command_event(
+            &mut record,
             json!({
                 "runtime_enabled": true,
                 "command": "start_trading",
-                "request_id": message.request_id.clone(),
+                "request_id": message.request_id,
             }),
-        );
-
-        Ok(Response::new(reply(
+        )?;
+        let response = reply(
             true,
             "start_trading",
-            message.request_id,
+            record.request_id.clone(),
             "runtime trading gate enabled",
-            now,
-        )))
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn stop_trading(
@@ -140,31 +203,54 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
-        let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
-        let now = now_ms();
-        write_control(
+        let normalized_reason = clean_reason(&message.reason, "gRPC stop_trading");
+        let request_fingerprint = fingerprint(
+            "stop_trading",
+            &serde_json::json!({"reason": normalized_reason.clone()}).to_string(),
+        );
+
+        let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "stop_trading",
+            &request_fingerprint,
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_control_command(record, false, "stop_trading");
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
+        if let Err(error) = write_control(
             &self.config.control_file,
             false,
-            clean_reason(&message.reason, "gRPC stop_trading"),
-        )
-        .map_err(internal)?;
-        self.events.publish(
-            "engine.health",
+            normalized_reason,
+            Some(message.request_id.clone()),
+        ) {
+            return Err(Status::unavailable(format!(
+                "stop_trading state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        let applied_at_ms = now_ms();
+        self.emit_command_event(
+            &mut record,
             json!({
                 "runtime_enabled": false,
                 "command": "stop_trading",
-                "request_id": message.request_id.clone(),
+                "request_id": message.request_id,
             }),
-        );
-
-        Ok(Response::new(reply(
+        )?;
+        let response = reply(
             true,
             "stop_trading",
-            message.request_id,
+            record.request_id.clone(),
             "runtime trading gate disabled",
-            now,
-        )))
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn update_limits(
@@ -173,78 +259,110 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
-        let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
-        let mut limits = read_limits(&self.config.limits_file).map_err(internal)?;
-        merge_limit(
+        let normalized_payload = normalize_limits_payload(&message)?;
+
+        let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "update_limits",
+            &fingerprint("update_limits", &normalized_payload),
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_limits_command(record);
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
+        let mut limits = match read_limits(&self.config.limits_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        if let Err(status) = merge_limit(
             "min_net_edge_bps",
             &message.min_net_edge_bps,
             &mut limits.min_net_edge_bps,
             false,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_slippage_bps",
             &message.max_slippage_bps,
             &mut limits.max_slippage_bps,
             false,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_trade_size",
             &message.max_trade_size,
             &mut limits.max_trade_size,
             true,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_total_exposure",
             &message.max_total_exposure,
             &mut limits.max_total_exposure,
             true,
-        )?;
-        merge_limit(
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
+        if let Err(status) = merge_limit(
             "max_daily_loss",
             &message.max_daily_loss,
             &mut limits.max_daily_loss,
             true,
-        )?;
+        ) {
+            return Err(self.cache_failure(&mut record, status));
+        }
 
-        if [
-            &message.min_net_edge_bps,
-            &message.max_slippage_bps,
-            &message.max_trade_size,
-            &message.max_total_exposure,
-            &message.max_daily_loss,
-        ]
-        .iter()
-        .all(|value| value.trim().is_empty())
-        {
-            return Err(Status::invalid_argument(
-                "at least one runtime risk limit must be supplied",
+        let static_risk = match load_risk_config(&self.config.risk_config_file) {
+            Ok(value) => value,
+            Err(error) => return Err(self.cache_failure(&mut record, internal(error))),
+        };
+        limits.version = 1;
+        if let Err(detail) = validate_runtime_limits(&limits, &static_risk) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::invalid_argument(detail),
+            ));
+        }
+        if let Err(error) = self.events.ensure_critical_ready() {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::unavailable(format!("critical event pipeline unavailable: {error}")),
             ));
         }
 
-        let static_risk = load_risk_config(&self.config.risk_config_file)
-            .map_err(internal)?;
-        limits.version = 1;
-        validate_runtime_limits(&limits, &static_risk)
-            .map_err(Status::invalid_argument)?;
-        write_json_atomic(&self.config.limits_file, &limits).map_err(internal)?;
-        let now = now_ms();
-        self.events.publish(
-            "engine.health",
+        let applied_at_ms = now_ms();
+        limits.request_id = Some(message.request_id.clone());
+        limits.updated_at_ms = Some(applied_at_ms);
+        if let Err(error) = write_json_atomic(&self.config.limits_file, &limits) {
+            return Err(Status::unavailable(format!(
+                "update_limits state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        self.emit_command_event(
+            &mut record,
             json!({
                 "command": "update_limits",
-                "request_id": message.request_id.clone(),
+                "request_id": message.request_id,
                 "runtime_limits": limits,
             }),
-        );
-
-        Ok(Response::new(reply(
+        )?;
+        let response = reply(
             true,
             "update_limits",
-            message.request_id,
+            record.request_id.clone(),
             "runtime risk limits updated",
-            now,
-        )))
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn reload_strategy(
@@ -253,40 +371,72 @@ impl EngineControl for EngineControlService {
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
-        let _guard = self.mutation_lock.lock().await;
         let message = request.into_inner();
-        scanner::load_triangle_config(&self.config.triangle_config_file)
-            .map_err(|error| {
+        let normalized_reason = clean_reason(&message.reason, "gRPC reload_strategy");
+        let request_fingerprint = fingerprint(
+            "reload_strategy",
+            &serde_json::json!({"reason": normalized_reason.clone()}).to_string(),
+        );
+
+        let _guard = self.mutation_lock.lock().await;
+        let mut record = match self.begin_command(
+            &message.request_id,
+            "reload_strategy",
+            &request_fingerprint,
+        )? {
+            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+            BeginCommand::Recover(record) => {
+                return self.recover_reload_command(record);
+            }
+            BeginCommand::Execute(record) => record,
+        };
+
+        if let Err(error) = scanner::load_triangle_config(&self.config.triangle_config_file) {
+            return Err(self.cache_failure(
+                &mut record,
                 Status::failed_precondition(format!(
                     "triangle strategy config is invalid: {error}"
-                ))
-            })?;
+                )),
+            ));
+        }
+        if let Err(error) = self.events.ensure_critical_ready() {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::unavailable(format!("critical event pipeline unavailable: {error}")),
+            ));
+        }
+
         let generation = Uuid::new_v4().to_string();
+        let applied_at_ms = now_ms();
         let payload = json!({
             "version": 1,
             "generation": generation.clone(),
-            "requested_at_ms": now_ms(),
-            "reason": clean_reason(&message.reason, "gRPC reload_strategy"),
+            "requested_at_ms": applied_at_ms,
+            "request_id": message.request_id.clone(),
+            "reason": normalized_reason,
         });
-        write_json_atomic(&self.config.strategy_reload_file, &payload)
-            .map_err(internal)?;
-        let now = now_ms();
-        self.events.publish(
-            "engine.health",
+        if let Err(error) = write_json_atomic(&self.config.strategy_reload_file, &payload) {
+            return Err(Status::unavailable(format!(
+                "reload_strategy state write outcome is uncertain; retry the same request_id: {error}"
+            )));
+        }
+
+        self.emit_command_event(
+            &mut record,
             json!({
                 "command": "reload_strategy",
-                "request_id": message.request_id.clone(),
-                "strategy_generation": generation.clone(),
+                "request_id": message.request_id,
+                "strategy_generation": generation,
             }),
-        );
-
-        Ok(Response::new(reply(
+        )?;
+        let response = reply(
             true,
             "reload_strategy",
-            message.request_id,
+            record.request_id.clone(),
             "strategy reload requested",
-            now,
-        )))
+            applied_at_ms,
+        );
+        self.finish_success(&mut record, response).await
     }
 
     async fn get_status(
@@ -299,7 +449,7 @@ impl EngineControl for EngineControlService {
         let (runtime_enabled, control_source, control_error) =
             control_snapshot(&control);
         let generation = read_strategy_generation(&self.config.strategy_reload_file);
-        let (mut healthy, limits_json, mut detail) =
+        let (mut healthy, limits_json, mut summary) =
             match (
                 read_limits(&self.config.limits_file),
                 load_risk_config(&self.config.risk_config_file),
@@ -333,8 +483,29 @@ impl EngineControl for EngineControlService {
             };
         if let Some(error) = control_error {
             healthy = false;
-            detail = format!("runtime control state invalid: {error}; {detail}");
+            summary = format!("runtime control state invalid: {error}; {summary}");
         }
+
+        let event_health = self.events.health_snapshot();
+        let idempotency_health = self.idempotency.health();
+        if event_health.event_pipeline_status != "healthy" || !idempotency_health.healthy {
+            healthy = false;
+        }
+        let detail = serde_json::to_string(&json!({
+            "summary": summary,
+            "event_pipeline": event_health,
+            "grpc_idempotency_store_status": if idempotency_health.healthy {
+                "healthy"
+            } else {
+                "unhealthy"
+            },
+            "grpc_idempotency_in_progress": idempotency_health.in_progress,
+            "grpc_idempotency_detail": idempotency_health.detail,
+        }))
+        .unwrap_or_else(|error| {
+            format!("{{\"summary\":\"failed to serialize health detail: {error}\"}}")
+        });
+
         Ok(Response::new(EngineStatus {
             healthy,
             runtime_enabled,
@@ -347,7 +518,358 @@ impl EngineControl for EngineControlService {
     }
 }
 
+enum BeginCommand {
+    Execute(CommandRecord),
+    Return(CommandReply),
+    Recover(CommandRecord),
+}
+
 impl EngineControlService {
+    fn begin_command(
+        &self,
+        request_id: &str,
+        command_type: &str,
+        request_fingerprint: &str,
+    ) -> Result<BeginCommand, Status> {
+        let outcome = self
+            .idempotency
+            .claim(request_id, command_type, request_fingerprint)
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "gRPC idempotency store unavailable; command not executed: {error}"
+                ))
+            })?;
+        match outcome {
+            ClaimOutcome::New(record) => {
+                info!(
+                    request_id,
+                    command_type,
+                    request_fingerprint,
+                    deduplication_result = "NEW",
+                    execution_status = "IN_PROGRESS",
+                    "gRPC command claimed"
+                );
+                Ok(BeginCommand::Execute(record))
+            }
+            ClaimOutcome::Completed(record) => match record.status {
+                CommandStatus::Succeeded => {
+                    let cached = record.response.ok_or_else(|| {
+                        Status::internal("completed idempotency record is missing response")
+                    })?;
+                    info!(
+                        request_id,
+                        command_type,
+                        request_fingerprint,
+                        deduplication_result = "DUPLICATE_COMPLETED",
+                        execution_status = "SUCCEEDED",
+                        "returning cached gRPC command response"
+                    );
+                    Ok(BeginCommand::Return(command_reply_from_cached(cached)))
+                }
+                CommandStatus::Failed => {
+                    let failure = record.failure.ok_or_else(|| {
+                        Status::internal("failed idempotency record is missing failure")
+                    })?;
+                    info!(
+                        request_id,
+                        command_type,
+                        request_fingerprint,
+                        deduplication_result = "DUPLICATE_COMPLETED",
+                        execution_status = "FAILED",
+                        "returning cached gRPC command failure"
+                    );
+                    Err(status_from_cached(&failure.code, failure.detail))
+                }
+                CommandStatus::InProgress => unreachable!("completed claim cannot be IN_PROGRESS"),
+            },
+            ClaimOutcome::InProgress(record) => {
+                warn!(
+                    request_id,
+                    command_type,
+                    request_fingerprint,
+                    deduplication_result = "DUPLICATE_IN_PROGRESS",
+                    execution_status = "IN_PROGRESS",
+                    "reconciling interrupted gRPC command"
+                );
+                Ok(BeginCommand::Recover(record))
+            }
+            ClaimOutcome::Conflict {
+                existing_command,
+                existing_fingerprint,
+            } => {
+                warn!(
+                    request_id,
+                    command_type,
+                    request_fingerprint,
+                    existing_command,
+                    existing_fingerprint,
+                    deduplication_result = "REQUEST_ID_CONFLICT",
+                    execution_status = "REJECTED",
+                    "request_id reused with a different logical command"
+                );
+                Err(Status::invalid_argument(
+                    "request_id was already used for a different command or payload",
+                ))
+            }
+        }
+    }
+
+    fn emit_command_event(
+        &self,
+        record: &mut CommandRecord,
+        payload: Value,
+    ) -> Result<(), Status> {
+        if record.event_accepted {
+            return Ok(());
+        }
+        self.events
+            .publish_critical_with_id(
+                record.event_id.clone(),
+                "engine.state_changed",
+                payload,
+            )
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "command state changed but critical event persistence failed; retry the same request_id: {error}"
+                ))
+            })?;
+        self.idempotency
+            .mark_event_accepted(record)
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "critical event was accepted but command journal update failed; retry the same request_id: {error}"
+                ))
+            })
+    }
+
+    async fn finish_success(
+        &self,
+        record: &mut CommandRecord,
+        response: CommandReply,
+    ) -> Result<Response<CommandReply>, Status> {
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(record, cached)
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "command executed but idempotency result could not be committed; retry the same request_id: {error}"
+                ))
+            })?;
+        info!(
+            request_id = %record.request_id,
+            command_type = %record.command_type,
+            request_fingerprint = %record.request_fingerprint,
+            deduplication_result = "NEW",
+            execution_status = "SUCCEEDED",
+            "gRPC command completed"
+        );
+
+        #[cfg(debug_assertions)]
+        if let Ok(raw) = env::var("ARB_TEST_GRPC_RESPONSE_DELAY_MS") {
+            if let Ok(delay_ms) = raw.parse::<u64>() {
+                if delay_ms > 0 {
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+            }
+        }
+        Ok(Response::new(response))
+    }
+
+    fn cache_failure(&self, record: &mut CommandRecord, status: Status) -> Status {
+        let code = code_name(status.code()).to_string();
+        let detail = status.message().to_string();
+        if let Err(error) = self.idempotency.complete_failure(record, code, detail) {
+            return Status::unavailable(format!(
+                "command failed before side effects, but idempotency failure could not be committed: {error}"
+            ));
+        }
+        info!(
+            request_id = %record.request_id,
+            command_type = %record.command_type,
+            request_fingerprint = %record.request_fingerprint,
+            deduplication_result = "NEW",
+            execution_status = "FAILED",
+            grpc_code = %code_name(status.code()),
+            "gRPC command failed before side effects"
+        );
+        status
+    }
+
+    fn recover_control_command(
+        &self,
+        mut record: CommandRecord,
+        expected_enabled: bool,
+        command: &str,
+    ) -> Result<Response<CommandReply>, Status> {
+        let state = read_control(&self.config.control_file)
+            .map_err(|error| Status::aborted(format!(
+                "request remains IN_PROGRESS; runtime state cannot be reconciled safely: {error}"
+            )))?
+            .ok_or_else(|| Status::aborted(
+                "request remains IN_PROGRESS; runtime state is missing and cannot be reconciled safely"
+            ))?;
+        if state.request_id.as_deref() != Some(record.request_id.as_str())
+            || state.enabled != expected_enabled
+        {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted engine state does not prove this request completed",
+            ));
+        }
+
+        self.emit_command_event(
+            &mut record,
+            json!({
+                "runtime_enabled": expected_enabled,
+                "command": command,
+                "request_id": record.request_id.clone(),
+                "recovered_after_restart": true,
+            }),
+        )?;
+        let applied_at_ms = chrono::DateTime::parse_from_rfc3339(&state.updated_at)
+            .ok()
+            .and_then(|value| value.timestamp_millis().try_into().ok())
+            .unwrap_or_else(now_ms);
+        let response = reply(
+            true,
+            command,
+            record.request_id.clone(),
+            if expected_enabled {
+                "runtime trading gate enabled"
+            } else {
+                "runtime trading gate disabled"
+            },
+            applied_at_ms,
+        );
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(&mut record, cached)
+            .map_err(|error| Status::unavailable(format!(
+                "reconciled command result could not be committed: {error}"
+            )))?;
+        Ok(Response::new(response))
+    }
+
+    fn recover_limits_command(
+        &self,
+        mut record: CommandRecord,
+    ) -> Result<Response<CommandReply>, Status> {
+        let limits = read_limits(&self.config.limits_file).map_err(|error| {
+            Status::aborted(format!(
+                "request remains IN_PROGRESS; runtime limits cannot be reconciled safely: {error}"
+            ))
+        })?;
+        if limits.request_id.as_deref() != Some(record.request_id.as_str()) {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted limits do not prove this request completed",
+            ));
+        }
+        self.emit_command_event(
+            &mut record,
+            json!({
+                "command": "update_limits",
+                "request_id": record.request_id.clone(),
+                "runtime_limits": limits.clone(),
+                "recovered_after_restart": true,
+            }),
+        )?;
+        let response = reply(
+            true,
+            "update_limits",
+            record.request_id.clone(),
+            "runtime risk limits updated",
+            limits.updated_at_ms.unwrap_or_else(now_ms),
+        );
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(&mut record, cached)
+            .map_err(|error| Status::unavailable(format!(
+                "reconciled command result could not be committed: {error}"
+            )))?;
+        Ok(Response::new(response))
+    }
+
+    fn recover_reload_command(
+        &self,
+        mut record: CommandRecord,
+    ) -> Result<Response<CommandReply>, Status> {
+        let raw = fs::read_to_string(&self.config.strategy_reload_file)
+            .map_err(|error| Status::aborted(format!(
+                "request remains IN_PROGRESS; strategy state cannot be reconciled safely: {error}"
+            )))?;
+        let state: Value = serde_json::from_str(&raw)
+            .map_err(|error| Status::aborted(format!(
+                "request remains IN_PROGRESS; strategy state is invalid: {error}"
+            )))?;
+        if state.get("request_id").and_then(Value::as_str)
+            != Some(record.request_id.as_str())
+        {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted strategy state does not prove this request completed",
+            ));
+        }
+        let generation = state
+            .get("generation")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if generation.is_empty() {
+            return Err(Status::aborted(
+                "request remains IN_PROGRESS; persisted strategy generation is missing",
+            ));
+        }
+        let applied_at_ms = state
+            .get("requested_at_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or_else(now_ms);
+        self.emit_command_event(
+            &mut record,
+            json!({
+                "command": "reload_strategy",
+                "request_id": record.request_id.clone(),
+                "strategy_generation": generation,
+                "recovered_after_restart": true,
+            }),
+        )?;
+        let response = reply(
+            true,
+            "reload_strategy",
+            record.request_id.clone(),
+            "strategy reload requested",
+            applied_at_ms,
+        );
+        let cached = CachedCommandReply {
+            accepted: response.accepted,
+            command: response.command.clone(),
+            request_id: response.request_id.clone(),
+            detail: response.detail.clone(),
+            applied_at_ms: response.applied_at_ms,
+        };
+        self.idempotency
+            .complete_success(&mut record, cached)
+            .map_err(|error| Status::unavailable(format!(
+                "reconciled command result could not be committed: {error}"
+            )))?;
+        Ok(Response::new(response))
+    }
+
     fn authorize<T>(&self, request: &Request<T>) -> Result<(), Status> {
         if self.config.token.len() < 32 {
             return Err(Status::unavailable(
@@ -365,6 +887,7 @@ impl EngineControlService {
         Ok(())
     }
 }
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -414,15 +937,36 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "0.0.0.0:50051".to_string())
         .parse()
         .context("invalid ARB_ENGINE_GRPC_ADDR")?;
-    let events = EventPublisher::from_env("engine-service");
+    let events = EventPublisher::try_from_env("engine-service")
+        .map_err(|error| anyhow::anyhow!("failed to initialize durable event pipeline: {error}"))?;
+    let idempotency_path = env_path(
+        &repo_root,
+        "ARB_GRPC_IDEMPOTENCY_STORE",
+        "data/control/grpc-idempotency",
+    );
+    let retention_seconds = env::var("ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS")
+        .unwrap_or_else(|_| "604800".to_string())
+        .parse::<u64>()
+        .context("ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS must be a positive integer")?;
+    let idempotency = Arc::new(IdempotencyStore::open(
+        idempotency_path,
+        retention_seconds,
+    )?);
+
     let heartbeat_events = events.clone();
+    let heartbeat_idempotency = idempotency.clone();
     let heartbeat_config = config.clone();
     tokio::spawn(async move {
         loop {
             let control = read_control(&heartbeat_config.control_file);
             let (runtime_enabled, control_source, _) =
                 control_snapshot(&control);
-            let (healthy, detail) = service_health(&heartbeat_config);
+            let (base_healthy, detail) = service_health(&heartbeat_config);
+            let event_health = heartbeat_events.health_snapshot();
+            let idempotency_health = heartbeat_idempotency.health();
+            let healthy = base_healthy
+                && event_health.event_pipeline_status == "healthy"
+                && idempotency_health.healthy;
             heartbeat_events.publish(
                 "engine.health",
                 json!({
@@ -432,6 +976,13 @@ async fn main() -> Result<()> {
                     "runtime_enabled": runtime_enabled,
                     "control_source": control_source,
                     "grpc_addr": addr.to_string(),
+                    "event_pipeline": event_health,
+                    "grpc_idempotency_store_status": if idempotency_health.healthy {
+                        "healthy"
+                    } else {
+                        "unhealthy"
+                    },
+                    "grpc_idempotency_in_progress": idempotency_health.in_progress,
                 }),
             );
             sleep(Duration::from_secs(5)).await;
@@ -443,6 +994,7 @@ async fn main() -> Result<()> {
         .add_service(EngineControlServer::new(EngineControlService {
             config,
             events,
+            idempotency,
             mutation_lock: Arc::new(Mutex::new(())),
         }))
         .serve(addr)
@@ -485,13 +1037,19 @@ fn reply(
     }
 }
 
-fn write_control(path: &Path, enabled: bool, reason: String) -> Result<()> {
+fn write_control(
+    path: &Path,
+    enabled: bool,
+    reason: String,
+    request_id: Option<String>,
+) -> Result<()> {
     let payload = ControlState {
         version: 1,
         enabled,
         updated_at: Utc::now().to_rfc3339(),
         reason,
         source: "rust_grpc_control".to_string(),
+        request_id,
     };
     write_json_atomic(path, &payload)
 }
@@ -562,6 +1120,90 @@ fn read_strategy_generation(path: &Path) -> String {
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|value| value.get("generation").and_then(Value::as_str).map(str::to_owned))
         .unwrap_or_default()
+}
+
+fn normalize_limits_payload(message: &UpdateLimitsRequest) -> Result<String, Status> {
+    let mut values = BTreeMap::new();
+    for (name, raw) in [
+        ("min_net_edge_bps", message.min_net_edge_bps.as_str()),
+        ("max_slippage_bps", message.max_slippage_bps.as_str()),
+        ("max_trade_size", message.max_trade_size.as_str()),
+        ("max_total_exposure", message.max_total_exposure.as_str()),
+        ("max_daily_loss", message.max_daily_loss.as_str()),
+    ] {
+        let normalized = if raw.trim().is_empty() {
+            None
+        } else {
+            Some(
+                Decimal::from_str_exact(raw.trim())
+                    .map_err(|_| Status::invalid_argument(format!("{name} must be a decimal")))?
+                    .normalize()
+                    .to_string(),
+            )
+        };
+        values.insert(name, normalized);
+    }
+    if values.values().all(Option::is_none) {
+        return Err(Status::invalid_argument(
+            "at least one runtime risk limit must be supplied",
+        ));
+    }
+    serde_json::to_string(&values).map_err(internal)
+}
+
+fn command_reply_from_cached(cached: CachedCommandReply) -> CommandReply {
+    CommandReply {
+        accepted: cached.accepted,
+        command: cached.command,
+        request_id: cached.request_id,
+        detail: cached.detail,
+        applied_at_ms: cached.applied_at_ms,
+    }
+}
+
+fn code_name(code: Code) -> &'static str {
+    match code {
+        Code::Ok => "OK",
+        Code::Cancelled => "CANCELLED",
+        Code::Unknown => "UNKNOWN",
+        Code::InvalidArgument => "INVALID_ARGUMENT",
+        Code::DeadlineExceeded => "DEADLINE_EXCEEDED",
+        Code::NotFound => "NOT_FOUND",
+        Code::AlreadyExists => "ALREADY_EXISTS",
+        Code::PermissionDenied => "PERMISSION_DENIED",
+        Code::ResourceExhausted => "RESOURCE_EXHAUSTED",
+        Code::FailedPrecondition => "FAILED_PRECONDITION",
+        Code::Aborted => "ABORTED",
+        Code::OutOfRange => "OUT_OF_RANGE",
+        Code::Unimplemented => "UNIMPLEMENTED",
+        Code::Internal => "INTERNAL",
+        Code::Unavailable => "UNAVAILABLE",
+        Code::DataLoss => "DATA_LOSS",
+        Code::Unauthenticated => "UNAUTHENTICATED",
+    }
+}
+
+fn status_from_cached(code: &str, detail: String) -> Status {
+    let code = match code {
+        "OK" => Code::Ok,
+        "CANCELLED" => Code::Cancelled,
+        "INVALID_ARGUMENT" => Code::InvalidArgument,
+        "DEADLINE_EXCEEDED" => Code::DeadlineExceeded,
+        "NOT_FOUND" => Code::NotFound,
+        "ALREADY_EXISTS" => Code::AlreadyExists,
+        "PERMISSION_DENIED" => Code::PermissionDenied,
+        "RESOURCE_EXHAUSTED" => Code::ResourceExhausted,
+        "FAILED_PRECONDITION" => Code::FailedPrecondition,
+        "ABORTED" => Code::Aborted,
+        "OUT_OF_RANGE" => Code::OutOfRange,
+        "UNIMPLEMENTED" => Code::Unimplemented,
+        "INTERNAL" => Code::Internal,
+        "UNAVAILABLE" => Code::Unavailable,
+        "DATA_LOSS" => Code::DataLoss,
+        "UNAUTHENTICATED" => Code::Unauthenticated,
+        _ => Code::Unknown,
+    };
+    Status::new(code, detail)
 }
 
 fn merge_limit(
@@ -653,24 +1295,45 @@ fn effective_decimal(
 }
 
 fn write_json_atomic(path: &Path, payload: &impl Serialize) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    use std::io::Write as _;
+
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
     let temp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
     let bytes = serde_json::to_vec_pretty(payload)?;
-    fs::write(&temp, bytes)?;
+    let mut file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temp)?;
+    file.write_all(&bytes)?;
+    file.sync_all()?;
+    drop(file);
+
     match fs::rename(&temp, path) {
-        Ok(()) => Ok(()),
+        Ok(()) => {}
         Err(error) if path.exists() => {
             fs::remove_file(path)?;
             fs::rename(&temp, path)?;
-            Ok(())
         }
         Err(error) => {
             let _ = fs::remove_file(&temp);
-            Err(error.into())
+            return Err(error.into());
         }
     }
+    sync_directory(parent)?;
+    Ok(())
+}
+
+fn sync_directory(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(path)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
@@ -765,6 +1428,7 @@ mod boundary_tests {
             updated_at: "2026-10-01T20:00:00Z".to_string(),
             reason: "test".to_string(),
             source: "rust_grpc_control".to_string(),
+            request_id: None,
         };
         fs::write(
             &valid,

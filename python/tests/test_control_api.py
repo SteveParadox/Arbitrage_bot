@@ -14,38 +14,39 @@ from api.engine_client import EngineCommandError
 
 
 class FakeEngineClient:
-    async def start(self, _reason: str):
+    async def start(self, _reason: str, *, request_id: str | None = None):
         return SimpleNamespace(
             accepted=True,
             command="start_trading",
-            request_id="start-1",
+            request_id=request_id or "start-1",
             detail="started",
             applied_at_ms=1,
         )
 
-    async def stop(self, _reason: str):
+    async def stop(self, _reason: str, *, request_id: str | None = None):
         return SimpleNamespace(
             accepted=True,
             command="stop_trading",
-            request_id="stop-1",
+            request_id=request_id or "stop-1",
             detail="stopped",
             applied_at_ms=2,
         )
 
     async def update_limits(self, **_values):
+        request_id = _values.get("request_id")
         return SimpleNamespace(
             accepted=True,
             command="update_limits",
-            request_id="limits-1",
+            request_id=request_id or "limits-1",
             detail="updated",
             applied_at_ms=3,
         )
 
-    async def reload_strategy(self, _reason: str):
+    async def reload_strategy(self, _reason: str, *, request_id: str | None = None):
         return SimpleNamespace(
             accepted=True,
             command="reload_strategy",
-            request_id="reload-1",
+            request_id=request_id or "reload-1",
             detail="reloaded",
             applied_at_ms=4,
         )
@@ -163,7 +164,7 @@ def test_stop_falls_back_fail_closed_when_grpc_is_down(
     tmp_path: Path,
 ) -> None:
     class BrokenEngine:
-        async def stop(self, _reason: str):
+        async def stop(self, _reason: str, *, request_id: str | None = None):
             raise EngineCommandError("unavailable")
 
     path = tmp_path / "control" / "trading_state.json"
@@ -198,3 +199,38 @@ def test_update_limits_and_reload_use_grpc(monkeypatch) -> None:
 
     assert limits["status"] == "updated"
     assert reload_result["status"] == "reload_requested"
+
+
+def test_control_preserves_explicit_request_id(monkeypatch) -> None:
+    monkeypatch.setattr(control.settings, "arb_live_trading_enabled", True)
+    monkeypatch.setattr(control, "engine_grpc_client", FakeEngineClient())
+    request_id = "stable-control-request-123"
+
+    start = asyncio.run(
+        control.start_trading(
+            control.TradingCommand(reason="test start", request_id=request_id)
+        )
+    )
+    stop = asyncio.run(
+        control.stop_trading(
+            control.TradingCommand(reason="test stop", request_id=request_id)
+        )
+    )
+    limits = asyncio.run(
+        control.update_limits(
+            control.RiskLimitsCommand(
+                max_trade_size="25",
+                request_id=request_id,
+            )
+        )
+    )
+    reload_result = asyncio.run(
+        control.reload_strategy(
+            control.TradingCommand(reason="test reload", request_id=request_id)
+        )
+    )
+
+    assert start["command"]["request_id"] == request_id
+    assert stop["command"]["request_id"] == request_id
+    assert limits["command"]["request_id"] == request_id
+    assert reload_result["command"]["request_id"] == request_id
