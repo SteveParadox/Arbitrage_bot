@@ -432,6 +432,7 @@ where
         ))
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn recover_or_finish(
         &mut self,
         risk_engine: &mut RiskEngine,
@@ -916,6 +917,7 @@ fn engage_unresolved_kill_switch(
         .map_err(|error| CoordinatorError::Risk(error.to_string()))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn report(
     trade_id: &str,
     route: &TriangleRoute,
