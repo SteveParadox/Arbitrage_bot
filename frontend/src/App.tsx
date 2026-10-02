@@ -882,11 +882,19 @@ export function App() {
                   </strong>
                 </span>
                 <span>
-                  Aggregate expected → actual profit{" "}
+                  Aggregate expected → actual (diagnostic){" "}
                   <strong>
                     {rate(analytics.funnel.aggregate_profit_capture_pct)}
                   </strong>
                 </span>
+                {analytics.funnel.matched_profit_capture_pct !== null ? (
+                  <span>
+                    Matched opportunity → actual profit{" "}
+                    <strong>
+                      {rate(analytics.funnel.matched_profit_capture_pct)}
+                    </strong>
+                  </span>
+                ) : null}
                 <small className="funnel-population-note">
                   {analytics.funnel.population_note}
                 </small>
@@ -1014,6 +1022,18 @@ export function App() {
                 historical engine cycles use the legacy turnover estimate
                 based on starting capital × (legs + unwinds). New coordinator
                 events use the unwind-aware base-flow estimate.
+              </div>
+            ) : null}
+
+            {analytics.data_quality.engine_terminal_events >
+            analytics.data_quality.engine_attributed_terminal_events ? (
+              <div className="analytics-warning">
+                Exact opportunity attribution is available for{" "}
+                {analytics.data_quality.engine_attributed_terminal_events.toLocaleString()}{" "}
+                of{" "}
+                {analytics.data_quality.engine_terminal_events.toLocaleString()}{" "}
+                terminal engine events. Unattributed trades remain in aggregate
+                diagnostics but not in the matched capture metric.
               </div>
             ) : null}
 
