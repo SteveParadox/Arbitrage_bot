@@ -78,7 +78,7 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     validate_subscription_topics(&topics)?;
     for request in subscription_requests(&topics) {
         write
-            .send(Message::Text(request.to_string().into()))
+            .send(Message::Text(request.to_string()))
             .await
             .context("failed to send subscription request")?;
     }
