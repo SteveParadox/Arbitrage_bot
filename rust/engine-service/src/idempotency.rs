@@ -173,17 +173,6 @@ impl IdempotencyStore {
         self.write_record(record)
     }
 
-    pub fn reset_in_progress_after_reconciliation(
-        &self,
-        record: &mut CommandRecord,
-    ) -> Result<()> {
-        record.status = CommandStatus::InProgress;
-        record.completed_at_ms = None;
-        record.response = None;
-        record.failure = None;
-        self.write_record(record)
-    }
-
     pub fn health(&self) -> StoreHealth {
         match self.health_inner() {
             Ok(in_progress) => StoreHealth {
