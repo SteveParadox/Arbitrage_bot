@@ -139,18 +139,18 @@ where
         validate_route(route, trade_id, starting_amount)?;
         self.events
             .publish_critical(
-            "trade.attempted",
-            json!({
-                "trade_id": trade_id,
-                "route_id": route.id.clone(),
-                "triangle_id": route.triangle_id.clone(),
-                "base_asset": route.start_asset.clone(),
-                "starting_amount": starting_amount.to_string(),
-                "asset_path": route.assets.clone(),
-                "opportunity_window_id": opportunity_window_id,
-            }),
-        )
-        .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
+                "trade.attempted",
+                json!({
+                    "trade_id": trade_id,
+                    "route_id": route.id.clone(),
+                    "triangle_id": route.triangle_id.clone(),
+                    "base_asset": route.start_asset.clone(),
+                    "starting_amount": starting_amount.to_string(),
+                    "asset_path": route.assets.clone(),
+                    "opportunity_window_id": opportunity_window_id,
+                }),
+            )
+            .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
 
         let mut holdings = BTreeMap::new();
         holdings.insert(route.start_asset.clone(), starting_amount);
