@@ -9,8 +9,8 @@ use anyhow::{Context, Result};
 use event_bus::EventPublisher;
 use orderbook::BookUpdate;
 use scanner::{
-    load_profitability_config, load_triangle_config, ArbitrageScanner, NdjsonRecorder,
-    ScanStatus, ScannerSettings,
+    load_profitability_config, load_triangle_config, ArbitrageScanner, NdjsonRecorder, ScanStatus,
+    ScannerSettings,
 };
 
 fn main() -> Result<()> {
@@ -98,10 +98,7 @@ fn main() -> Result<()> {
         recorder.record_batch(&records)?;
         for record in records {
             if record.status == ScanStatus::Complete {
-                events.publish(
-                    "opportunity.detected",
-                    serde_json::to_value(&record)?,
-                );
+                events.publish("opportunity.detected", serde_json::to_value(&record)?);
             }
             println!("{}", serde_json::to_string(&record)?);
         }
@@ -128,7 +125,6 @@ fn resolve_path(repo_root: &Path, configured: &str) -> PathBuf {
     }
 }
 
-
 struct StrategyReloadWatcher {
     path: PathBuf,
     generation: Option<String>,
@@ -145,11 +141,7 @@ impl StrategyReloadWatcher {
         }
     }
 
-    fn maybe_reload(
-        &mut self,
-        scanner: &mut ArbitrageScanner,
-        triangle_path: &Path,
-    ) -> Result<()> {
+    fn maybe_reload(&mut self, scanner: &mut ArbitrageScanner, triangle_path: &Path) -> Result<()> {
         let now = Instant::now();
         if now < self.next_check {
             return Ok(());
@@ -165,20 +157,14 @@ impl StrategyReloadWatcher {
 
         let result = load_triangle_config(triangle_path)
             .with_context(|| "strategy reload could not read triangle config")
-            .and_then(|config| {
-                scanner
-                    .reload_routes(config)
-                    .map_err(anyhow::Error::msg)
-            });
+            .and_then(|config| scanner.reload_routes(config).map_err(anyhow::Error::msg));
         self.generation = Some(generation.clone());
         match result {
             Ok(()) => {
                 eprintln!("strategy routes reloaded; generation={generation}");
             }
             Err(error) => {
-                eprintln!(
-                    "strategy reload rejected; generation={generation}: {error}"
-                );
+                eprintln!("strategy reload rejected; generation={generation}: {error}");
             }
         }
         Ok(())

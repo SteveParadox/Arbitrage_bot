@@ -178,8 +178,7 @@ impl ArbitrageScanner {
     pub fn reload_routes(&mut self, config: TriangleConfig) -> Result<(), String> {
         config.validate().map_err(|error| error.to_string())?;
 
-        let mut route_indexes_by_symbol: HashMap<String, Vec<usize>> =
-            HashMap::new();
+        let mut route_indexes_by_symbol: HashMap<String, Vec<usize>> = HashMap::new();
         for (route_index, route) in config.routes.iter().enumerate() {
             for leg in &route.legs {
                 route_indexes_by_symbol

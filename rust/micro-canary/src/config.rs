@@ -32,12 +32,9 @@ pub fn load_micro_canary_config(
 ) -> Result<MicroCanaryConfig, MicroCanaryError> {
     let raw = fs::read_to_string(path)?;
     let file: MicroCanaryConfigFile = serde_json::from_str(&raw)?;
-    let cycle_notional = Decimal::from_str_exact(&file.cycle_notional)
-        .map_err(|_| {
-            MicroCanaryError::InvalidConfig(
-                "cycle_notional must be a decimal string".to_string(),
-            )
-        })?;
+    let cycle_notional = Decimal::from_str_exact(&file.cycle_notional).map_err(|_| {
+        MicroCanaryError::InvalidConfig("cycle_notional must be a decimal string".to_string())
+    })?;
     let config = MicroCanaryConfig {
         version: file.version,
         base_asset: file.base_asset.to_uppercase(),
@@ -62,8 +59,7 @@ impl MicroCanaryConfig {
                 "Phase 13 currently requires base_asset=USDT".to_string(),
             ));
         }
-        if self.cycle_notional <= Decimal::ZERO
-            || self.cycle_notional > ABSOLUTE_MAX_CYCLE_NOTIONAL
+        if self.cycle_notional <= Decimal::ZERO || self.cycle_notional > ABSOLUTE_MAX_CYCLE_NOTIONAL
         {
             return Err(MicroCanaryError::InvalidConfig(
                 "cycle_notional must be positive and <= 25 USDT".to_string(),
@@ -84,8 +80,7 @@ impl MicroCanaryConfig {
             .unwrap_or(false)
         {
             return Err(MicroCanaryError::InvalidConfig(
-                "micro-canary refuses to start while live trading is enabled"
-                    .to_string(),
+                "micro-canary refuses to start while live trading is enabled".to_string(),
             ));
         }
         if self.require_shadow_ready_ack

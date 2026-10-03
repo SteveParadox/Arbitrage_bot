@@ -150,10 +150,7 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
 fn subscription_topics(config: &Config) -> Vec<String> {
     let mut topics = Vec::new();
     for symbol in &config.symbols {
-        topics.push(format!(
-            "orderbook.{}.{}",
-            config.orderbook_depth, symbol
-        ));
+        topics.push(format!("orderbook.{}.{}", config.orderbook_depth, symbol));
         if config.subscribe_trades {
             topics.push(format!("publicTrade.{symbol}"));
         }

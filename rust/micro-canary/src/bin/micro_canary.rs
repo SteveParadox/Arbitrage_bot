@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -12,15 +11,13 @@ use market_data::{
     model::MarketDataEvent,
 };
 use micro_canary::{
-    load_micro_canary_config, MicroCanaryCandidate, MicroCanaryRun,
-    ABSOLUTE_MAX_CYCLE_NOTIONAL,
+    load_micro_canary_config, MicroCanaryCandidate, MicroCanaryRun, ABSOLUTE_MAX_CYCLE_NOTIONAL,
 };
 use orderbook::BookUpdate;
 use rust_decimal::{prelude::ToPrimitive, Decimal};
 use scanner::{
-    load_profitability_config, load_triangle_config, ArbitrageScanRecord,
-    ArbitrageScanner, ProfitabilityConfig, ScanStatus, ScannerSettings,
-    TriangleRoute,
+    load_profitability_config, load_triangle_config, ArbitrageScanRecord, ArbitrageScanner,
+    ProfitabilityConfig, ScanStatus, ScannerSettings, TriangleRoute,
 };
 use shadow::ReadOnlyAccountClient;
 use tokio::sync::mpsc;
@@ -72,20 +69,12 @@ async fn main() -> Result<()> {
 
     let profitability_path = env::var("ARB_PROFITABILITY_CONFIG")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            resolve_path(
-                &repo_root,
-                &scanner_settings.profitability_config_path,
-            )
-        });
+        .unwrap_or_else(|_| resolve_path(&repo_root, &scanner_settings.profitability_config_path));
     let profitability = load_profitability_config(&profitability_path)?;
     let prediction_template = profitability.clone();
-    let mut scanner = ArbitrageScanner::new(
-        triangle_config.clone(),
-        scanner_settings,
-        profitability,
-    )
-    .map_err(anyhow::Error::msg)?;
+    let mut scanner =
+        ArbitrageScanner::new(triangle_config.clone(), scanner_settings, profitability)
+            .map_err(anyhow::Error::msg)?;
 
     let routes = triangle_config
         .routes
@@ -100,18 +89,11 @@ async fn main() -> Result<()> {
         let rate = account
             .get_spot_fee_rate(&symbol)
             .await
-            .with_context(|| format!(
-                "failed to load read-only account fee rate for {symbol}"
-            ))?;
-        if rate.taker_fee_rate < Decimal::ZERO
-            || rate.taker_fee_rate >= Decimal::ONE
-        {
+            .with_context(|| format!("failed to load read-only account fee rate for {symbol}"))?;
+        if rate.taker_fee_rate < Decimal::ZERO || rate.taker_fee_rate >= Decimal::ONE {
             bail!("invalid taker fee rate for {symbol}");
         }
-        fee_bps_by_symbol.insert(
-            symbol,
-            rate.taker_fee_rate * Decimal::from(10_000),
-        );
+        fee_bps_by_symbol.insert(symbol, rate.taker_fee_rate * Decimal::from(10_000));
     }
 
     let required_symbols = triangle_config
@@ -143,9 +125,7 @@ async fn main() -> Result<()> {
     );
 
     let (sender, mut receiver) = mpsc::channel::<MarketDataEvent>(16_384);
-    let connector = tokio::spawn(async move {
-        connector::run(market, sender).await
-    });
+    let connector = tokio::spawn(async move { connector::run(market, sender).await });
 
     let mut emitted = 0usize;
     let mut last_candidate_ms = 0u64;
@@ -237,15 +217,9 @@ async fn main() -> Result<()> {
                     starting_capital: text(canary.cycle_notional),
                     expected_pnl: text(prediction.expected_net_profit),
                     expected_fees: text(prediction.fee_amount),
-                    expected_slippage: text(
-                        prediction.expected_slippage_amount,
-                    ),
-                    expected_slippage_bps: text(
-                        prediction.expected_slippage_bps,
-                    ),
-                    expected_net_edge_bps: text(
-                        prediction.expected_net_return_bps,
-                    ),
+                    expected_slippage: text(prediction.expected_slippage_amount),
+                    expected_slippage_bps: text(prediction.expected_slippage_bps),
+                    expected_net_edge_bps: text(prediction.expected_net_return_bps),
                     fee_bps_per_leg: prediction
                         .fee_bps_per_leg
                         .iter()
@@ -258,12 +232,8 @@ async fn main() -> Result<()> {
                         .map(|leg| leg.execution.average_execution_price)
                         .collect(),
                     account_balance: text(account_snapshot.base_available),
-                    account_equity_usd: text(
-                        account_snapshot.total_equity_usd,
-                    ),
-                    account_exposure_usd: text(
-                        account_snapshot.non_base_exposure_usd,
-                    ),
+                    account_equity_usd: text(account_snapshot.total_equity_usd),
+                    account_exposure_usd: text(account_snapshot.non_base_exposure_usd),
                     manual_execution_required: true,
                 };
                 println!("{}", serde_json::to_string(&candidate)?);
@@ -305,9 +275,7 @@ fn select_candidate(
         }
         config.fee_bps_per_leg = route_fees;
 
-        let (Some(start), Some(final_amount)) =
-            (record.start_amount, record.final_amount)
-        else {
+        let (Some(start), Some(final_amount)) = (record.start_amount, record.final_amount) else {
             continue;
         };
         let Ok(prediction) = config.evaluate_f64(start, final_amount) else {
@@ -317,16 +285,13 @@ fn select_candidate(
             continue;
         }
 
-        let replace = best
-            .as_ref()
-            .is_none_or(|(_, _, current): &(
+        let replace = best.as_ref().is_none_or(
+            |(_, _, current): &(
                 ArbitrageScanRecord,
                 TriangleRoute,
                 scanner::ProfitabilityResult,
-            )| {
-                prediction.expected_net_return_bps
-                    > current.expected_net_return_bps
-            });
+            )| { prediction.expected_net_return_bps > current.expected_net_return_bps },
+        );
         if replace {
             best = Some((record.clone(), route, prediction));
         }
@@ -336,19 +301,15 @@ fn select_candidate(
 }
 
 fn load_scanner_settings(path: &Path) -> Result<ScannerSettings> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let settings: ScannerSettings = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     settings.validate().map_err(anyhow::Error::msg)?;
     Ok(settings)
 }
 
-fn config_path(
-    env_name: &str,
-    repo_root: &Path,
-    default: &str,
-) -> PathBuf {
+fn config_path(env_name: &str, repo_root: &Path, default: &str) -> PathBuf {
     env::var(env_name)
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_root.join(default))
@@ -382,9 +343,8 @@ fn init_logging() {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new(format!("micro_canary={level},{level}"))
-            }),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(format!("micro_canary={level},{level}"))),
         )
         .json()
         .init();
