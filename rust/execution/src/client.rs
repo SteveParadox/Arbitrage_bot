@@ -59,11 +59,7 @@ impl BybitExecutionClient {
             .map_err(|error| ExecutionError::EventPipeline(error.to_string()))?;
         self.validate_execution_environment(prepared)?;
         risk_engine
-            .validate_approval(
-                &prepared.approval,
-                prepared.trade_id(),
-                current_time_ms(),
-            )
+            .validate_approval(&prepared.approval, prepared.trade_id(), current_time_ms())
             .map_err(risk_state_error)?;
         request.validate(self.config.max_order_notional)?;
 
@@ -211,10 +207,7 @@ impl BybitExecutionClient {
             .await
     }
 
-    pub async fn sync_balances(
-        &self,
-        coins: &[String],
-    ) -> Result<BalanceSnapshot, ExecutionError> {
+    pub async fn sync_balances(&self, coins: &[String]) -> Result<BalanceSnapshot, ExecutionError> {
         let mut params = vec![("accountType".to_string(), self.config.account_type.clone())];
         if !coins.is_empty() {
             let normalized = coins
@@ -266,27 +259,27 @@ impl BybitExecutionClient {
         };
         self.events
             .publish_critical(
-            "balance.updated",
-            json!({
-                "account_type": snapshot.account_type.clone(),
-                "total_equity_usd": snapshot.total_equity_usd.to_string(),
-                "total_wallet_balance_usd": snapshot.total_wallet_balance_usd.to_string(),
-                "total_available_balance_usd": snapshot.total_available_balance_usd.to_string(),
-                "synchronized_at_ms": snapshot.synchronized_at_ms,
-                "coins": snapshot.coins.iter().map(|coin| {
-                    json!({
-                        "coin": coin.coin.clone(),
-                        "wallet_balance": coin.wallet_balance.to_string(),
-                        "locked": coin.locked.to_string(),
-                        "spot_borrow": coin.spot_borrow.to_string(),
-                        "equity": coin.equity.to_string(),
-                        "usd_value": coin.usd_value.to_string(),
-                        "estimated_spot_available": coin.estimated_spot_available.to_string(),
-                    })
-                }).collect::<Vec<_>>(),
-            }),
-        )
-        .map_err(|error| ExecutionError::EventPipeline(error.to_string()))?;
+                "balance.updated",
+                json!({
+                    "account_type": snapshot.account_type.clone(),
+                    "total_equity_usd": snapshot.total_equity_usd.to_string(),
+                    "total_wallet_balance_usd": snapshot.total_wallet_balance_usd.to_string(),
+                    "total_available_balance_usd": snapshot.total_available_balance_usd.to_string(),
+                    "synchronized_at_ms": snapshot.synchronized_at_ms,
+                    "coins": snapshot.coins.iter().map(|coin| {
+                        json!({
+                            "coin": coin.coin.clone(),
+                            "wallet_balance": coin.wallet_balance.to_string(),
+                            "locked": coin.locked.to_string(),
+                            "spot_borrow": coin.spot_borrow.to_string(),
+                            "equity": coin.equity.to_string(),
+                            "usd_value": coin.usd_value.to_string(),
+                            "estimated_spot_available": coin.estimated_spot_available.to_string(),
+                        })
+                    }).collect::<Vec<_>>(),
+                }),
+            )
+            .map_err(|error| ExecutionError::EventPipeline(error.to_string()))?;
         Ok(snapshot)
     }
 
@@ -316,11 +309,7 @@ impl BybitExecutionClient {
             })?;
 
         let result = self
-            .execute_with_risk_tracking_detailed_inner(
-                risk_engine,
-                prepared,
-                request,
-            )
+            .execute_with_risk_tracking_detailed_inner(risk_engine, prepared, request)
             .await;
 
         let publish_result = match &result {
@@ -397,9 +386,7 @@ impl BybitExecutionClient {
             return Err(ExecutionAttemptError {
                 stage,
                 place_ack,
-                source: ExecutionError::EventPipeline(format!(
-                    "{publish_error}; {original}"
-                )),
+                source: ExecutionError::EventPipeline(format!("{publish_error}; {original}")),
             });
         }
 
@@ -416,15 +403,12 @@ impl BybitExecutionClient {
             Ok(value) => value,
             Err(error) => {
                 if error.counts_as_execution_failure() {
-                    self.record_failure(
-                        risk_engine,
-                        format!("order submission failed: {error}"),
-                    )
-                    .map_err(|source| ExecutionAttemptError {
-                        stage: ExecutionStage::Submission,
-                        place_ack: None,
-                        source,
-                    })?;
+                    self.record_failure(risk_engine, format!("order submission failed: {error}"))
+                        .map_err(|source| ExecutionAttemptError {
+                            stage: ExecutionStage::Submission,
+                            place_ack: None,
+                            source,
+                        })?;
                 }
                 return Err(ExecutionAttemptError {
                     stage: ExecutionStage::Submission,
@@ -440,15 +424,12 @@ impl BybitExecutionClient {
         {
             Ok(value) => value,
             Err(error) => {
-                self.record_failure(
-                    risk_engine,
-                    format!("order monitoring failed: {error}"),
-                )
-                .map_err(|source| ExecutionAttemptError {
-                    stage: ExecutionStage::Monitoring,
-                    place_ack: Some(place_ack.clone()),
-                    source,
-                })?;
+                self.record_failure(risk_engine, format!("order monitoring failed: {error}"))
+                    .map_err(|source| ExecutionAttemptError {
+                        stage: ExecutionStage::Monitoring,
+                        place_ack: Some(place_ack.clone()),
+                        source,
+                    })?;
                 return Err(ExecutionAttemptError {
                     stage: ExecutionStage::Monitoring,
                     place_ack: Some(place_ack.clone()),
@@ -458,10 +439,7 @@ impl BybitExecutionClient {
         };
 
         let mut cancellation = None;
-        if monitor.timed_out
-            && !monitor.state.terminal
-            && self.config.cancel_on_timeout
-        {
+        if monitor.timed_out && !monitor.state.terminal && self.config.cancel_on_timeout {
             let ack = match self
                 .cancel_order(
                     &request.symbol,
@@ -728,11 +706,8 @@ impl BybitExecutionClient {
         symbol: &str,
         order_id: &str,
     ) -> Result<Option<RawOrder>, ExecutionError> {
-        self.query_order(
-            symbol,
-            vec![("orderId".to_string(), order_id.to_string())],
-        )
-        .await
+        self.query_order(symbol, vec![("orderId".to_string(), order_id.to_string())])
+            .await
     }
 
     async fn get_order_by_link_id(
@@ -820,11 +795,7 @@ impl BybitExecutionClient {
         ))
     }
 
-    async fn private_post_once<T>(
-        &self,
-        path: &str,
-        body: &str,
-    ) -> Result<(T, u64), ExecutionError>
+    async fn private_post_once<T>(&self, path: &str, body: &str) -> Result<(T, u64), ExecutionError>
     where
         T: DeserializeOwned,
     {
@@ -922,9 +893,7 @@ fn current_time_ms() -> u64 {
         .as_millis() as u64
 }
 
-fn decode_result<T: DeserializeOwned>(
-    envelope: ApiEnvelope,
-) -> Result<(T, u64), ExecutionError> {
+fn decode_result<T: DeserializeOwned>(envelope: ApiEnvelope) -> Result<(T, u64), ExecutionError> {
     let result = serde_json::from_value::<T>(envelope.result)
         .map_err(|error| ExecutionError::Decode(error.to_string()))?;
     Ok((result, envelope.time))
@@ -985,9 +954,7 @@ impl<'a> PlaceOrderBody<'a> {
             is_leverage: 0,
             order_filter: "Order",
             market_unit: market.then_some(MarketUnit::BaseCoin),
-            slippage_tolerance_type: request
-                .slippage_tolerance_percent
-                .map(|_| "Percent"),
+            slippage_tolerance_type: request.slippage_tolerance_percent.map(|_| "Percent"),
             slippage_tolerance: request
                 .slippage_tolerance_percent
                 .map(|value| value.normalize().to_string()),
@@ -1118,9 +1085,9 @@ where
     let value = Value::deserialize(deserializer)?;
     match value {
         Value::String(text) => text.parse::<u64>().map_err(serde::de::Error::custom),
-        Value::Number(number) => number.as_u64().ok_or_else(|| {
-            serde::de::Error::custom("timestamp number is not an unsigned integer")
-        }),
+        Value::Number(number) => number
+            .as_u64()
+            .ok_or_else(|| serde::de::Error::custom("timestamp number is not an unsigned integer")),
         Value::Null => Ok(0),
         other => Err(serde::de::Error::custom(format!(
             "unexpected timestamp value {other}"

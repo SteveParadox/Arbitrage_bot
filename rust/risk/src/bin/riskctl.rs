@@ -44,9 +44,7 @@ fn main() -> Result<()> {
             println!("circuit breaker reset");
         }
         _ => {
-            bail!(
-                "usage: riskctl <status|kill|clear-kill|reset-breaker> [reason/note]"
-            );
+            bail!("usage: riskctl <status|kill|clear-kill|reset-breaker> [reason/note]");
         }
     }
 

@@ -65,8 +65,7 @@ impl RiskEngine {
         let mut checks = Vec::with_capacity(14);
 
         if latch_breakers {
-            let (trading_enabled, trading_detail) =
-                self.runtime_trading_control_status();
+            let (trading_enabled, trading_detail) = self.runtime_trading_control_status();
             checks.push(check(
                 RiskCheck::TradingControl,
                 trading_enabled,
@@ -179,9 +178,8 @@ impl RiskEngine {
             ),
         ));
 
-        let trade_size_ok =
-            intent.starting_notional > Decimal::ZERO
-                && intent.starting_notional <= limits.max_trade_size;
+        let trade_size_ok = intent.starting_notional > Decimal::ZERO
+            && intent.starting_notional <= limits.max_trade_size;
         checks.push(check(
             RiskCheck::MaximumTradeSize,
             trade_size_ok,
@@ -199,10 +197,9 @@ impl RiskEngine {
         ));
 
         let exposure_after = context.current_exposure + intent.projected_peak_exposure;
-        let exposure_ok =
-            context.current_exposure >= Decimal::ZERO
-                && intent.projected_peak_exposure >= Decimal::ZERO
-                && exposure_after <= limits.max_total_exposure;
+        let exposure_ok = context.current_exposure >= Decimal::ZERO
+            && intent.projected_peak_exposure >= Decimal::ZERO
+            && exposure_after <= limits.max_total_exposure;
         checks.push(check(
             RiskCheck::MaximumExposure,
             exposure_ok,
@@ -287,8 +284,7 @@ impl RiskEngine {
     ) -> Result<(), RiskError> {
         self.refresh_state()?;
         if approval.kind() == RiskApprovalKind::Normal {
-            let (trading_enabled, trading_detail) =
-                self.runtime_trading_control_status();
+            let (trading_enabled, trading_detail) = self.runtime_trading_control_status();
             if !trading_enabled {
                 return Err(RiskError::GateClosed(trading_detail));
             }
@@ -429,11 +425,7 @@ impl RiskEngine {
         self.persist_state()
     }
 
-    pub fn engage_manual_kill_switch(
-        &self,
-        reason: &str,
-        now_ms: u64,
-    ) -> Result<(), RiskError> {
+    pub fn engage_manual_kill_switch(&self, reason: &str, now_ms: u64) -> Result<(), RiskError> {
         if reason.trim().is_empty() {
             return Err(RiskError::InvalidOperatorAction(
                 "kill-switch reason must not be empty".to_string(),
@@ -583,16 +575,13 @@ impl RiskEngine {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return (
                     false,
-                    "runtime trading control is disabled: state file is missing"
-                        .to_string(),
+                    "runtime trading control is disabled: state file is missing".to_string(),
                 );
             }
             Err(error) => {
                 return (
                     false,
-                    format!(
-                        "runtime trading control is disabled: cannot read state: {error}"
-                    ),
+                    format!("runtime trading control is disabled: cannot read state: {error}"),
                 );
             }
         };
@@ -602,37 +591,27 @@ impl RiskEngine {
             Err(error) => {
                 return (
                     false,
-                    format!(
-                        "runtime trading control is disabled: invalid JSON: {error}"
-                    ),
+                    format!("runtime trading control is disabled: invalid JSON: {error}"),
                 );
             }
         };
 
-        if payload.get("version").and_then(serde_json::Value::as_u64)
-            != Some(1)
-        {
+        if payload.get("version").and_then(serde_json::Value::as_u64) != Some(1) {
             return (
                 false,
-                "runtime trading control is disabled: unsupported state version"
-                    .to_string(),
+                "runtime trading control is disabled: unsupported state version".to_string(),
             );
         }
 
         match payload.get("enabled").and_then(serde_json::Value::as_bool) {
-            Some(true) => (
-                true,
-                "runtime trading control is enabled".to_string(),
-            ),
+            Some(true) => (true, "runtime trading control is enabled".to_string()),
             Some(false) => (
                 false,
-                "runtime trading control is stopped by the control API"
-                    .to_string(),
+                "runtime trading control is stopped by the control API".to_string(),
             ),
             None => (
                 false,
-                "runtime trading control is disabled: missing boolean enabled field"
-                    .to_string(),
+                "runtime trading control is disabled: missing boolean enabled field".to_string(),
             ),
         }
     }
@@ -791,17 +770,11 @@ struct EffectiveRiskLimits {
     max_daily_loss: Decimal,
 }
 
-fn runtime_decimal(
-    field: &str,
-    raw: Option<&str>,
-    default: Decimal,
-) -> Result<Decimal, RiskError> {
+fn runtime_decimal(field: &str, raw: Option<&str>, default: Decimal) -> Result<Decimal, RiskError> {
     match raw {
-        Some(value) => Decimal::from_str_exact(value).map_err(|_| {
-            RiskError::InvalidDecimal {
-                field: field.to_string(),
-                value: value.to_string(),
-            }
+        Some(value) => Decimal::from_str_exact(value).map_err(|_| RiskError::InvalidDecimal {
+            field: field.to_string(),
+            value: value.to_string(),
         }),
         None => Ok(default),
     }
@@ -821,34 +794,18 @@ mod tests {
     }
 
     fn paths(name: &str) -> (PathBuf, PathBuf) {
-        let base = std::env::temp_dir().join(format!(
-            "arbitrage-risk-{}-{}",
-            name,
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("arbitrage-risk-{}-{}", name, std::process::id()));
         let _ = fs::remove_dir_all(&base);
-        (
-            base.join("KILL_SWITCH"),
-            base.join("risk_state.json"),
-        )
+        (base.join("KILL_SWITCH"), base.join("risk_state.json"))
     }
 
     fn config(name: &str) -> RiskConfig {
         let (kill_switch_file, state_file) = paths(name);
-        let trading_control_file = state_file
-            .parent()
-            .unwrap()
-            .join("trading_state.json");
-        let runtime_limits_file = state_file
-            .parent()
-            .unwrap()
-            .join("risk_limits.json");
+        let trading_control_file = state_file.parent().unwrap().join("trading_state.json");
+        let runtime_limits_file = state_file.parent().unwrap().join("risk_limits.json");
         fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
-        fs::write(
-            &trading_control_file,
-            br#"{"version":1,"enabled":true}"#,
-        )
-        .unwrap();
+        fs::write(&trading_control_file, br#"{"version":1,"enabled":true}"#).unwrap();
         RiskConfig {
             version: 1,
             max_market_data_age_ms: 500,
@@ -947,11 +904,7 @@ mod tests {
             .preview(&fresh, &context(now + 10), now + 10)
             .unwrap();
         assert!(recovered.approved);
-        assert!(engine
-            .status(now + 10)
-            .unwrap()
-            .circuit_breaker
-            .is_none());
+        assert!(engine.status(now + 10).unwrap().circuit_breaker.is_none());
     }
 
     #[test]
@@ -1020,13 +973,17 @@ mod tests {
             .unwrap();
 
         let mut restarted = RiskEngine::new(cfg).unwrap();
-        let decision = restarted.evaluate(&intent(now), &context(now), now).unwrap();
+        let decision = restarted
+            .evaluate(&intent(now), &context(now), now)
+            .unwrap();
         assert!(!decision.approved);
 
         restarted
             .clear_manual_kill_switch("incident resolved")
             .unwrap();
-        let decision = restarted.evaluate(&intent(now), &context(now), now).unwrap();
+        let decision = restarted
+            .evaluate(&intent(now), &context(now), now)
+            .unwrap();
         assert!(decision.approved);
     }
 
@@ -1195,18 +1152,15 @@ mod tests {
         .unwrap();
         let mut engine = RiskEngine::new(cfg).unwrap();
 
-        let preview = engine
-            .preview(&intent(now), &context(now), now)
-            .unwrap();
+        let preview = engine.preview(&intent(now), &context(now), now).unwrap();
         assert!(preview.approved);
 
-        let decision = engine
-            .evaluate(&intent(now), &context(now), now)
-            .unwrap();
+        let decision = engine.evaluate(&intent(now), &context(now), now).unwrap();
         assert!(!decision.approved);
-        assert!(decision.checks.iter().any(|item| {
-            item.check == RiskCheck::TradingControl && !item.passed
-        }));
+        assert!(decision
+            .checks
+            .iter()
+            .any(|item| { item.check == RiskCheck::TradingControl && !item.passed }));
     }
 
     #[test]
@@ -1221,11 +1175,7 @@ mod tests {
             .into_approval()
             .unwrap();
 
-        fs::write(
-            control_file,
-            br#"{"version":1,"enabled":false}"#,
-        )
-        .unwrap();
+        fs::write(control_file, br#"{"version":1,"enabled":false}"#).unwrap();
 
         let error = engine
             .validate_approval(&approval, "trade-1", now + 20)
@@ -1247,9 +1197,10 @@ mod tests {
         let decision = engine.evaluate(&intent(now), &context(now), now).unwrap();
 
         assert!(!decision.approved);
-        assert!(decision.checks.iter().any(|item| {
-            item.check == RiskCheck::MaximumTradeSize && !item.passed
-        }));
+        assert!(decision
+            .checks
+            .iter()
+            .any(|item| { item.check == RiskCheck::MaximumTradeSize && !item.passed }));
     }
 
     #[test]

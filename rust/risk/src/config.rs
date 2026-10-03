@@ -62,15 +62,9 @@ pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError>
         max_market_data_age_ms: file.max_market_data_age_ms,
         min_net_edge_bps: parse_decimal("min_net_edge_bps", &file.min_net_edge_bps)?,
         max_slippage_bps: parse_decimal("max_slippage_bps", &file.max_slippage_bps)?,
-        min_liquidity_ratio: parse_decimal(
-            "min_liquidity_ratio",
-            &file.min_liquidity_ratio,
-        )?,
+        min_liquidity_ratio: parse_decimal("min_liquidity_ratio", &file.min_liquidity_ratio)?,
         max_trade_size: parse_decimal("max_trade_size", &file.max_trade_size)?,
-        max_total_exposure: parse_decimal(
-            "max_total_exposure",
-            &file.max_total_exposure,
-        )?,
+        max_total_exposure: parse_decimal("max_total_exposure", &file.max_total_exposure)?,
         max_daily_loss: parse_decimal("max_daily_loss", &file.max_daily_loss)?,
         execution_failure_limit: file.execution_failure_limit,
         execution_failure_window_ms: file.execution_failure_window_ms,
@@ -116,16 +110,12 @@ impl RiskConfig {
                 "execution_failure_limit must be greater than zero".to_string(),
             ));
         }
-        if self.min_net_edge_bps < Decimal::ZERO
-            || self.max_slippage_bps < Decimal::ZERO
-        {
+        if self.min_net_edge_bps < Decimal::ZERO || self.max_slippage_bps < Decimal::ZERO {
             return Err(RiskError::InvalidConfig(
                 "edge and slippage limits must be non-negative".to_string(),
             ));
         }
-        if self.min_liquidity_ratio <= Decimal::ZERO
-            || self.min_liquidity_ratio > Decimal::ONE
-        {
+        if self.min_liquidity_ratio <= Decimal::ZERO || self.min_liquidity_ratio > Decimal::ONE {
             return Err(RiskError::InvalidConfig(
                 "min_liquidity_ratio must be in (0, 1]".to_string(),
             ));

@@ -52,9 +52,7 @@ pub struct ExecutionOrderRequest {
 
 impl ExecutionOrderRequest {
     pub fn validate(&self, max_order_notional: Decimal) -> Result<(), ExecutionError> {
-        if self.symbol.trim().is_empty()
-            || self.symbol != self.symbol.to_uppercase()
-        {
+        if self.symbol.trim().is_empty() || self.symbol != self.symbol.to_uppercase() {
             return Err(ExecutionError::InvalidOrder(
                 "symbol must be non-empty uppercase text".to_string(),
             ));
@@ -64,8 +62,7 @@ impl ExecutionOrderRequest {
                 "requested quantity must be positive".to_string(),
             ));
         }
-        if self.estimated_notional <= Decimal::ZERO
-            || self.estimated_notional > max_order_notional
+        if self.estimated_notional <= Decimal::ZERO || self.estimated_notional > max_order_notional
         {
             return Err(ExecutionError::InvalidOrder(format!(
                 "estimated notional {} exceeds execution cap {} or is non-positive",
@@ -209,12 +206,9 @@ impl ExecutionAttemptError {
             | ExecutionError::Authentication(_)
             | ExecutionError::RiskState(_)
             | ExecutionError::EventPipeline(_) => true,
-            ExecutionError::HttpStatus { status, .. } => {
-                *status < 500 && *status != 429
-            }
+            ExecutionError::HttpStatus { status, .. } => *status < 500 && *status != 429,
             ExecutionError::Bybit { .. } => {
-                !self.source.is_retryable()
-                    && !self.source.is_duplicate_request()
+                !self.source.is_retryable() && !self.source.is_duplicate_request()
             }
             ExecutionError::Transport(_)
             | ExecutionError::Decode(_)
@@ -285,7 +279,6 @@ pub(crate) fn terminal_status(status: &str) -> bool {
         "Rejected" | "PartiallyFilledCanceled" | "Filled" | "Cancelled" | "Deactivated"
     )
 }
-
 
 #[cfg(test)]
 mod tests {
