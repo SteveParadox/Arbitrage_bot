@@ -1,9 +1,7 @@
 mod config;
 mod model;
 
-pub use config::{
-    load_micro_canary_config, MicroCanaryConfig, ABSOLUTE_MAX_CYCLE_NOTIONAL,
-};
+pub use config::{load_micro_canary_config, MicroCanaryConfig, ABSOLUTE_MAX_CYCLE_NOTIONAL};
 pub use model::{MicroCanaryCandidate, MicroCanaryRun};
 
 use thiserror::Error;

@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -12,12 +11,9 @@ use market_data::{
 };
 use orderbook::BookUpdate;
 use risk::{load_risk_config, RiskEngine};
-use scanner::{
-    load_profitability_config, load_triangle_config, ScannerSettings,
-};
+use scanner::{load_profitability_config, load_triangle_config, ScannerSettings};
 use shadow::{
-    load_shadow_config, ReadOnlyAccountClient, ReadOnlyAccountSnapshot,
-    ShadowEngine, ShadowEvent,
+    load_shadow_config, ReadOnlyAccountClient, ReadOnlyAccountSnapshot, ShadowEngine, ShadowEvent,
 };
 use tokio::{
     io::{AsyncWriteExt, BufWriter},
@@ -41,19 +37,13 @@ async fn main() -> Result<()> {
         .parse::<bool>()
         .unwrap_or(false)
     {
-        bail!(
-            "shadow-live refuses to start while ARB_LIVE_TRADING_ENABLED=true"
-        );
+        bail!("shadow-live refuses to start while ARB_LIVE_TRADING_ENABLED=true");
     }
 
     init_logging();
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let shadow_path = config_path(
-        "ARB_SHADOW_CONFIG",
-        &repo_root,
-        "shared/config/shadow.json",
-    );
+    let shadow_path = config_path("ARB_SHADOW_CONFIG", &repo_root, "shared/config/shadow.json");
     let triangle_path = config_path(
         "ARB_TRIANGLE_CONFIG",
         &repo_root,
@@ -64,21 +54,14 @@ async fn main() -> Result<()> {
         &repo_root,
         "shared/config/scanner.json",
     );
-    let risk_path = config_path(
-        "ARB_RISK_CONFIG",
-        &repo_root,
-        "shared/config/risk.json",
-    );
+    let risk_path = config_path("ARB_RISK_CONFIG", &repo_root, "shared/config/risk.json");
 
     let shadow_config = load_shadow_config(&shadow_path)?;
     let triangle_config = load_triangle_config(&triangle_path)?;
     if triangle_config.routes.is_empty() {
-        bail!(
-            concat!(
-                "shared/config/triangles.json contains no routes; ",
-                "generate current mainnet spot triangles first"
-            )
-        );
+        bail!(concat!(
+            "shared/config/triangles.json contains no routes; ",+            "generate current mainnet spot triangles first"
+        ));
     }
     if triangle_config.source.testnet {
         bail!("shadow-live requires mainnet triangle metadata");
@@ -87,23 +70,13 @@ async fn main() -> Result<()> {
     let scanner_settings = load_scanner_settings(&scanner_path)?;
     let profitability_path = env::var("ARB_PROFITABILITY_CONFIG")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            resolve_path(
-                &repo_root,
-                &scanner_settings.profitability_config_path,
-            )
-        });
+        .unwrap_or_else(|_| resolve_path(&repo_root, &scanner_settings.profitability_config_path));
     let profitability = load_profitability_config(&profitability_path)?;
     let risk_config = load_risk_config(&risk_path)?;
     let risk_engine = RiskEngine::new(risk_config)?;
 
-    let run_id = format!(
-        "shadow-{}-{}",
-        now_ms(),
-        std::process::id()
-    );
-    let account_client =
-        ReadOnlyAccountClient::from_env(&shadow_config.base_asset)?;
+    let run_id = format!("shadow-{}-{}", now_ms(), std::process::id());
+    let account_client = ReadOnlyAccountClient::from_env(&shadow_config.base_asset)?;
     let initial_account = account_client
         .sync()
         .await
@@ -120,12 +93,10 @@ async fn main() -> Result<()> {
     market_config.subscribe_trades = false;
     market_config.subscribe_tickers = false;
     if market_config.orderbook_depth == 1 {
-        bail!(
-            concat!(
-                "shadow mode requires BYBIT_ORDERBOOK_DEPTH of at least 50 ",
-                "for depth-aware latency measurement"
-            )
-        );
+        bail!(concat!(
+            "shadow mode requires BYBIT_ORDERBOOK_DEPTH of at least 50 ",
+            "for depth-aware latency measurement"
+        ));
     }
 
     let mut engine = ShadowEngine::new(
@@ -148,28 +119,21 @@ async fn main() -> Result<()> {
 
     let (market_tx, mut market_rx) = mpsc::channel::<MarketDataEvent>(16_384);
     let connector_config = market_config.clone();
-    let connector_task = tokio::spawn(async move {
-        connector::run(connector_config, market_tx).await
-    });
+    let connector_task =
+        tokio::spawn(async move { connector::run(connector_config, market_tx).await });
 
     let (account_tx, mut account_rx) = mpsc::channel::<AccountUpdate>(16);
     let account_refresh_ms = shadow_config.account_refresh_ms;
     let account_task = tokio::spawn(async move {
-        account_refresh_loop(
-            account_client,
-            account_tx,
-            account_refresh_ms,
-        )
-        .await
+        account_refresh_loop(account_client, account_tx, account_refresh_ms).await
     });
 
-    let mut sample_tick = time::interval(
-        std::time::Duration::from_millis(shadow_config.sample_tick_ms),
-    );
+    let mut sample_tick = time::interval(std::time::Duration::from_millis(
+        shadow_config.sample_tick_ms,
+    ));
     sample_tick.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
-    let mut progress_tick =
-        time::interval(std::time::Duration::from_secs(30));
+    let mut progress_tick = time::interval(std::time::Duration::from_secs(30));
     progress_tick.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
     info!(
@@ -271,8 +235,7 @@ async fn account_refresh_loop(
     sender: mpsc::Sender<AccountUpdate>,
     refresh_ms: u64,
 ) -> Result<()> {
-    let mut interval =
-        time::interval(std::time::Duration::from_millis(refresh_ms));
+    let mut interval = time::interval(std::time::Duration::from_millis(refresh_ms));
     interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
     interval.tick().await;
 
@@ -300,20 +263,14 @@ async fn output_writer(mut receiver: mpsc::Receiver<String>) -> Result<()> {
     Ok(())
 }
 
-async fn emit(
-    sender: &mpsc::Sender<String>,
-    event: &ShadowEvent,
-) -> Result<()> {
+async fn emit(sender: &mpsc::Sender<String>, event: &ShadowEvent) -> Result<()> {
     sender
         .send(serde_json::to_string(event)?)
         .await
         .map_err(|_| anyhow::anyhow!("shadow output writer stopped"))
 }
 
-async fn emit_all(
-    sender: &mpsc::Sender<String>,
-    events: Vec<ShadowEvent>,
-) -> Result<()> {
+async fn emit_all(sender: &mpsc::Sender<String>, events: Vec<ShadowEvent>) -> Result<()> {
     for event in events {
         emit(sender, &event).await?;
     }
@@ -321,19 +278,15 @@ async fn emit_all(
 }
 
 fn load_scanner_settings(path: &Path) -> Result<ScannerSettings> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
     let settings: ScannerSettings = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     settings.validate().map_err(anyhow::Error::msg)?;
     Ok(settings)
 }
 
-fn config_path(
-    env_name: &str,
-    repo_root: &Path,
-    default: &str,
-) -> PathBuf {
+fn config_path(env_name: &str, repo_root: &Path, default: &str) -> PathBuf {
     env::var(env_name)
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_root.join(default))
@@ -355,9 +308,8 @@ fn init_logging() {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new(format!("shadow={level},{level}"))
-            }),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(format!("shadow={level},{level}"))),
         )
         .json()
         .init();

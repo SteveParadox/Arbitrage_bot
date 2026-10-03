@@ -3,19 +3,19 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 use market_data::model::InstrumentMetadata;
 use orderbook::{BookUpdate, LocalOrderBook, OrderBookEngine};
 use risk::{
-    ProposedOrderLeg, RiskContext, RiskEngine, RiskCheckResult, ServiceHealth,
-    SymbolRules, TradeIntent,
+    ProposedOrderLeg, RiskCheckResult, RiskContext, RiskEngine, ServiceHealth, SymbolRules,
+    TradeIntent,
 };
 use rust_decimal::Decimal;
 use scanner::{
-    ArbitrageScanRecord, ArbitrageScanner, ProfitabilityConfig, ScanStatus,
-    ScannerSettings, TradeSide, TriangleConfig, TriangleRoute,
+    ArbitrageScanRecord, ArbitrageScanner, ProfitabilityConfig, ScanStatus, ScannerSettings,
+    TradeSide, TriangleConfig, TriangleRoute,
 };
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ReadOnlyAccountSnapshot, ShadowConfig, ShadowError, ShadowEvent,
-    ShadowLatencySample, ShadowOpportunity,
+    ReadOnlyAccountSnapshot, ShadowConfig, ShadowError, ShadowEvent, ShadowLatencySample,
+    ShadowOpportunity,
 };
 
 struct AccountState {
@@ -103,12 +103,9 @@ impl ShadowEngine {
             .cloned()
             .map(|route| (route.id.clone(), route))
             .collect::<HashMap<_, _>>();
-        let scanner = ArbitrageScanner::new(
-            triangle_config,
-            scanner_settings,
-            profitability.clone(),
-        )
-        .map_err(ShadowError::Engine)?;
+        let scanner =
+            ArbitrageScanner::new(triangle_config, scanner_settings, profitability.clone())
+                .map_err(ShadowError::Engine)?;
 
         let mut profitability_latency_neutral = profitability;
         profitability_latency_neutral.latency_buffer_bps = Decimal::ZERO;
@@ -177,18 +174,12 @@ impl ShadowEngine {
             detail: "mainnet wallet balance synchronized".to_string(),
             base_available: Some(decimal_text(snapshot.base_available)),
             total_equity_usd: Some(decimal_text(snapshot.total_equity_usd)),
-            non_base_exposure_usd: Some(decimal_text(
-                snapshot.non_base_exposure_usd,
-            )),
+            non_base_exposure_usd: Some(decimal_text(snapshot.non_base_exposure_usd)),
             session_pnl_proxy_usd: Some(decimal_text(pnl_proxy)),
         }
     }
 
-    pub fn mark_account_error(
-        &mut self,
-        now_ms: u64,
-        detail: String,
-    ) -> ShadowEvent {
+    pub fn mark_account_error(&mut self, now_ms: u64, detail: String) -> ShadowEvent {
         if let Some(state) = self.account.as_mut() {
             state.healthy = false;
             state.detail = detail.clone();
@@ -211,9 +202,7 @@ impl ShadowEngine {
                 .as_ref()
                 .map(|state| decimal_text(state.snapshot.non_base_exposure_usd)),
             session_pnl_proxy_usd: self.account.as_ref().map(|state| {
-                decimal_text(
-                    state.snapshot.total_equity_usd - state.baseline_equity_usd,
-                )
+                decimal_text(state.snapshot.total_equity_usd - state.baseline_equity_usd)
             }),
         }
     }
@@ -224,12 +213,7 @@ impl ShadowEngine {
         self.exchange.detail = "mainnet public market stream active".to_string();
     }
 
-    pub fn mark_exchange_status(
-        &mut self,
-        healthy: bool,
-        received_at_ms: u64,
-        detail: String,
-    ) {
+    pub fn mark_exchange_status(&mut self, healthy: bool, received_at_ms: u64, detail: String) {
         self.exchange.healthy = healthy;
         self.exchange.detail = detail;
         if healthy {
@@ -252,9 +236,7 @@ impl ShadowEngine {
         let tick_size = decimal_from_f64("tick_size", tick)?;
         let qty_step = decimal_from_f64("qty_step", step)?;
         let min_order_qty = decimal_from_f64("min_order_qty", min_qty)?;
-        if tick_size <= Decimal::ZERO
-            || qty_step <= Decimal::ZERO
-            || min_order_qty <= Decimal::ZERO
+        if tick_size <= Decimal::ZERO || qty_step <= Decimal::ZERO || min_order_qty <= Decimal::ZERO
         {
             return Ok(());
         }
@@ -285,9 +267,7 @@ impl ShadowEngine {
 
         let mut events = Vec::new();
         for record in records {
-            if record.status != ScanStatus::Complete
-                || record.gross_profitable != Some(true)
-            {
+            if record.status != ScanStatus::Complete || record.gross_profitable != Some(true) {
                 continue;
             }
             if record.start_asset != self.config.base_asset {
@@ -309,15 +289,10 @@ impl ShadowEngine {
 
             let tracked = observation.latency_tracking;
             let observation_id = observation.observation_id.clone();
-            let start_amount = decimal_from_option_f64(
-                "start_amount",
-                record.start_amount,
-            )?;
+            let start_amount = decimal_from_option_f64("start_amount", record.start_amount)?;
             let neutral_profit = self.latency_neutral_profit(&record)?;
 
-            events.push(ShadowEvent::Opportunity {
-                observation,
-            });
+            events.push(ShadowEvent::Opportunity { observation });
 
             if tracked {
                 self.pending.push_back(PendingOpportunity {
@@ -335,12 +310,7 @@ impl ShadowEngine {
                         .iter()
                         .map(|leg| leg.execution.average_execution_price)
                         .collect(),
-                    remaining_latencies: self
-                        .config
-                        .latency_ms
-                        .iter()
-                        .copied()
-                        .collect(),
+                    remaining_latencies: self.config.latency_ms.iter().copied().collect(),
                 });
             }
         }
@@ -348,10 +318,7 @@ impl ShadowEngine {
         Ok(events)
     }
 
-    pub fn sample_due(
-        &mut self,
-        now_ms: u64,
-    ) -> Result<Vec<ShadowEvent>, ShadowError> {
+    pub fn sample_due(&mut self, now_ms: u64) -> Result<Vec<ShadowEvent>, ShadowError> {
         let mut events = Vec::new();
         let mut keep = VecDeque::new();
 
@@ -360,20 +327,12 @@ impl ShadowEngine {
                 .remaining_latencies
                 .iter()
                 .copied()
-                .filter(|latency| {
-                    pending.detected_at_ms.saturating_add(*latency) <= now_ms
-                })
+                .filter(|latency| pending.detected_at_ms.saturating_add(*latency) <= now_ms)
                 .collect::<Vec<_>>();
 
             for latency_ms in due {
-                let target_at_ms =
-                    pending.detected_at_ms.saturating_add(latency_ms);
-                let sample = self.build_latency_sample(
-                    &pending,
-                    latency_ms,
-                    target_at_ms,
-                    now_ms,
-                );
+                let target_at_ms = pending.detected_at_ms.saturating_add(latency_ms);
+                let sample = self.build_latency_sample(&pending, latency_ms, target_at_ms, now_ms);
                 pending.remaining_latencies.remove(&latency_ms);
                 events.push(ShadowEvent::LatencySample { sample });
             }
@@ -398,9 +357,7 @@ impl ShadowEngine {
     }
 
     pub fn progress_event(&self) -> ShadowEvent {
-        self.readiness_event(
-            self.sampled_observation_count >= self.config.minimum_observations,
-        )
+        self.readiness_event(self.sampled_observation_count >= self.config.minimum_observations)
     }
 
     fn readiness_event(&self, ready: bool) -> ShadowEvent {
@@ -426,22 +383,13 @@ impl ShadowEngine {
             record.scan_timestamp,
             record.trigger_sequence,
         );
-        let start_amount =
-            decimal_from_option_f64("start_amount", record.start_amount)?;
-        let detection_final = decimal_from_option_f64(
-            "final_amount",
-            record.final_amount,
-        )?;
-        let gross_profit =
-            decimal_from_option_f64("gross_profit", record.gross_profit)?;
-        let expected_profit = decimal_from_option_f64(
-            "expected_net_profit",
-            record.expected_net_profit,
-        )?;
-        let expected_edge = decimal_from_option_f64(
-            "expected_net_return_bps",
-            record.expected_net_return_bps,
-        )?;
+        let start_amount = decimal_from_option_f64("start_amount", record.start_amount)?;
+        let detection_final = decimal_from_option_f64("final_amount", record.final_amount)?;
+        let gross_profit = decimal_from_option_f64("gross_profit", record.gross_profit)?;
+        let expected_profit =
+            decimal_from_option_f64("expected_net_profit", record.expected_net_profit)?;
+        let expected_edge =
+            decimal_from_option_f64("expected_net_return_bps", record.expected_net_return_bps)?;
 
         let latency_neutral = self
             .profitability_latency_neutral
@@ -452,13 +400,7 @@ impl ShadowEngine {
         let mut approval_error = None;
         let mut approved = false;
 
-        match self.build_risk_inputs(
-            &observation_id,
-            route,
-            record,
-            start_amount,
-            expected_edge,
-        ) {
+        match self.build_risk_inputs(&observation_id, route, record, start_amount, expected_edge) {
             Ok((intent, context)) => {
                 match self
                     .risk_engine
@@ -478,8 +420,7 @@ impl ShadowEngine {
             }
         }
 
-        let latency_tracking =
-            self.pending.len() < self.config.max_pending_observations;
+        let latency_tracking = self.pending.len() < self.config.max_pending_observations;
         if !latency_tracking && approval_error.is_none() {
             approval_error = Some(
                 "latency tracking queue is full; opportunity was not scheduled for delayed samples"
@@ -488,9 +429,8 @@ impl ShadowEngine {
         }
 
         let account = self.account.as_ref();
-        let session_pnl = account.map(|state| {
-            state.snapshot.total_equity_usd - state.baseline_equity_usd
-        });
+        let session_pnl =
+            account.map(|state| state.snapshot.total_equity_usd - state.baseline_equity_usd);
 
         Ok(ShadowOpportunity {
             run_id: self.run_id.clone(),
@@ -503,24 +443,17 @@ impl ShadowEngine {
             detection_final_amount: decimal_text(detection_final),
             detection_gross_profit: decimal_text(gross_profit),
             expected_profit: decimal_text(expected_profit),
-            latency_neutral_detection_profit: decimal_text(
-                latency_neutral.expected_net_profit,
-            ),
+            latency_neutral_detection_profit: decimal_text(latency_neutral.expected_net_profit),
             expected_net_edge_bps: decimal_text(expected_edge),
             detected: true,
             approved,
             would_execute: approved,
             approval_error,
             risk_checks,
-            account_balance: account.map(|state| {
-                decimal_text(state.snapshot.base_available)
-            }),
-            account_equity_usd: account.map(|state| {
-                decimal_text(state.snapshot.total_equity_usd)
-            }),
-            account_exposure_usd: account.map(|state| {
-                decimal_text(state.snapshot.non_base_exposure_usd)
-            }),
+            account_balance: account.map(|state| decimal_text(state.snapshot.base_available)),
+            account_equity_usd: account.map(|state| decimal_text(state.snapshot.total_equity_usd)),
+            account_exposure_usd: account
+                .map(|state| decimal_text(state.snapshot.non_base_exposure_usd)),
             session_pnl_proxy_usd: session_pnl.map(decimal_text),
             detection_leg_prices: record
                 .legs
@@ -542,22 +475,22 @@ impl ShadowEngine {
         start_amount: Decimal,
         expected_edge: Decimal,
     ) -> Result<(TradeIntent, RiskContext), String> {
-        let account = self.account.as_ref().ok_or_else(|| {
-            "real account has not synchronized yet".to_string()
-        })?;
+        let account = self
+            .account
+            .as_ref()
+            .ok_or_else(|| "real account has not synchronized yet".to_string())?;
 
         let mut proposed_legs = Vec::with_capacity(record.legs.len());
         let mut estimated_slippage_bps = Decimal::ZERO;
 
         for leg in &record.legs {
-            let rules = self.symbol_rules.get(&leg.symbol).ok_or_else(|| {
-                format!("missing live instrument precision for {}", leg.symbol)
-            })?;
-            let raw_quantity = decimal_from_f64(
-                "filled_base_quantity",
-                leg.execution.filled_base_quantity,
-            )
-            .map_err(|error| error.to_string())?;
+            let rules = self
+                .symbol_rules
+                .get(&leg.symbol)
+                .ok_or_else(|| format!("missing live instrument precision for {}", leg.symbol))?;
+            let raw_quantity =
+                decimal_from_f64("filled_base_quantity", leg.execution.filled_base_quantity)
+                    .map_err(|error| error.to_string())?;
             let quantity = floor_to_step(raw_quantity, rules.qty_step);
             proposed_legs.push(ProposedOrderLeg {
                 symbol: leg.symbol.clone(),
@@ -568,11 +501,8 @@ impl ShadowEngine {
 
             if let Some(value) = leg.execution.slippage_bps {
                 if value > 0.0 {
-                    estimated_slippage_bps += decimal_from_f64(
-                        "slippage_bps",
-                        value,
-                    )
-                    .map_err(|error| error.to_string())?;
+                    estimated_slippage_bps += decimal_from_f64("slippage_bps", value)
+                        .map_err(|error| error.to_string())?;
                 }
             }
         }
@@ -581,11 +511,9 @@ impl ShadowEngine {
             return Err("shadow opportunity does not contain three legs".to_string());
         }
 
-        let expected_final = decimal_from_option_f64(
-            "expected_final_amount",
-            record.expected_final_amount,
-        )
-        .map_err(|error| error.to_string())?;
+        let expected_final =
+            decimal_from_option_f64("expected_final_amount", record.expected_final_amount)
+                .map_err(|error| error.to_string())?;
         let projected_peak_exposure = if expected_final > start_amount {
             expected_final
         } else {
@@ -596,8 +524,7 @@ impl ShadowEngine {
             .oldest_book_timestamp
             .ok_or_else(|| "missing oldest book timestamp".to_string())?;
 
-        let pnl_proxy =
-            account.snapshot.total_equity_usd - account.baseline_equity_usd;
+        let pnl_proxy = account.snapshot.total_equity_usd - account.baseline_equity_usd;
         let context = RiskContext {
             account_balance: account.snapshot.base_available,
             current_exposure: account.snapshot.non_base_exposure_usd,
@@ -605,10 +532,7 @@ impl ShadowEngine {
             api_health: ServiceHealth {
                 healthy: account.healthy,
                 last_ok_ms: account.last_ok_ms,
-                detail: format!(
-                    "shadow session proxy; {}",
-                    account.detail
-                ),
+                detail: format!("shadow session proxy; {}", account.detail),
             },
             exchange_health: ServiceHealth {
                 healthy: self.exchange.healthy,
@@ -634,14 +558,9 @@ impl ShadowEngine {
         Ok((intent, context))
     }
 
-    fn latency_neutral_profit(
-        &self,
-        record: &ArbitrageScanRecord,
-    ) -> Result<Decimal, ShadowError> {
-        let start =
-            decimal_from_option_f64("start_amount", record.start_amount)?;
-        let final_amount =
-            decimal_from_option_f64("final_amount", record.final_amount)?;
+    fn latency_neutral_profit(&self, record: &ArbitrageScanRecord) -> Result<Decimal, ShadowError> {
+        let start = decimal_from_option_f64("start_amount", record.start_amount)?;
+        let final_amount = decimal_from_option_f64("final_amount", record.final_amount)?;
         self.profitability_latency_neutral
             .evaluate(start, final_amount)
             .map(|value| value.expected_net_profit)
@@ -666,11 +585,7 @@ impl ShadowEngine {
             );
         };
 
-        let evaluation = self.evaluate_route_at(
-            route,
-            pending.start_amount,
-            target_at_ms,
-        );
+        let evaluation = self.evaluate_route_at(route, pending.start_amount, target_at_ms);
 
         match evaluation {
             Ok(evaluation) => {
@@ -690,30 +605,23 @@ impl ShadowEngine {
                         );
                     }
                 };
-                let drift = profitability.expected_net_profit
-                    - pending.latency_neutral_detection_profit;
-                let route_final_drift_bps =
-                    if pending.detection_final_amount > Decimal::ZERO {
-                        Some(
-                            ((evaluation.final_amount
-                                / pending.detection_final_amount)
-                                - Decimal::ONE)
-                                * Decimal::new(10_000, 0),
-                        )
-                    } else {
-                        None
-                    };
+                let drift =
+                    profitability.expected_net_profit - pending.latency_neutral_detection_profit;
+                let route_final_drift_bps = if pending.detection_final_amount > Decimal::ZERO {
+                    Some(
+                        ((evaluation.final_amount / pending.detection_final_amount) - Decimal::ONE)
+                            * Decimal::new(10_000, 0),
+                    )
+                } else {
+                    None
+                };
                 let leg_price_drift_bps = route
                     .legs
                     .iter()
                     .zip(pending.detection_leg_prices.iter())
                     .zip(evaluation.leg_average_prices.iter())
                     .map(|((leg, detected), sampled)| {
-                        adverse_price_drift_bps(
-                            leg.side,
-                            *detected,
-                            *sampled,
-                        )
+                        adverse_price_drift_bps(leg.side, *detected, *sampled)
                     })
                     .collect();
 
@@ -724,20 +632,14 @@ impl ShadowEngine {
                     latency_ms,
                     target_at_ms,
                     sampled_at_ms,
-                    scheduler_lag_ms: sampled_at_ms
-                        .saturating_sub(target_at_ms),
+                    scheduler_lag_ms: sampled_at_ms.saturating_sub(target_at_ms),
                     sample_valid: true,
                     failure_reason: None,
                     final_amount: Some(decimal_text(evaluation.final_amount)),
-                    net_profit: Some(decimal_text(
-                        profitability.expected_net_profit,
-                    )),
-                    net_edge_bps: Some(decimal_text(
-                        profitability.expected_net_return_bps,
-                    )),
+                    net_profit: Some(decimal_text(profitability.expected_net_profit)),
+                    net_edge_bps: Some(decimal_text(profitability.expected_net_return_bps)),
                     profit_drift_from_detection: Some(decimal_text(drift)),
-                    route_final_drift_bps: route_final_drift_bps
-                        .map(decimal_text),
+                    route_final_drift_bps: route_final_drift_bps.map(decimal_text),
                     leg_price_drift_bps,
                     profitable_after_latency: profitability.net_profitable,
                     still_meets_min_edge: profitability.expected_net_return_bps
@@ -776,9 +678,10 @@ impl ShadowEngine {
         let mut timestamps = Vec::with_capacity(3);
 
         for leg in &route.legs {
-            let history = self.history.get(&leg.symbol).ok_or_else(|| {
-                format!("no book history for {}", leg.symbol)
-            })?;
+            let history = self
+                .history
+                .get(&leg.symbol)
+                .ok_or_else(|| format!("no book history for {}", leg.symbol))?;
             let snapshot = history
                 .iter()
                 .rev()
@@ -789,8 +692,7 @@ impl ShadowEngine {
                         leg.symbol
                     )
                 })?;
-            let book_age_ms = target_at_ms
-                .saturating_sub(snapshot.received_at_ms);
+            let book_age_ms = target_at_ms.saturating_sub(snapshot.received_at_ms);
             if book_age_ms > self.risk_engine.config().max_market_data_age_ms {
                 return Err(format!(
                     "{} book is {}ms old at latency target; maximum is {}ms",
@@ -821,8 +723,8 @@ impl ShadowEngine {
             timestamps.push(estimate.timestamp);
         }
 
-        let final_amount = decimal_from_f64("latency_final_amount", amount)
-            .map_err(|error| error.to_string())?;
+        let final_amount =
+            decimal_from_f64("latency_final_amount", amount).map_err(|error| error.to_string())?;
         Ok(RouteEvaluation {
             final_amount,
             leg_average_prices: prices,
@@ -840,15 +742,9 @@ impl ShadowEngine {
         self.books
             .apply(update)
             .map_err(|error| ShadowError::Engine(error.to_string()))?;
-        let book = self
-            .books
-            .get(&symbol)
-            .cloned()
-            .ok_or_else(|| {
-                ShadowError::Engine(format!(
-                    "book vanished after applying update for {symbol}"
-                ))
-            })?;
+        let book = self.books.get(&symbol).cloned().ok_or_else(|| {
+            ShadowError::Engine(format!("book vanished after applying update for {symbol}"))
+        })?;
 
         let entries = self.history.entry(symbol).or_default();
         entries.push_back(HistoricalBook {
@@ -856,8 +752,7 @@ impl ShadowEngine {
             book,
         });
 
-        let cutoff =
-            received_at_ms.saturating_sub(self.config.history_retention_ms);
+        let cutoff = received_at_ms.saturating_sub(self.config.history_retention_ms);
         while entries
             .front()
             .is_some_and(|entry| entry.received_at_ms < cutoff)
@@ -916,10 +811,7 @@ fn adverse_price_drift_bps(
     let (Some(detected), Some(sampled)) = (detected, sampled) else {
         return None;
     };
-    if !detected.is_finite()
-        || !sampled.is_finite()
-        || detected <= 0.0
-    {
+    if !detected.is_finite() || !sampled.is_finite() || detected <= 0.0 {
         return None;
     }
     Some(match side {
@@ -952,32 +844,19 @@ fn floor_to_step(value: Decimal, step: Decimal) -> Decimal {
     value - (value % step)
 }
 
-fn decimal_from_option_f64(
-    field: &str,
-    value: Option<f64>,
-) -> Result<Decimal, ShadowError> {
+fn decimal_from_option_f64(field: &str, value: Option<f64>) -> Result<Decimal, ShadowError> {
     decimal_from_f64(
         field,
-        value.ok_or_else(|| {
-            ShadowError::Engine(format!("missing {field}"))
-        })?,
+        value.ok_or_else(|| ShadowError::Engine(format!("missing {field}")))?,
     )
 }
 
-fn decimal_from_f64(
-    field: &str,
-    value: f64,
-) -> Result<Decimal, ShadowError> {
+fn decimal_from_f64(field: &str, value: f64) -> Result<Decimal, ShadowError> {
     if !value.is_finite() {
-        return Err(ShadowError::Engine(format!(
-            "{field} is not finite"
-        )));
+        return Err(ShadowError::Engine(format!("{field} is not finite")));
     }
-    Decimal::from_str_exact(&value.to_string()).map_err(|_| {
-        ShadowError::Engine(format!(
-            "{field} could not convert from {value}"
-        ))
-    })
+    Decimal::from_str_exact(&value.to_string())
+        .map_err(|_| ShadowError::Engine(format!("{field} could not convert from {value}")))
 }
 
 fn decimal_text(value: Decimal) -> String {
@@ -1085,10 +964,7 @@ mod tests {
     }
 
     fn risk_engine() -> RiskEngine {
-        let base = std::env::temp_dir().join(format!(
-            "shadow-risk-{}",
-            std::process::id()
-        ));
+        let base = std::env::temp_dir().join(format!("shadow-risk-{}", std::process::id()));
         let config = RiskConfig {
             version: 1,
             max_market_data_age_ms: 500,
@@ -1124,13 +1000,7 @@ mod tests {
         }
     }
 
-    fn snapshot(
-        symbol: &str,
-        bid: f64,
-        ask: f64,
-        exchange_ts: u64,
-        seq: u64,
-    ) -> BookUpdate {
+    fn snapshot(symbol: &str, bid: f64, ask: f64, exchange_ts: u64, seq: u64) -> BookUpdate {
         BookUpdate {
             symbol: symbol.to_string(),
             bids: vec![PriceLevel {
@@ -1162,31 +1032,21 @@ mod tests {
         )
         .unwrap();
 
-        engine.apply_history(
-            snapshot("BTCUSDT", 9.9, 10.0, 900, 1),
-            1_000,
-        )
-        .unwrap();
-        engine.apply_history(
-            snapshot("ETHBTC", 0.49, 0.5, 900, 1),
-            1_000,
-        )
-        .unwrap();
-        engine.apply_history(
-            snapshot("ETHUSDT", 6.0, 6.1, 900, 1),
-            1_000,
-        )
-        .unwrap();
-
-        engine.apply_history(
-            snapshot("ETHUSDT", 4.0, 4.1, 960, 2),
-            1_060,
-        )
-        .unwrap();
-
-        let evaluation = engine
-            .evaluate_route_at(&route, d("100"), 1_050)
+        engine
+            .apply_history(snapshot("BTCUSDT", 9.9, 10.0, 900, 1), 1_000)
             .unwrap();
+        engine
+            .apply_history(snapshot("ETHBTC", 0.49, 0.5, 900, 1), 1_000)
+            .unwrap();
+        engine
+            .apply_history(snapshot("ETHUSDT", 6.0, 6.1, 900, 1), 1_000)
+            .unwrap();
+
+        engine
+            .apply_history(snapshot("ETHUSDT", 4.0, 4.1, 960, 2), 1_060)
+            .unwrap();
+
+        let evaluation = engine.evaluate_route_at(&route, d("100"), 1_050).unwrap();
 
         assert_eq!(evaluation.leg_average_prices[2], Some(6.0));
     }

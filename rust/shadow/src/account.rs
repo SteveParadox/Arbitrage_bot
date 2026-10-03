@@ -38,17 +38,15 @@ pub struct ReadOnlyAccountClient {
 
 impl ReadOnlyAccountClient {
     pub fn from_env(base_asset: &str) -> Result<Self, ShadowError> {
-        let api_key =
-            env::var("BYBIT_SHADOW_API_KEY").unwrap_or_default();
-        let api_secret =
-            env::var("BYBIT_SHADOW_API_SECRET").unwrap_or_default();
+        let api_key = env::var("BYBIT_SHADOW_API_KEY").unwrap_or_default();
+        let api_secret = env::var("BYBIT_SHADOW_API_SECRET").unwrap_or_default();
         if api_key.trim().is_empty() || api_secret.trim().is_empty() {
             return Err(ShadowError::Account(
                 concat!(
                     "BYBIT_SHADOW_API_KEY and BYBIT_SHADOW_API_SECRET are ",
                     "required for read-only mainnet account sync"
                 )
-                    .to_string(),
+                .to_string(),
             ));
         }
 
@@ -89,10 +87,7 @@ impl ReadOnlyAccountClient {
         })
     }
 
-    pub async fn get_spot_fee_rate(
-        &self,
-        symbol: &str,
-    ) -> Result<ReadOnlyFeeRate, ShadowError> {
+    pub async fn get_spot_fee_rate(&self, symbol: &str) -> Result<ReadOnlyFeeRate, ShadowError> {
         if symbol.trim().is_empty() || symbol != symbol.to_uppercase() {
             return Err(ShadowError::Account(
                 "fee-rate symbol must be non-empty uppercase text".to_string(),
@@ -108,9 +103,7 @@ impl ReadOnlyAccountClient {
             )));
         }
         let row = envelope.result.list.into_iter().next().ok_or_else(|| {
-            ShadowError::Account(format!(
-                "fee-rate response contained no row for {symbol}"
-            ))
+            ShadowError::Account(format!("fee-rate response contained no row for {symbol}"))
         })?;
         Ok(ReadOnlyFeeRate {
             symbol: if row.symbol.is_empty() {
@@ -118,22 +111,12 @@ impl ReadOnlyAccountClient {
             } else {
                 row.symbol
             },
-            maker_fee_rate: parse_decimal(
-                "makerFeeRate",
-                &row.maker_fee_rate,
-            )?,
-            taker_fee_rate: parse_decimal(
-                "takerFeeRate",
-                &row.taker_fee_rate,
-            )?,
+            maker_fee_rate: parse_decimal("makerFeeRate", &row.maker_fee_rate)?,
+            taker_fee_rate: parse_decimal("takerFeeRate", &row.taker_fee_rate)?,
         })
     }
 
-    async fn signed_get(
-        &self,
-        path: &str,
-        query: &str,
-    ) -> Result<String, ShadowError> {
+    async fn signed_get(&self, path: &str, query: &str) -> Result<String, ShadowError> {
         let timestamp = current_time_ms();
         let signature = sign(
             &self.api_secret,
@@ -170,9 +153,7 @@ impl ReadOnlyAccountClient {
 
     pub async fn sync(&self) -> Result<ReadOnlyAccountSnapshot, ShadowError> {
         let query = "accountType=UNIFIED";
-        let body = self
-            .signed_get("/v5/account/wallet-balance", query)
-            .await?;
+        let body = self.signed_get("/v5/account/wallet-balance", query).await?;
 
         let envelope: WalletEnvelope = serde_json::from_str(&body)?;
         if envelope.ret_code != 0 {
@@ -182,16 +163,9 @@ impl ReadOnlyAccountClient {
             )));
         }
 
-        let account = envelope
-            .result
-            .list
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                ShadowError::Account(
-                    "wallet-balance response contained no account".to_string(),
-                )
-            })?;
+        let account = envelope.result.list.into_iter().next().ok_or_else(|| {
+            ShadowError::Account("wallet-balance response contained no account".to_string())
+        })?;
 
         let mut base_available = Decimal::ZERO;
         let mut non_base_exposure_usd = Decimal::ZERO;
@@ -215,10 +189,7 @@ impl ReadOnlyAccountClient {
         Ok(ReadOnlyAccountSnapshot {
             base_asset: self.base_asset.clone(),
             base_available,
-            total_equity_usd: parse_decimal(
-                "totalEquity",
-                &account.total_equity,
-            )?,
+            total_equity_usd: parse_decimal("totalEquity", &account.total_equity)?,
             total_wallet_balance_usd: parse_decimal(
                 "totalWalletBalance",
                 &account.total_wallet_balance,
@@ -236,9 +207,7 @@ fn sign(
     recv_window_ms: u64,
     query: &str,
 ) -> Result<String, ShadowError> {
-    let payload = format!(
-        "{timestamp_ms}{api_key}{recv_window_ms}{query}"
-    );
+    let payload = format!("{timestamp_ms}{api_key}{recv_window_ms}{query}");
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
         .map_err(|error| ShadowError::Account(error.to_string()))?;
     mac.update(payload.as_bytes());
@@ -249,11 +218,8 @@ fn parse_decimal(field: &str, value: &str) -> Result<Decimal, ShadowError> {
     if value.is_empty() {
         return Ok(Decimal::ZERO);
     }
-    Decimal::from_str_exact(value).map_err(|_| {
-        ShadowError::Account(format!(
-            "invalid decimal field {field}: {value}"
-        ))
-    })
+    Decimal::from_str_exact(value)
+        .map_err(|_| ShadowError::Account(format!("invalid decimal field {field}: {value}")))
 }
 
 fn current_time_ms() -> u64 {
@@ -337,10 +303,8 @@ mod tests {
 
     #[test]
     fn signature_is_deterministic() {
-        let first = sign("secret", 123, "key", 5000, "accountType=UNIFIED")
-            .unwrap();
-        let second = sign("secret", 123, "key", 5000, "accountType=UNIFIED")
-            .unwrap();
+        let first = sign("secret", 123, "key", 5000, "accountType=UNIFIED").unwrap();
+        let second = sign("secret", 123, "key", 5000, "accountType=UNIFIED").unwrap();
         assert_eq!(first, second);
         assert_eq!(first.len(), 64);
     }

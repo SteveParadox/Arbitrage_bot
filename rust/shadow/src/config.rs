@@ -28,9 +28,7 @@ struct ShadowConfigFile {
     history_retention_ms: u64,
 }
 
-pub fn load_shadow_config(
-    path: impl AsRef<Path>,
-) -> Result<ShadowConfig, ShadowError> {
+pub fn load_shadow_config(path: impl AsRef<Path>) -> Result<ShadowConfig, ShadowError> {
     let raw = fs::read_to_string(path)?;
     let file: ShadowConfigFile = serde_json::from_str(&raw)?;
     let mut latency_ms = file.latency_ms;
