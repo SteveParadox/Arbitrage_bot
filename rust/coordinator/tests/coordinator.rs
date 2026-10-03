@@ -128,10 +128,7 @@ impl RoutePlanner for MockPlanner {
         order_link_id: String,
         emergency: bool,
     ) -> Result<PlannedOrder, CoordinatorError> {
-        let requested_quantity = match (
-            conversion.symbol.as_str(),
-            conversion.side,
-        ) {
+        let requested_quantity = match (conversion.symbol.as_str(), conversion.side) {
             ("BTCUSDT", TradeSide::Buy) => input_amount / d("10"),
             ("BTCUSDT", TradeSide::Sell) => input_amount,
             ("ETHBTC", TradeSide::Buy) => input_amount * d("2"),
@@ -145,10 +142,7 @@ impl RoutePlanner for MockPlanner {
             }
         };
 
-        let estimated_output = match (
-            conversion.symbol.as_str(),
-            conversion.side,
-        ) {
+        let estimated_output = match (conversion.symbol.as_str(), conversion.side) {
             ("BTCUSDT", TradeSide::Buy) => requested_quantity,
             ("BTCUSDT", TradeSide::Sell) => requested_quantity * d("9"),
             ("ETHBTC", TradeSide::Buy) => requested_quantity,
@@ -184,11 +178,7 @@ impl RoutePlanner for MockPlanner {
                 price: None,
                 time_in_force: TimeInForce::Ioc,
                 order_link_id,
-                slippage_tolerance_percent: Some(if emergency {
-                    d("0.50")
-                } else {
-                    d("0.10")
-                }),
+                slippage_tolerance_percent: Some(if emergency { d("0.50") } else { d("0.10") }),
             },
         })
     }
@@ -289,7 +279,6 @@ impl MockVenue {
             requests: Mutex::new(Vec::new()),
         }
     }
-
 }
 
 #[async_trait]
@@ -317,9 +306,7 @@ impl CoordinatorVenue for MockVenue {
                         order_link_id: request.order_link_id.clone(),
                         accepted_at_ms: current_time_ms(),
                     }),
-                    source: ExecutionError::OrderNotFound(
-                        "unknown-order".to_string(),
-                    ),
+                    source: ExecutionError::OrderNotFound("unknown-order".to_string()),
                 });
             }
             Script::Fill {
@@ -417,11 +404,9 @@ async fn propagates_actual_post_fee_quantity_through_all_three_legs() {
         },
     ]);
     let planner = MockPlanner;
-    let authorizer =
-        RiskEngineAuthorizer::new(MockProvider, ExecutionMode::Testnet, false);
+    let authorizer = RiskEngineAuthorizer::new(MockProvider, ExecutionMode::Testnet, false);
     let mut coordinator =
-        ThreeLegCoordinator::new(coordinator_config(), venue, planner, authorizer)
-            .unwrap();
+        ThreeLegCoordinator::new(coordinator_config(), venue, planner, authorizer).unwrap();
     let mut risk = RiskEngine::new(risk_config("actual-quantity")).unwrap();
 
     let report = coordinator
@@ -463,11 +448,9 @@ async fn partial_leg_two_unwinds_both_remaining_intermediate_assets() {
         },
     ]);
     let planner = MockPlanner;
-    let authorizer =
-        RiskEngineAuthorizer::new(MockProvider, ExecutionMode::Testnet, false);
+    let authorizer = RiskEngineAuthorizer::new(MockProvider, ExecutionMode::Testnet, false);
     let mut coordinator =
-        ThreeLegCoordinator::new(coordinator_config(), venue, planner, authorizer)
-            .unwrap();
+        ThreeLegCoordinator::new(coordinator_config(), venue, planner, authorizer).unwrap();
     let mut risk = RiskEngine::new(risk_config("partial-leg-two")).unwrap();
 
     let report = coordinator
@@ -500,11 +483,9 @@ async fn unresolved_leg_two_halts_without_blind_opposite_order() {
         Script::Unresolved,
     ]);
     let planner = MockPlanner;
-    let authorizer =
-        RiskEngineAuthorizer::new(MockProvider, ExecutionMode::Testnet, false);
+    let authorizer = RiskEngineAuthorizer::new(MockProvider, ExecutionMode::Testnet, false);
     let mut coordinator =
-        ThreeLegCoordinator::new(coordinator_config(), venue, planner, authorizer)
-            .unwrap();
+        ThreeLegCoordinator::new(coordinator_config(), venue, planner, authorizer).unwrap();
     let mut risk = RiskEngine::new(risk_config("unresolved-leg-two")).unwrap();
 
     let report = coordinator

@@ -4,8 +4,7 @@
 
 use std::{
     collections::BTreeMap,
-    env,
-    fs,
+    env, fs,
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
@@ -31,14 +30,13 @@ pub mod proto {
 }
 
 use idempotency::{
-    fingerprint, CachedCommandReply, ClaimOutcome, CommandRecord, CommandStatus,
-    IdempotencyStore,
+    fingerprint, CachedCommandReply, ClaimOutcome, CommandRecord, CommandStatus, IdempotencyStore,
 };
 
 use proto::engine_control_server::{EngineControl, EngineControlServer};
 use proto::{
-    CommandReply, ControlRequest, EngineStatus, ReloadStrategyRequest,
-    StatusRequest, UpdateLimitsRequest,
+    CommandReply, ControlRequest, EngineStatus, ReloadStrategyRequest, StatusRequest,
+    UpdateLimitsRequest,
 };
 
 #[derive(Clone)]
@@ -101,17 +99,14 @@ impl EngineControl for EngineControlService {
         );
 
         let _guard = self.mutation_lock.lock().await;
-        let mut record = match self.begin_command(
-            &message.request_id,
-            "start_trading",
-            &request_fingerprint,
-        )? {
-            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
-            BeginCommand::Recover(record) => {
-                return self.recover_control_command(record, true, "start_trading");
-            }
-            BeginCommand::Execute(record) => record,
-        };
+        let mut record =
+            match self.begin_command(&message.request_id, "start_trading", &request_fingerprint)? {
+                BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+                BeginCommand::Recover(record) => {
+                    return self.recover_control_command(record, true, "start_trading");
+                }
+                BeginCommand::Execute(record) => record,
+            };
 
         if !self.config.master_live_enabled {
             return Err(self.cache_failure(
@@ -139,9 +134,7 @@ impl EngineControl for EngineControlService {
         if let Err(detail) = validate_runtime_limits(&limits, &risk_config) {
             return Err(self.cache_failure(
                 &mut record,
-                Status::failed_precondition(format!(
-                    "runtime risk limits are invalid: {detail}"
-                )),
+                Status::failed_precondition(format!("runtime risk limits are invalid: {detail}")),
             ));
         }
         let mut risk_engine = match RiskEngine::new(risk_config) {
@@ -215,17 +208,14 @@ impl EngineControl for EngineControlService {
         );
 
         let _guard = self.mutation_lock.lock().await;
-        let mut record = match self.begin_command(
-            &message.request_id,
-            "stop_trading",
-            &request_fingerprint,
-        )? {
-            BeginCommand::Return(reply) => return Ok(Response::new(reply)),
-            BeginCommand::Recover(record) => {
-                return self.recover_control_command(record, false, "stop_trading");
-            }
-            BeginCommand::Execute(record) => record,
-        };
+        let mut record =
+            match self.begin_command(&message.request_id, "stop_trading", &request_fingerprint)? {
+                BeginCommand::Return(reply) => return Ok(Response::new(reply)),
+                BeginCommand::Recover(record) => {
+                    return self.recover_control_command(record, false, "stop_trading");
+                }
+                BeginCommand::Execute(record) => record,
+            };
 
         if let Err(error) = write_control(
             &self.config.control_file,
@@ -330,10 +320,7 @@ impl EngineControl for EngineControlService {
         };
         limits.version = 1;
         if let Err(detail) = validate_runtime_limits(&limits, &static_risk) {
-            return Err(self.cache_failure(
-                &mut record,
-                Status::invalid_argument(detail),
-            ));
+            return Err(self.cache_failure(&mut record, Status::invalid_argument(detail)));
         }
         if let Err(error) = self.events.ensure_critical_ready() {
             return Err(self.cache_failure(
@@ -450,41 +437,35 @@ impl EngineControl for EngineControlService {
         self.authorize(&request)?;
         validate_request_id(&request.get_ref().request_id)?;
         let control = read_control(&self.config.control_file);
-        let (runtime_enabled, control_source, control_error) =
-            control_snapshot(&control);
+        let (runtime_enabled, control_source, control_error) = control_snapshot(&control);
         let generation = read_strategy_generation(&self.config.strategy_reload_file);
-        let (mut healthy, limits_json, mut summary) =
-            match (
-                read_limits(&self.config.limits_file),
-                load_risk_config(&self.config.risk_config_file),
-            ) {
-                (Ok(limits), Ok(static_risk)) => {
-                    match validate_runtime_limits(&limits, &static_risk) {
-                        Ok(()) => (
-                            true,
-                            serde_json::to_string(&limits)
-                                .unwrap_or_else(|_| "{}".to_string()),
-                            "engine control service ready".to_string(),
-                        ),
-                        Err(error) => (
-                            false,
-                            serde_json::to_string(&limits)
-                                .unwrap_or_else(|_| "{}".to_string()),
-                            format!("runtime risk limits invalid: {error}"),
-                        ),
-                    }
-                }
-                (Err(error), _) => (
-                    false,
-                    "{}".to_string(),
-                    format!("runtime risk limits unreadable: {error}"),
+        let (mut healthy, limits_json, mut summary) = match (
+            read_limits(&self.config.limits_file),
+            load_risk_config(&self.config.risk_config_file),
+        ) {
+            (Ok(limits), Ok(static_risk)) => match validate_runtime_limits(&limits, &static_risk) {
+                Ok(()) => (
+                    true,
+                    serde_json::to_string(&limits).unwrap_or_else(|_| "{}".to_string()),
+                    "engine control service ready".to_string(),
                 ),
-                (_, Err(error)) => (
+                Err(error) => (
                     false,
-                    "{}".to_string(),
-                    format!("static risk configuration invalid: {error}"),
+                    serde_json::to_string(&limits).unwrap_or_else(|_| "{}".to_string()),
+                    format!("runtime risk limits invalid: {error}"),
                 ),
-            };
+            },
+            (Err(error), _) => (
+                false,
+                "{}".to_string(),
+                format!("runtime risk limits unreadable: {error}"),
+            ),
+            (_, Err(error)) => (
+                false,
+                "{}".to_string(),
+                format!("static risk configuration invalid: {error}"),
+            ),
+        };
         if let Some(error) = control_error {
             healthy = false;
             summary = format!("runtime control state invalid: {error}; {summary}");
@@ -618,11 +599,7 @@ impl EngineControlService {
         }
     }
 
-    fn emit_command_event(
-        &self,
-        record: &mut CommandRecord,
-        payload: Value,
-    ) -> Result<(), Status> {
+    fn emit_command_event(&self, record: &mut CommandRecord, payload: Value) -> Result<(), Status> {
         if record.event_accepted {
             return Ok(());
         }
@@ -760,9 +737,11 @@ impl EngineControlService {
         };
         self.idempotency
             .complete_success(&mut record, cached)
-            .map_err(|error| Status::unavailable(format!(
-                "reconciled command result could not be committed: {error}"
-            )))?;
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "reconciled command result could not be committed: {error}"
+                ))
+            })?;
         Ok(Response::new(response))
     }
 
@@ -806,9 +785,11 @@ impl EngineControlService {
         };
         self.idempotency
             .complete_success(&mut record, cached)
-            .map_err(|error| Status::unavailable(format!(
-                "reconciled command result could not be committed: {error}"
-            )))?;
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "reconciled command result could not be committed: {error}"
+                ))
+            })?;
         Ok(Response::new(response))
     }
 
@@ -816,17 +797,17 @@ impl EngineControlService {
         &self,
         mut record: CommandRecord,
     ) -> Result<Response<CommandReply>, Status> {
-        let raw = fs::read_to_string(&self.config.strategy_reload_file)
-            .map_err(|error| Status::aborted(format!(
+        let raw = fs::read_to_string(&self.config.strategy_reload_file).map_err(|error| {
+            Status::aborted(format!(
                 "request remains IN_PROGRESS; strategy state cannot be reconciled safely: {error}"
-            )))?;
-        let state: Value = serde_json::from_str(&raw)
-            .map_err(|error| Status::aborted(format!(
+            ))
+        })?;
+        let state: Value = serde_json::from_str(&raw).map_err(|error| {
+            Status::aborted(format!(
                 "request remains IN_PROGRESS; strategy state is invalid: {error}"
-            )))?;
-        if state.get("request_id").and_then(Value::as_str)
-            != Some(record.request_id.as_str())
-        {
+            ))
+        })?;
+        if state.get("request_id").and_then(Value::as_str) != Some(record.request_id.as_str()) {
             return Err(Status::aborted(
                 "request remains IN_PROGRESS; persisted strategy state does not prove this request completed",
             ));
@@ -871,9 +852,11 @@ impl EngineControlService {
         };
         self.idempotency
             .complete_success(&mut record, cached)
-            .map_err(|error| Status::unavailable(format!(
-                "reconciled command result could not be committed: {error}"
-            )))?;
+            .map_err(|error| {
+                Status::unavailable(format!(
+                    "reconciled command result could not be committed: {error}"
+                ))
+            })?;
         Ok(Response::new(response))
     }
 
@@ -895,13 +878,11 @@ impl EngineControlService {
     }
 }
 
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .json()
         .init();
@@ -928,11 +909,7 @@ async fn main() -> Result<()> {
             "ARB_STRATEGY_RELOAD_FILE",
             "data/control/strategy_reload.json",
         ),
-        risk_config_file: env_path(
-            &repo_root,
-            "ARB_RISK_CONFIG",
-            "shared/config/risk.json",
-        ),
+        risk_config_file: env_path(&repo_root, "ARB_RISK_CONFIG", "shared/config/risk.json"),
         triangle_config_file: env_path(
             &repo_root,
             "ARB_TRIANGLE_CONFIG",
@@ -955,10 +932,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "604800".to_string())
         .parse::<u64>()
         .context("ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS must be a positive integer")?;
-    let idempotency = Arc::new(IdempotencyStore::open(
-        idempotency_path,
-        retention_seconds,
-    )?);
+    let idempotency = Arc::new(IdempotencyStore::open(idempotency_path, retention_seconds)?);
 
     let heartbeat_events = events.clone();
     let heartbeat_idempotency = idempotency.clone();
@@ -966,8 +940,7 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         loop {
             let control = read_control(&heartbeat_config.control_file);
-            let (runtime_enabled, control_source, _) =
-                control_snapshot(&control);
+            let (runtime_enabled, control_source, _) = control_snapshot(&control);
             let (base_healthy, detail) = service_health(&heartbeat_config);
             let event_health = heartbeat_events.health_snapshot();
             let idempotency_health = heartbeat_idempotency.health();
@@ -1076,9 +1049,7 @@ fn read_control(path: &Path) -> Result<Option<ControlState>> {
     if state.reason.trim().is_empty() || state.reason.chars().count() > 256 {
         bail!("runtime control reason must contain 1-256 characters");
     }
-    if state.source != "fastapi_control"
-        && state.source != "rust_grpc_control"
-    {
+    if state.source != "fastapi_control" && state.source != "rust_grpc_control" {
         bail!("unsupported runtime control source {}", state.source);
     }
     chrono::DateTime::parse_from_rfc3339(&state.updated_at)
@@ -1086,20 +1057,10 @@ fn read_control(path: &Path) -> Result<Option<ControlState>> {
     Ok(Some(state))
 }
 
-fn control_snapshot(
-    control: &Result<Option<ControlState>>,
-) -> (bool, String, Option<String>) {
+fn control_snapshot(control: &Result<Option<ControlState>>) -> (bool, String, Option<String>) {
     match control {
-        Ok(Some(state)) => (
-            state.enabled,
-            state.source.clone(),
-            None,
-        ),
-        Ok(None) => (
-            false,
-            "default_fail_closed".to_string(),
-            None,
-        ),
+        Ok(Some(state)) => (state.enabled, state.source.clone(), None),
+        Ok(None) => (false, "default_fail_closed".to_string(), None),
         Err(error) => (
             false,
             "invalid_fail_closed".to_string(),
@@ -1111,12 +1072,10 @@ fn control_snapshot(
 fn read_limits(path: &Path) -> Result<RuntimeLimits> {
     match fs::read_to_string(path) {
         Ok(raw) => Ok(serde_json::from_str(&raw)?),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(RuntimeLimits {
-                version: 1,
-                ..RuntimeLimits::default()
-            })
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(RuntimeLimits {
+            version: 1,
+            ..RuntimeLimits::default()
+        }),
         Err(error) => Err(error.into()),
     }
 }
@@ -1125,7 +1084,12 @@ fn read_strategy_generation(path: &Path) -> String {
     fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .and_then(|value| value.get("generation").and_then(Value::as_str).map(str::to_owned))
+        .and_then(|value| {
+            value
+                .get("generation")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        })
         .unwrap_or_default()
 }
 
@@ -1279,9 +1243,7 @@ fn validate_runtime_limits(
         || max_exposure <= Decimal::ZERO
         || max_daily_loss <= Decimal::ZERO
     {
-        return Err(
-            "trade, exposure, and daily-loss limits must be positive".to_string(),
-        );
+        return Err("trade, exposure, and daily-loss limits must be positive".to_string());
     }
     if max_exposure < max_trade {
         return Err("max_total_exposure must be >= max_trade_size".to_string());
@@ -1289,14 +1251,9 @@ fn validate_runtime_limits(
     Ok(())
 }
 
-fn effective_decimal(
-    raw: Option<&str>,
-    default: Decimal,
-    field: &str,
-) -> Result<Decimal, String> {
+fn effective_decimal(raw: Option<&str>, default: Decimal, field: &str) -> Result<Decimal, String> {
     match raw {
-        Some(value) => Decimal::from_str_exact(value)
-            .map_err(|_| format!("invalid {field}")),
+        Some(value) => Decimal::from_str_exact(value).map_err(|_| format!("invalid {field}")),
         None => Ok(default),
     }
 }
@@ -1368,33 +1325,19 @@ fn validate_request_id(request_id: &str) -> Result<(), Status> {
 
 fn service_health(config: &ServiceConfig) -> (bool, String) {
     if let Err(error) = read_control(&config.control_file) {
-        return (
-            false,
-            format!("runtime control state invalid: {error}"),
-        );
+        return (false, format!("runtime control state invalid: {error}"));
     }
 
     match (
         read_limits(&config.limits_file),
         load_risk_config(&config.risk_config_file),
     ) {
-        (Ok(limits), Ok(static_risk)) => {
-            match validate_runtime_limits(&limits, &static_risk) {
-                Ok(()) => (true, "engine control service ready".to_string()),
-                Err(error) => (
-                    false,
-                    format!("runtime risk limits invalid: {error}"),
-                ),
-            }
-        }
-        (Err(error), _) => (
-            false,
-            format!("runtime risk limits unreadable: {error}"),
-        ),
-        (_, Err(error)) => (
-            false,
-            format!("static risk configuration invalid: {error}"),
-        ),
+        (Ok(limits), Ok(static_risk)) => match validate_runtime_limits(&limits, &static_risk) {
+            Ok(()) => (true, "engine control service ready".to_string()),
+            Err(error) => (false, format!("runtime risk limits invalid: {error}")),
+        },
+        (Err(error), _) => (false, format!("runtime risk limits unreadable: {error}")),
+        (_, Err(error)) => (false, format!("static risk configuration invalid: {error}")),
     }
 }
 
@@ -1437,11 +1380,7 @@ mod boundary_tests {
             source: "rust_grpc_control".to_string(),
             request_id: None,
         };
-        fs::write(
-            &valid,
-            serde_json::to_vec(&valid_state).unwrap(),
-        )
-        .unwrap();
+        fs::write(&valid, serde_json::to_vec(&valid_state).unwrap()).unwrap();
         assert!(matches!(read_control(&valid), Ok(Some(_))));
         let _ = fs::remove_dir_all(base);
     }

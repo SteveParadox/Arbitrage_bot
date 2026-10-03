@@ -1,16 +1,13 @@
 use std::{
     collections::hash_map::DefaultHasher,
-    env,
-    fmt,
+    env, fmt,
     fs::{self, OpenOptions},
     hash::{Hash, Hasher},
     io::{self, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-        mpsc::{
-            sync_channel, Receiver, RecvTimeoutError, SyncSender, TrySendError,
-        },
+        mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender, TrySendError},
         Arc,
     },
     thread,
@@ -222,7 +219,10 @@ impl Outbox {
             })?
             .filter_map(Result::ok)
             .filter(|entry| {
-                entry.file_type().map(|value| value.is_file()).unwrap_or(false)
+                entry
+                    .file_type()
+                    .map(|value| value.is_file())
+                    .unwrap_or(false)
                     && entry
                         .file_name()
                         .to_str()
@@ -263,11 +263,11 @@ impl Outbox {
                 self.pending_dir.display()
             ))
         })?;
-        let _ = self.pending_count.try_update(
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-            |value| Some(value.saturating_sub(1)),
-        );
+        let _ = self
+            .pending_count
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                Some(value.saturating_sub(1))
+            });
         Ok(())
     }
 
@@ -291,8 +291,7 @@ impl EventPublisher {
         let config = PublisherConfig {
             redis_url: env::var("ARB_REDIS_URL")
                 .unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string()),
-            stream: env::var("ARB_EVENT_STREAM")
-                .unwrap_or_else(|_| "arb.events".to_string()),
+            stream: env::var("ARB_EVENT_STREAM").unwrap_or_else(|_| "arb.events".to_string()),
             maxlen: env_usize("ARB_EVENT_STREAM_MAXLEN", 1_000_000),
             capacity: env_usize("ARB_EVENT_QUEUE_CAPACITY", 4_096),
             outbox_path: outbox_root.join(sanitize_source(&source)),
@@ -308,10 +307,7 @@ impl EventPublisher {
             .expect("critical event outbox and Redis publisher configuration must initialize")
     }
 
-    fn from_config(
-        source: String,
-        config: PublisherConfig,
-    ) -> Result<Self, EventPublishError> {
+    fn from_config(source: String, config: PublisherConfig) -> Result<Self, EventPublishError> {
         if config.retry_initial_ms == 0
             || config.retry_max_ms == 0
             || config.retry_initial_ms > config.retry_max_ms
@@ -326,12 +322,11 @@ impl EventPublisher {
             ));
         }
 
-        let redis_client = redis::Client::open(config.redis_url.as_str())
-            .map_err(|error| {
-                EventPublishError::new(format!(
-                    "invalid ARB_REDIS_URL for event publisher: {error}"
-                ))
-            })?;
+        let redis_client = redis::Client::open(config.redis_url.as_str()).map_err(|error| {
+            EventPublishError::new(format!(
+                "invalid ARB_REDIS_URL for event publisher: {error}"
+            ))
+        })?;
         let outbox = Arc::new(Outbox::open(config.outbox_path.clone())?);
         let metrics = Arc::new(Metrics::new());
         let (sender, receiver) = sync_channel::<PublisherMessage>(config.capacity);
@@ -412,14 +407,10 @@ impl EventPublisher {
             payload,
         };
         if let Err(error) = self.outbox.persist(&event) {
-            self.metrics
-                .outbox_available
-                .store(false, Ordering::SeqCst);
+            self.metrics.outbox_available.store(false, Ordering::SeqCst);
             return Err(error);
         }
-        self.metrics
-            .outbox_available
-            .store(true, Ordering::SeqCst);
+        self.metrics.outbox_available.store(true, Ordering::SeqCst);
 
         match self.sender.try_send(PublisherMessage::CriticalWake) {
             Ok(()) => {
@@ -434,9 +425,7 @@ impl EventPublisher {
                 );
             }
             Err(TrySendError::Disconnected(_)) => {
-                self.metrics
-                    .publisher_alive
-                    .store(false, Ordering::SeqCst);
+                self.metrics.publisher_alive.store(false, Ordering::SeqCst);
                 warn!(
                     event_id = %event.event_id,
                     event_type = %event.event_type,
@@ -465,9 +454,7 @@ impl EventPublisher {
                 );
             }
             Err(TrySendError::Disconnected(PublisherMessage::Telemetry(event))) => {
-                self.metrics
-                    .publisher_alive
-                    .store(false, Ordering::SeqCst);
+                self.metrics.publisher_alive.store(false, Ordering::SeqCst);
                 self.metrics
                     .best_effort_dropped
                     .fetch_add(1, Ordering::SeqCst);
@@ -523,25 +510,13 @@ impl EventPublisher {
             event_pipeline_status: status.to_string(),
             event_queue_depth: self.metrics.queue_depth.load(Ordering::SeqCst),
             critical_events_pending: pending,
-            event_publish_failures_total: self
-                .metrics
-                .publish_failures
-                .load(Ordering::SeqCst),
-            event_publish_retries_total: self
-                .metrics
-                .publish_retries
-                .load(Ordering::SeqCst),
-            event_publish_success_total: self
-                .metrics
-                .publish_success
-                .load(Ordering::SeqCst),
+            event_publish_failures_total: self.metrics.publish_failures.load(Ordering::SeqCst),
+            event_publish_retries_total: self.metrics.publish_retries.load(Ordering::SeqCst),
+            event_publish_success_total: self.metrics.publish_success.load(Ordering::SeqCst),
             event_queue_full_total: self.metrics.queue_full.load(Ordering::SeqCst),
             event_outbox_pending: pending,
             oldest_pending_event_age_ms: self.outbox.oldest_pending_age_ms(),
-            best_effort_dropped_total: self
-                .metrics
-                .best_effort_dropped
-                .load(Ordering::SeqCst),
+            best_effort_dropped_total: self.metrics.best_effort_dropped.load(Ordering::SeqCst),
             publisher_alive: alive,
             redis_connected: redis_known.then_some(redis_connected),
         }
@@ -606,12 +581,7 @@ fn publisher_loop(
                 metrics.outbox_available.store(true, Ordering::SeqCst);
                 let mut attempt = 1_u32;
                 loop {
-                    match publish_to_redis(
-                        &client,
-                        &mut connection,
-                        &config,
-                        &event,
-                    ) {
+                    match publish_to_redis(&client, &mut connection, &config, &event) {
                         Ok(()) => {
                             metrics.redis_known.store(true, Ordering::SeqCst);
                             metrics.redis_connected.store(true, Ordering::SeqCst);
@@ -672,12 +642,7 @@ fn publisher_loop(
             }
             Ok(PublisherMessage::Telemetry(event)) => {
                 decrement_queue_depth(&metrics);
-                match publish_to_redis(
-                    &client,
-                    &mut connection,
-                    &config,
-                    &event,
-                ) {
+                match publish_to_redis(&client, &mut connection, &config, &event) {
                     Ok(()) => {
                         metrics.redis_known.store(true, Ordering::SeqCst);
                         metrics.redis_connected.store(true, Ordering::SeqCst);
@@ -687,9 +652,7 @@ fn publisher_loop(
                         metrics.redis_known.store(true, Ordering::SeqCst);
                         metrics.redis_connected.store(false, Ordering::SeqCst);
                         metrics.publish_failures.fetch_add(1, Ordering::SeqCst);
-                        metrics
-                            .best_effort_dropped
-                            .fetch_add(1, Ordering::SeqCst);
+                        metrics.best_effort_dropped.fetch_add(1, Ordering::SeqCst);
                         connection = None;
                         warn!(
                             event_id = %event.event_id,
@@ -743,16 +706,9 @@ fn publish_to_redis(
     result.map(|_| ())
 }
 
-fn retry_delay(
-    initial_ms: u64,
-    max_ms: u64,
-    event_id: &str,
-    attempt: u32,
-) -> Duration {
+fn retry_delay(initial_ms: u64, max_ms: u64, event_id: &str, attempt: u32) -> Duration {
     let exponent = attempt.saturating_sub(1).min(16);
-    let base = initial_ms
-        .saturating_mul(1_u64 << exponent)
-        .min(max_ms);
+    let base = initial_ms.saturating_mul(1_u64 << exponent).min(max_ms);
     let jitter_window = (base / 5).max(1);
     let mut hasher = DefaultHasher::new();
     event_id.hash(&mut hasher);
@@ -762,11 +718,11 @@ fn retry_delay(
 }
 
 fn decrement_queue_depth(metrics: &Metrics) {
-    let _ = metrics.queue_depth.try_update(
-        Ordering::SeqCst,
-        Ordering::SeqCst,
-        |value| Some(value.saturating_sub(1)),
-    );
+    let _ = metrics
+        .queue_depth
+        .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+            Some(value.saturating_sub(1))
+        });
 }
 
 fn is_critical_event(event_type: &str) -> bool {
@@ -784,7 +740,10 @@ fn count_pending_files(path: &Path) -> io::Result<usize> {
     Ok(fs::read_dir(path)?
         .filter_map(Result::ok)
         .filter(|entry| {
-            entry.file_type().map(|value| value.is_file()).unwrap_or(false)
+            entry
+                .file_type()
+                .map(|value| value.is_file())
+                .unwrap_or(false)
                 && entry
                     .file_name()
                     .to_str()
@@ -865,8 +824,7 @@ mod tests {
     fn queue_full_never_drops_critical_event() {
         let path = temp_outbox("queue-full");
         let (publisher, _receiver) =
-            EventPublisher::without_worker("test".to_string(), path.clone(), 1, 100)
-                .unwrap();
+            EventPublisher::without_worker("test".to_string(), path.clone(), 1, 100).unwrap();
 
         publisher.publish_best_effort("opportunity.detected", Value::Null);
         let event_id = publisher
@@ -878,10 +836,7 @@ mod tests {
         let persisted = publisher.outbox.read_event(&pending_path).unwrap();
         assert_eq!(persisted.event_id, event_id);
         assert_eq!(persisted.event_type, "trade.executed");
-        assert_eq!(
-            publisher.metrics.queue_full.load(Ordering::SeqCst),
-            1
-        );
+        assert_eq!(publisher.metrics.queue_full.load(Ordering::SeqCst), 1);
         let _ = fs::remove_dir_all(path);
     }
 
@@ -889,8 +844,7 @@ mod tests {
     fn disconnected_queue_never_drops_critical_event() {
         let path = temp_outbox("queue-closed");
         let (publisher, receiver) =
-            EventPublisher::without_worker("test".to_string(), path.clone(), 1, 100)
-                .unwrap();
+            EventPublisher::without_worker("test".to_string(), path.clone(), 1, 100).unwrap();
         drop(receiver);
 
         let event_id = publisher
@@ -911,15 +865,11 @@ mod tests {
     fn high_volume_critical_burst_is_disk_backed_not_memory_bounded() {
         let path = temp_outbox("burst");
         let (publisher, _receiver) =
-            EventPublisher::without_worker("test".to_string(), path.clone(), 1, 2_000)
-                .unwrap();
+            EventPublisher::without_worker("test".to_string(), path.clone(), 1, 2_000).unwrap();
 
         for index in 0..1_000 {
             publisher
-                .publish_critical(
-                    "trade.failed",
-                    serde_json::json!({"index": index}),
-                )
+                .publish_critical("trade.failed", serde_json::json!({"index": index}))
                 .unwrap();
         }
 
@@ -942,8 +892,8 @@ mod tests {
     #[test]
     #[ignore = "requires Redis integration service"]
     fn redis_pause_preserves_critical_event_and_recovers() {
-        let redis_url = env::var("ARB_REDIS_URL")
-            .unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string());
+        let redis_url =
+            env::var("ARB_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string());
         let stream = format!("arb.events.test.pause.{}", Uuid::new_v4());
         let path = temp_outbox("redis-pause");
 
@@ -982,9 +932,7 @@ mod tests {
         assert_eq!(publisher.outbox.pending_count(), 1);
 
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while publisher.outbox.pending_count() != 0
-            && std::time::Instant::now() < deadline
-        {
+        while publisher.outbox.pending_count() != 0 && std::time::Instant::now() < deadline {
             thread::sleep(Duration::from_millis(25));
         }
         assert_eq!(publisher.outbox.pending_count(), 0);
@@ -1006,16 +954,15 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(delivered, vec![event_id]);
 
-        let _: redis::RedisResult<i64> =
-            redis::cmd("DEL").arg(&stream).query(&mut connection);
+        let _: redis::RedisResult<i64> = redis::cmd("DEL").arg(&stream).query(&mut connection);
         let _ = fs::remove_dir_all(path);
     }
 
     #[test]
     #[ignore = "requires Redis integration service"]
     fn restart_recovery_delivers_same_event_ids_to_redis_when_enabled() {
-        let redis_url = env::var("ARB_REDIS_URL")
-            .unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string());
+        let redis_url =
+            env::var("ARB_REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379/0".to_string());
         let stream = format!("arb.events.test.{}", Uuid::new_v4());
         let path = temp_outbox("redis-recovery");
         let outbox = Outbox::open(path.clone()).unwrap();
@@ -1052,9 +999,7 @@ mod tests {
         .unwrap();
 
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while publisher.outbox.pending_count() != 0
-            && std::time::Instant::now() < deadline
-        {
+        while publisher.outbox.pending_count() != 0 && std::time::Instant::now() < deadline {
             thread::sleep(Duration::from_millis(25));
         }
         assert_eq!(publisher.outbox.pending_count(), 0);
@@ -1082,8 +1027,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(delivered, expected_ids);
 
-        let _: redis::RedisResult<i64> =
-            redis::cmd("DEL").arg(&stream).query(&mut connection);
+        let _: redis::RedisResult<i64> = redis::cmd("DEL").arg(&stream).query(&mut connection);
         let _ = fs::remove_dir_all(path);
     }
 }

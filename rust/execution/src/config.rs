@@ -27,7 +27,10 @@ pub struct ExecutionConfig {
 impl ExecutionConfig {
     pub fn from_env() -> Result<Self, ExecutionError> {
         let config = Self {
-            testnet: parse_bool("BYBIT_EXECUTION_TESTNET", parse_bool("BYBIT_TESTNET", true)?)?,
+            testnet: parse_bool(
+                "BYBIT_EXECUTION_TESTNET",
+                parse_bool("BYBIT_TESTNET", true)?,
+            )?,
             live_trading_enabled: parse_bool("ARB_LIVE_TRADING_ENABLED", false)?,
             api_key: env::var("BYBIT_API_KEY").unwrap_or_default(),
             api_secret: env::var("BYBIT_API_SECRET").unwrap_or_default(),
@@ -57,10 +60,7 @@ impl ExecutionConfig {
                 "BYBIT_EXECUTION_FILL_CONFIRM_TIMEOUT_MS",
                 2_000,
             )?),
-            max_order_notional: parse_decimal(
-                "BYBIT_EXECUTION_MAX_ORDER_NOTIONAL",
-                "5",
-            )?,
+            max_order_notional: parse_decimal("BYBIT_EXECUTION_MAX_ORDER_NOTIONAL", "5")?,
             max_execution_pages: parse_usize("BYBIT_EXECUTION_MAX_EXECUTION_PAGES", 20)?,
             account_type: env::var("BYBIT_EXECUTION_ACCOUNT_TYPE")
                 .unwrap_or_else(|_| "UNIFIED".to_string()),
@@ -148,9 +148,9 @@ impl ExecutionConfig {
 
 fn parse_bool(name: &str, default: bool) -> Result<bool, ExecutionError> {
     match env::var(name) {
-        Ok(value) => value.parse::<bool>().map_err(|_| {
-            ExecutionError::InvalidConfig(format!("{name} must be true or false"))
-        }),
+        Ok(value) => value
+            .parse::<bool>()
+            .map_err(|_| ExecutionError::InvalidConfig(format!("{name} must be true or false"))),
         Err(_) => Ok(default),
     }
 }

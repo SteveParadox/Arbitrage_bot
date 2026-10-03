@@ -135,8 +135,9 @@ impl IdempotencyStore {
                     }
                 }
             }
-            Err(error) => Err(error)
-                .with_context(|| format!("failed to claim request_id {request_id}")),
+            Err(error) => {
+                Err(error).with_context(|| format!("failed to claim request_id {request_id}"))
+            }
         }
     }
 
@@ -399,7 +400,9 @@ mod tests {
         {
             let store = IdempotencyStore::open(path.clone(), 1).unwrap();
             assert!(matches!(
-                store.claim("request-a", "start_trading", &fingerprint).unwrap(),
+                store
+                    .claim("request-a", "start_trading", &fingerprint)
+                    .unwrap(),
                 ClaimOutcome::New(_)
             ));
         }
@@ -424,7 +427,9 @@ mod tests {
             let store = store.clone();
             let fingerprint = fingerprint.clone();
             handles.push(std::thread::spawn(move || {
-                store.claim("request-a", "stop_trading", &fingerprint).unwrap()
+                store
+                    .claim("request-a", "stop_trading", &fingerprint)
+                    .unwrap()
             }));
         }
         let outcomes = handles

@@ -12,9 +12,7 @@ pub(crate) fn sign_hmac_sha256(
     recv_window_ms: u64,
     payload: &str,
 ) -> Result<String, ExecutionError> {
-    let message = format!(
-        "{timestamp_ms}{api_key}{recv_window_ms}{payload}"
-    );
+    let message = format!("{timestamp_ms}{api_key}{recv_window_ms}{payload}");
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
         .map_err(|error| ExecutionError::Authentication(error.to_string()))?;
     mac.update(message.as_bytes());
