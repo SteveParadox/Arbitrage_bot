@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+const CLAIM_INITIALIZATION_TIMEOUT: Duration = Duration::from_secs(5);
+const CLAIM_INITIALIZATION_RETRY: Duration = Duration::from_millis(10);
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CommandStatus {
@@ -249,17 +252,32 @@ impl IdempotencyStore {
     }
 
     fn read_record_retry(&self, request_dir: &Path) -> Result<CommandRecord> {
-        let mut last_error = None;
-        for _ in 0..20 {
+        let deadline = std::time::Instant::now() + CLAIM_INITIALIZATION_TIMEOUT;
+        loop {
             match self.read_record(request_dir) {
                 Ok(record) => return Ok(record),
                 Err(error) => {
-                    last_error = Some(error);
-                    std::thread::sleep(Duration::from_millis(5));
+                    if !request_dir.exists() {
+                        if std::time::Instant::now() >= deadline {
+                            return Err(error).with_context(|| {
+                                format!(
+                                    "idempotency claim directory disappeared before initialization completed: {}",
+                                    request_dir.display()
+                                )
+                            });
+                        }
+                    } else if std::time::Instant::now() >= deadline {
+                        return Err(error).with_context(|| {
+                            format!(
+                                "timed out waiting for idempotency record initialization in {}",
+                                request_dir.display()
+                            )
+                        });
+                    }
+                    std::thread::sleep(CLAIM_INITIALIZATION_RETRY);
                 }
             }
         }
-        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("idempotency record unavailable")))
     }
 
     fn read_record(&self, request_dir: &Path) -> Result<CommandRecord> {
