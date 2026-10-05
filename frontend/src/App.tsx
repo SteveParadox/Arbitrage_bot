@@ -435,116 +435,141 @@ export function App() {
         </div>
       ) : null}
 
-      <section className="status-strip" aria-label="System status">
-        <StatusPill
-          label="API"
-          value={error ? "offline" : summary.system.api_status}
-          state={apiState}
-          detail={`${API_URL} · DB ${summary.system.database_status}`}
-        />
-        <StatusPill
-          label="Market stream"
-          value={summary.system.websocket_status ?? "Unknown"}
-          state={wsState}
-          detail={
-            summary.system.last_market_event
-              ? `Last event ${formatTime(summary.system.last_market_event)}`
-              : "No recent opportunity activity"
-          }
-        />
-        <StatusPill
-          label="Trading"
-          value={summary.system.trading_enabled ? "Enabled" : "Stopped"}
-          state={summary.system.trading_enabled ? "warn" : "ok"}
-          detail={
-            !summary.system.trading_deployment_enabled
-              ? "Deployment master gate is disabled"
-              : !summary.system.trading_runtime_enabled
-                ? "Runtime control gate is stopped"
-                : !summary.system.trading_risk_allows_new_orders
-                  ? "Risk gate is blocking new orders"
-                  : "Deployment, runtime, and risk gates are open"
-          }
-        />
-        <StatusPill
-          label="Risk state"
-          value={risk?.state?.replaceAll("_", " ") ?? "Unknown"}
-          state={riskState}
-          detail={
-            risk?.state === "unavailable"
-              ? "Risk runtime is not visible to the API"
-              : risk?.state === "no_persisted_state"
-                ? "No persisted breaker state exists yet"
-                : risk?.circuit_breaker?.kind
-                  ? `Breaker: ${risk.circuit_breaker.kind}`
-                  : "No active circuit breaker"
-          }
-        />
-        <StatusPill
-          label="Kill switch"
-          value={
-            risk?.available === false
-              ? "Unavailable"
-              : risk?.kill_switch_active
-                ? "ENGAGED"
-                : "Clear"
-          }
-          state={
-            risk?.available === false
-              ? "muted"
-              : risk?.kill_switch_active
-                ? "bad"
-                : "ok"
-          }
-          detail={
-            risk?.available === false
-              ? "API cannot see the Rust risk runtime directory"
-              : risk?.kill_switch_detail ?? "Operator stop is clear"
-          }
-        />
+      <section className="command-deck" aria-label="Operations overview">
+        <div className="command-deck__metrics">
+          <div className="command-deck__heading">
+            <div>
+              <div className="eyebrow">CAPITAL · P&L · RETURN</div>
+              <h2>Operational snapshot</h2>
+            </div>
+            <span className="command-deck__index">01 / OVERVIEW</span>
+          </div>
+
+          <div className="primary-kpi-grid" aria-label="Primary financial metrics">
+            <KpiCard
+              label="Account balance"
+              value={amount(
+                summary.account.balance ?? null,
+                summary.account.base_asset ?? "USDT",
+              )}
+              detail={
+                summary.account.snapshot_at
+                  ? "Snapshot " + formatTime(summary.account.snapshot_at)
+                  : "Awaiting canary account snapshot"
+              }
+            />
+            <KpiCard
+              label="Today's P&L"
+              value={amount(
+                performance.today_pnl ?? 0,
+                summary.account.base_asset ?? "USDT",
+              )}
+              tone={toneForNumber(performance.today_pnl ?? 0)}
+              detail="Reconciled micro-live cycles · UTC day"
+            />
+            <KpiCard
+              label="Weekly P&L"
+              value={amount(
+                performance.weekly_pnl ?? 0,
+                summary.account.base_asset ?? "USDT",
+              )}
+              tone={toneForNumber(performance.weekly_pnl ?? 0)}
+              detail="Last 7 days"
+            />
+            <KpiCard
+              label="Net return"
+              value={percent(performance.net_return_pct ?? null)}
+              tone={
+                performance.net_return_pct == null
+                  ? "neutral"
+                  : toneForNumber(performance.net_return_pct)
+              }
+              detail="P&L ÷ reconciled capital"
+            />
+          </div>
+        </div>
+
+        <aside className="status-board" aria-label="System status">
+          <div className="status-board__header">
+            <div>
+              <div className="eyebrow">SYSTEM MATRIX</div>
+              <h2>Readiness</h2>
+            </div>
+            <span className="command-deck__index">02 / HEALTH</span>
+          </div>
+
+          <div className="status-strip">
+            <StatusPill
+              label="API"
+              value={error ? "offline" : summary.system.api_status}
+              state={apiState}
+              detail={API_URL + " · DB " + summary.system.database_status}
+            />
+            <StatusPill
+              label="Market stream"
+              value={summary.system.websocket_status ?? "Unknown"}
+              state={wsState}
+              detail={
+                summary.system.last_market_event
+                  ? "Last event " + formatTime(summary.system.last_market_event)
+                  : "No recent opportunity activity"
+              }
+            />
+            <StatusPill
+              label="Trading"
+              value={summary.system.trading_enabled ? "Enabled" : "Stopped"}
+              state={summary.system.trading_enabled ? "warn" : "ok"}
+              detail={
+                !summary.system.trading_deployment_enabled
+                  ? "Deployment master gate is disabled"
+                  : !summary.system.trading_runtime_enabled
+                    ? "Runtime control gate is stopped"
+                    : !summary.system.trading_risk_allows_new_orders
+                      ? "Risk gate is blocking new orders"
+                      : "Deployment, runtime, and risk gates are open"
+              }
+            />
+            <StatusPill
+              label="Risk state"
+              value={risk?.state?.replaceAll("_", " ") ?? "Unknown"}
+              state={riskState}
+              detail={
+                risk?.state === "unavailable"
+                  ? "Risk runtime is not visible to the API"
+                  : risk?.state === "no_persisted_state"
+                    ? "No persisted breaker state exists yet"
+                    : risk?.circuit_breaker?.kind
+                      ? "Breaker: " + risk.circuit_breaker.kind
+                      : "No active circuit breaker"
+              }
+            />
+            <StatusPill
+              label="Kill switch"
+              value={
+                risk?.available === false
+                  ? "Unavailable"
+                  : risk?.kill_switch_active
+                    ? "ENGAGED"
+                    : "Clear"
+              }
+              state={
+                risk?.available === false
+                  ? "muted"
+                  : risk?.kill_switch_active
+                    ? "bad"
+                    : "ok"
+              }
+              detail={
+                risk?.available === false
+                  ? "API cannot see the Rust risk runtime directory"
+                  : risk?.kill_switch_detail ?? "Operator stop is clear"
+              }
+            />
+          </div>
+        </aside>
       </section>
 
-      <section className="kpi-grid" aria-label="Key metrics">
-        <KpiCard
-          label="Account balance"
-          value={amount(
-            summary.account.balance ?? null,
-            summary.account.base_asset ?? "USDT",
-          )}
-          detail={
-            summary.account.snapshot_at
-              ? `Snapshot ${formatTime(summary.account.snapshot_at)}`
-              : "Awaiting canary account snapshot"
-          }
-        />
-        <KpiCard
-          label="Today's P&L"
-          value={amount(
-            performance.today_pnl ?? 0,
-            summary.account.base_asset ?? "USDT",
-          )}
-          tone={toneForNumber(performance.today_pnl ?? 0)}
-          detail="Reconciled micro-live cycles · UTC day"
-        />
-        <KpiCard
-          label="Weekly P&L"
-          value={amount(
-            performance.weekly_pnl ?? 0,
-            summary.account.base_asset ?? "USDT",
-          )}
-          tone={toneForNumber(performance.weekly_pnl ?? 0)}
-          detail="Last 7 days"
-        />
-        <KpiCard
-          label="Net return"
-          value={percent(performance.net_return_pct ?? null)}
-          tone={
-            performance.net_return_pct == null
-              ? "neutral"
-              : toneForNumber(performance.net_return_pct)
-          }
-          detail="P&L ÷ reconciled capital"
-        />
+      <section className="secondary-kpi-grid" aria-label="Trading activity metrics">
         <KpiCard
           label="Detected opportunities"
           value={(performance.detected_opportunities ?? 0).toLocaleString()}
@@ -583,6 +608,27 @@ export function App() {
           detail="Actual execution time today"
         />
       </section>
+
+      <div className="workspace-heading">
+        <div>
+          <div className="eyebrow">LIVE WORKSPACE</div>
+          <h2>Market flow & execution</h2>
+          <p>
+            Scan the opportunity stream and inspect the latest reconciled
+            three-leg execution without leaving the operational surface.
+          </p>
+        </div>
+        <div className="workspace-heading__meta">
+          <span>
+            <b>{opportunities.length}</b>
+            opportunities
+          </span>
+          <span>
+            <b>{executions.length}</b>
+            executions
+          </span>
+        </div>
+      </div>
 
       <section className="content-grid">
         <article className="panel panel--opportunities">
