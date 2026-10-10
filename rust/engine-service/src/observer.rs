@@ -1,6 +1,6 @@
 //! Managed public-data observation. No exchange order can be submitted here.
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fs,
     io::{BufRead, BufReader},
     path::PathBuf,
@@ -101,7 +101,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 events.publish("engine.observer", json!({"state": "synchronizing", "reason": status.state, "execution_enabled": false}));
             }
             MarketDataEvent::Health(value) => {
-                let ready = feed_ready(&value, now_ms(), settings.max_book_age_ms)
+                let ready = feed_ready(&value, &required, now_ms(), settings.max_book_age_ms)
                     && required.iter().all(|symbol| metadata.contains_key(symbol));
                 ready_at = ready.then_some(std::time::Instant::now());
                 events.publish("market.health", value);
@@ -213,12 +213,51 @@ fn configured_path(root: &std::path::Path, name: &str, default: &str) -> PathBuf
     }
 }
 
-fn feed_ready(value: &Value, now: u64, max_age_ms: u64) -> bool {
-    value["state"] == "connected_and_fresh"
-        && value["subscriptions_confirmed"] == true
-        && value["timestamp"]
+fn feed_ready(
+    value: &Value,
+    required: &BTreeSet<String>,
+    now: u64,
+    max_age_ms: u64,
+) -> bool {
+    // Do not trust a top-level healthy flag alone. Require individual book
+    // synchronization and both exchange/receive freshness clocks.
+    let Some(health_at) = value["timestamp"].as_u64() else {
+        return false;
+    };
+    let Some(telemetry_age) = now.checked_sub(health_at) else {
+        return false;
+    };
+    if required.is_empty()
+        || value["state"] != "connected_and_fresh"
+        || value["subscriptions_confirmed"] != true
+        || telemetry_age > max_age_ms
+    {
+        return false;
+    }
+    let Some(symbols) = value["symbols"].as_object() else {
+        return false;
+    };
+    required.iter().all(|symbol| {
+        let Some(book) = symbols.get(symbol) else {
+            return false;
+        };
+        let Some(exchange_age) = book["exchange_timestamp_ms"]
             .as_u64()
-            .is_some_and(|timestamp| timestamp <= now && now - timestamp <= max_age_ms)
+            .and_then(|timestamp| now.checked_sub(timestamp))
+        else {
+            return false;
+        };
+        let Some(receive_age) = book["receive_age_ms"]
+            .as_u64()
+            .and_then(|age| age.checked_add(telemetry_age))
+        else {
+            return false;
+        };
+        book["initialized"] == true
+            && book["synchronized"] == true
+            && exchange_age <= max_age_ms
+            && receive_age <= max_age_ms
+    })
 }
 
 fn validate_instrument(routes: &TriangleConfig, instrument: &InstrumentMetadata) -> Result<()> {
@@ -266,13 +305,36 @@ mod tests {
     use super::*;
     #[test]
     fn health_requires_confirmed_current_books() {
-        let fresh = json!({"state":"connected_and_fresh", "subscriptions_confirmed":true, "timestamp":1000});
-        assert!(feed_ready(&fresh, 1000, 100));
-        assert!(!feed_ready(&fresh, 1101, 100));
-        assert!(!feed_ready(&fresh, 999, 100));
-        let mut unconfirmed = fresh;
+        let required = BTreeSet::from(["BTCUSDT".to_string(), "ETHUSDT".to_string()]);
+        let fresh = json!({
+            "state":"connected_and_fresh",
+            "subscriptions_confirmed":true,
+            "timestamp":1000,
+            "symbols": {
+                "BTCUSDT": {"initialized":true, "synchronized":true,
+                    "exchange_timestamp_ms":1000, "receive_age_ms":0},
+                "ETHUSDT": {"initialized":true, "synchronized":true,
+                    "exchange_timestamp_ms":1000, "receive_age_ms":0}
+            }
+        });
+        assert!(feed_ready(&fresh, &required, 1000, 100));
+        assert!(!feed_ready(&fresh, &required, 1101, 100));
+        assert!(!feed_ready(&fresh, &required, 999, 100));
+        let mut incomplete = fresh.clone();
+        incomplete["symbols"]["ETHUSDT"]["synchronized"] = Value::Bool(false);
+        assert!(!feed_ready(&incomplete, &required, 1000, 100));
+        let mut stale_exchange = fresh.clone();
+        stale_exchange["symbols"]["BTCUSDT"]["exchange_timestamp_ms"] = json!(800);
+        assert!(!feed_ready(&stale_exchange, &required, 1000, 100));
+        let mut stale_receipt = fresh.clone();
+        stale_receipt["symbols"]["ETHUSDT"]["receive_age_ms"] = json!(95);
+        assert!(!feed_ready(&stale_receipt, &required, 1010, 100));
+        let mut unconfirmed = fresh.clone();
         unconfirmed["subscriptions_confirmed"] = Value::Bool(false);
-        assert!(!feed_ready(&unconfirmed, 1000, 100));
+        assert!(!feed_ready(&unconfirmed, &required, 1000, 100));
+        let mut missing = fresh;
+        missing["symbols"].as_object_mut().unwrap().remove("ETHUSDT");
+        assert!(!feed_ready(&missing, &required, 1000, 100));
     }
 
     #[test]
