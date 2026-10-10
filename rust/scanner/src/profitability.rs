@@ -19,7 +19,7 @@ pub struct ProfitabilityConfigFile {
     pub safety_margin_bps: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProfitabilityConfig {
     pub version: u32,
     pub fee_profile: String,

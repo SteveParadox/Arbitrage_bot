@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -89,6 +90,11 @@ pub struct LegScan {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ArbitrageScanRecord {
     pub scan_timestamp: u64,
+    pub strategy_version: String,
+    pub configuration_hash: String,
+    /// All route book versions, separate from immutable price/depth fingerprints.
+    pub market_versions: Vec<serde_json::Value>,
+    pub market_fingerprint: String,
     pub trigger_symbol: String,
     pub trigger_timestamp: u64,
     pub trigger_update_id: u64,
@@ -121,6 +127,8 @@ pub struct ArbitrageScanRecord {
 #[derive(Debug)]
 pub struct ArbitrageScanner {
     routes: Vec<TriangleRoute>,
+    configuration_hash: String,
+    identity_settings: ScannerSettings,
     route_indexes_by_symbol: HashMap<String, Vec<usize>>,
     books: OrderBookEngine,
     start_amounts: HashMap<String, f64>,
@@ -156,7 +164,10 @@ impl ArbitrageScanner {
             indexes.dedup();
         }
 
+        let configuration_hash = config_hash(&config, &settings, &profitability);
         Ok(Self {
+            configuration_hash,
+            identity_settings: settings.clone(),
             routes: config.routes,
             route_indexes_by_symbol,
             books: OrderBookEngine::default(),
@@ -169,6 +180,18 @@ impl ArbitrageScanner {
             max_book_age_ms: settings.max_book_age_ms,
             max_book_skew_ms: settings.max_book_skew_ms,
         })
+    }
+
+    pub fn books_ready(
+        &self,
+        required: &std::collections::BTreeSet<String>,
+        now: u64,
+        max_age: u64,
+    ) -> bool {
+        !required.is_empty() && required.iter().all(|symbol| self.books.get(symbol).is_some_and(|book| {
+            book.update_id() > 0 && now.checked_sub(book.timestamp()).is_some_and(|age|age <= max_age)
+                && matches!((book.best_bid(), book.best_ask()), (Some(bid), Some(ask)) if bid.price < ask.price)
+        }))
     }
 
     pub fn reset_books(&mut self) {
@@ -192,6 +215,8 @@ impl ArbitrageScanner {
             indexes.dedup();
         }
 
+        self.configuration_hash =
+            config_hash(&config, &self.identity_settings, &self.profitability);
         self.routes = config.routes;
         self.route_indexes_by_symbol = route_indexes_by_symbol;
         self.reset_books();
@@ -222,13 +247,34 @@ impl ArbitrageScanner {
 
         let mut records = Vec::with_capacity(route_indexes.len());
         for &route_index in route_indexes {
-            records.push(self.scan_route(
-                &self.routes[route_index],
+            let route = &self.routes[route_index];
+            let mut record = self.scan_route(
+                route,
                 &trigger_symbol,
                 trigger_timestamp,
                 trigger_update_id,
                 trigger_sequence,
-            ));
+            );
+            record.strategy_version = "depth-scanner-v2".into();
+            record.configuration_hash = self.configuration_hash.clone();
+            let views: Vec<_> = route
+                .legs
+                .iter()
+                .map(|leg| {
+                    self.books
+                        .get(&leg.symbol)
+                        .map(|book| book.top_n(usize::MAX))
+                })
+                .collect();
+            record.market_versions = views.iter().zip(&route.legs).map(|(view, leg)| {
+                serde_json::json!({"symbol":leg.symbol, "timestamp":view.as_ref().map(|v|v.timestamp),
+                    "update_id":view.as_ref().map(|v|v.update_id), "sequence":view.as_ref().map(|v|v.sequence)})
+            }).collect();
+            record.market_fingerprint = format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_vec(&views).expect("validated finite books"))
+            );
+            records.push(record);
         }
 
         Ok(records)
@@ -444,6 +490,10 @@ fn base_record(
 ) -> ArbitrageScanRecord {
     ArbitrageScanRecord {
         scan_timestamp,
+        strategy_version: String::new(),
+        configuration_hash: String::new(),
+        market_versions: Vec::new(),
+        market_fingerprint: String::new(),
         trigger_symbol: trigger_symbol.to_string(),
         trigger_timestamp,
         trigger_update_id,
@@ -484,6 +534,19 @@ fn apply_book_timestamp_stats(record: &mut ArbitrageScanRecord, timestamps: &[u6
     record.oldest_book_timestamp = Some(oldest);
     record.newest_book_timestamp = Some(newest);
     record.book_timestamp_skew_ms = Some(newest.saturating_sub(oldest));
+}
+
+fn config_hash(
+    config: &TriangleConfig,
+    settings: &ScannerSettings,
+    profitability: &ProfitabilityConfig,
+) -> String {
+    // JSON objects are ordered by serde_json; HashMap iteration cannot alter the hash.
+    let value = serde_json::json!({"routes":config.routes, "source":config.source,
+        "version":settings.version, "start_amounts":settings.start_amounts,
+        "max_book_age_ms":settings.max_book_age_ms, "max_book_skew_ms":settings.max_book_skew_ms,
+        "profitability":profitability, "strategy":"depth-scanner-v2"});
+    format!("{:x}", Sha256::digest(value.to_string().as_bytes()))
 }
 
 fn now_ms() -> u64 {
@@ -737,5 +800,59 @@ mod tests {
         assert!(!records[0].legs[0].complete);
         assert!(records[0].expected_net_profit.is_none());
         assert!(!records[0].fees_included);
+    }
+    #[test]
+    fn faults_require_new_snapshots_for_every_route_book() {
+        let required = config().required_symbols();
+        for fault in 0..7 {
+            let mut scanner = scanner();
+            let now = now_ms();
+            for (symbol, bid, ask) in [
+                ("BTCUSDT", 99., 100.),
+                ("ETHBTC", 0.049, 0.05),
+                ("ETHUSDT", 6., 6.1),
+            ] {
+                let mut book = snapshot(symbol, bid, 100., ask, 100., 10);
+                book.timestamp = now;
+                book.update_id = 10;
+                scanner.on_book_update(book).unwrap();
+            }
+            assert!(scanner.books_ready(&required, now, 1000));
+            let mut invalid = snapshot("ETHUSDT", 6., 100., 6.1, 100., 11);
+            invalid.is_snapshot = false;
+            invalid.update_id = 11;
+            match fault {
+                0 => invalid.sequence = 10,
+                1 => invalid.update_id = 10,
+                2 => invalid.bids[0].price = -1.,
+                3 => invalid.bids[0].quantity = -1.,
+                4 => invalid.bids[0].price = 7.,
+                5 => invalid.bids[0].price = 6.1,
+                _ => {
+                    scanner.reset_books();
+                }
+            }
+            assert!(scanner.on_book_update(invalid).is_err());
+            assert!(!scanner.books_ready(&required, now_ms(), 1000));
+            for (symbol, bid, ask) in [("BTCUSDT", 99., 100.), ("ETHBTC", 0.049, 0.05)] {
+                scanner
+                    .on_book_update(snapshot(symbol, bid, 100., ask, 100., 20))
+                    .unwrap();
+                assert!(!scanner.books_ready(&required, now_ms(), 1000));
+            }
+            scanner
+                .on_book_update(snapshot("ETHUSDT", 6., 100., 6.1, 100., 20))
+                .unwrap();
+            assert!(scanner.books_ready(&required, now_ms(), 1000));
+        }
+    }
+
+    #[test]
+    fn canonical_config_hash_survives_restart_and_reload() {
+        let mut first = scanner();
+        let second = scanner();
+        assert_eq!(first.configuration_hash, second.configuration_hash);
+        first.reload_routes(config()).unwrap();
+        assert_eq!(first.configuration_hash, second.configuration_hash);
     }
 }

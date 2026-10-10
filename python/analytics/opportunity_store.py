@@ -30,6 +30,8 @@ def _detected_at(scan: dict[str, Any]) -> datetime:
 
 
 def _observation_key(scan: dict[str, Any]) -> str:
+    if scan.get("candidate_id"):
+        return str(scan["candidate_id"])
     identity = "|".join(
         [
             str(scan.get("route_id", "")),
@@ -219,6 +221,21 @@ class OpportunityStore:
             .returning(OpportunityObservation.id)
         ).scalar_one_or_none()
         if inserted_id is None:
+            existing = self.session.scalar(select(OpportunityObservation).where(
+                OpportunityObservation.observation_key == values["observation_key"]
+            ))
+            stored = dict(existing.raw_scan) if existing is not None else None
+            incoming = dict(scan)
+            # Same narrow versioned processing exemption as the engine event consumer.
+            for payload in (stored, incoming):
+                if payload is not None and payload.get("identity_version") == 2:
+                    processing = payload.get("processing")
+                    if (isinstance(processing, dict) and set(processing) == {"processed_at_ms"}
+                            and type(processing["processed_at_ms"]) is int
+                            and processing["processed_at_ms"] >= 0):
+                        payload.pop("processing")
+            if stored != incoming:
+                raise ValueError("conflicting candidate observation identity")
             return False
         latest = self.session.scalar(select(func.max(OpportunityObservation.detected_at)).where(
             OpportunityObservation.route_id == route_id

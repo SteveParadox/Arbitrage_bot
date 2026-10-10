@@ -48,6 +48,8 @@ export type HealthResponse = {
   database_status: "online" | "offline" | string;
   market_stream_status: string;
   last_market_event: string | null;
+  observer: { state: "offline" | "connecting" | "synchronizing" | "scanning" | "degraded" | "reconnecting" | "stale" | "failed" | "unknown";
+    execution_enabled: false; scanner_ready?: boolean; age_ms?: number | null };
   risk: RiskStatus;
   trading: {
     deployment_enabled: boolean;
@@ -74,6 +76,7 @@ export type DashboardSummary = {
     websocket_status: string;
     websocket_status_source: string;
     last_market_event: string | null;
+    observer_state: string;
     trading_enabled: boolean;
     trading_deployment_enabled: boolean;
     trading_runtime_enabled: boolean;
@@ -322,6 +325,7 @@ export async function fetchDashboard(): Promise<DashboardSummary> {
       websocket_status: health.market_stream_status,
       websocket_status_source: "Phase 15 FastAPI health",
       last_market_event: health.last_market_event,
+      observer_state: health.observer.state,
       trading_enabled: health.trading.effective_enabled,
       trading_deployment_enabled: health.trading.deployment_enabled,
       trading_runtime_enabled: health.trading.runtime_enabled,

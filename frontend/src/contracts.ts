@@ -12,6 +12,9 @@ const controlValidator = ajv.compile(controlSchema);
 export function validateHealth(value: unknown): asserts value is HealthResponse {
   if (!healthValidator(value)) throw new Error("Invalid health response: safety state is unknown");
   const health = value as HealthResponse;
+  if (health.observer.state === "scanning" && health.observer.scanner_ready !== true) {
+    throw new Error("Inconsistent observer readiness");
+  }
   if (health.trading.effective_enabled && (!health.trading.deployment_enabled || !health.trading.runtime_enabled
       || !health.trading.risk_allows_new_orders || !health.control_auth_configured
       || Object.values(health.trading.dependencies).some((ready) => ready !== true))) {

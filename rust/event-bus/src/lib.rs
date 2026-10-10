@@ -8,18 +8,19 @@ use std::{
     sync::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         mpsc::{sync_channel, Receiver, RecvTimeoutError, SyncSender, TrySendError},
-        Arc,
+        Arc, Mutex, OnceLock,
     },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use fs2::FileExt;
+static OUTBOX_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tracing::{error, warn};
 use uuid::Uuid;
-
-static OUTBOX_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineEvent {
@@ -83,7 +84,7 @@ enum PublisherMessage {
     Telemetry(EngineEvent),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct PublisherConfig {
     redis_url: String,
     stream: String,
@@ -129,6 +130,9 @@ impl Metrics {
 #[derive(Debug)]
 struct Outbox {
     pending_dir: PathBuf,
+    receipts_dir: PathBuf,
+    write_lock: Mutex<()>,
+    _instance_lock: fs::File,
     pending_count: AtomicUsize,
 }
 
@@ -140,6 +144,18 @@ impl Outbox {
                 path.display()
             ))
         })?;
+        let instance_lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path.join(".publisher.lock"))
+            .map_err(|e| EventPublishError::new(e.to_string()))?;
+        instance_lock
+            .try_lock_exclusive()
+            .map_err(|e| EventPublishError::new(format!("outbox already in use: {e}")))?;
+        let receipts_dir = path.join("receipts");
+        fs::create_dir_all(&receipts_dir).map_err(|e| EventPublishError::new(e.to_string()))?;
         let pending_count = count_pending_files(&path).map_err(|error| {
             EventPublishError::new(format!(
                 "failed to inspect event outbox {}: {error}",
@@ -148,18 +164,51 @@ impl Outbox {
         })?;
         Ok(Self {
             pending_dir: path,
+            receipts_dir,
+            write_lock: Mutex::new(()),
+            _instance_lock: instance_lock,
             pending_count: AtomicUsize::new(pending_count),
         })
     }
 
     fn persist(&self, event: &EngineEvent) -> Result<PathBuf, EventPublishError> {
-        let sequence = now_ns();
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| EventPublishError::new("outbox lock poisoned"))?;
+        let hash = format!("{:x}", Sha256::digest(event.event_id.as_bytes()));
         let ordinal = OUTBOX_SEQUENCE.fetch_add(1, Ordering::SeqCst);
-        let file_name = format!(
-            "{sequence:030}-{ordinal:020}-{}.json",
-            event.event_id.replace('-', "")
-        );
-        let final_path = self.pending_dir.join(file_name);
+        let sequence = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let final_path = self
+            .pending_dir
+            .join(format!("{sequence:030}-{ordinal:020}-{hash}.json"));
+        let receipt = self.receipts_dir.join(format!("{hash}.json"));
+        let previous = if receipt.exists() {
+            Some(receipt)
+        } else {
+            // A crash after fsync but before Redis delivery must also deduplicate.
+            fs::read_dir(&self.pending_dir)
+                .map_err(|e| EventPublishError::new(e.to_string()))?
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .find(|path| {
+                    path.file_name()
+                        .and_then(|v| v.to_str())
+                        .is_some_and(|v| v.ends_with(&format!("-{hash}.json")))
+                })
+        };
+        if let Some(path) = previous {
+            let existing = self.read_event(&path)?;
+            if canonical_event(&existing) != canonical_event(event) {
+                return Err(EventPublishError::new(
+                    "conflicting critical event_id in durable outbox",
+                ));
+            }
+            return Ok(path);
+        }
         let temp_path = self
             .pending_dir
             .join(format!(".tmp-{}.json", Uuid::new_v4()));
@@ -210,6 +259,10 @@ impl Outbox {
     }
 
     fn next_pending(&self) -> Result<Option<PathBuf>, EventPublishError> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| EventPublishError::new("outbox lock poisoned"))?;
         let mut entries = fs::read_dir(&self.pending_dir)
             .map_err(|error| {
                 EventPublishError::new(format!(
@@ -251,18 +304,21 @@ impl Outbox {
     }
 
     fn mark_delivered(&self, path: &Path) -> Result<(), EventPublishError> {
-        fs::remove_file(path).map_err(|error| {
+        let _guard = self
+            .write_lock
+            .lock()
+            .map_err(|_| EventPublishError::new("outbox lock poisoned"))?;
+        let event = self.read_event(path)?;
+        let hash = format!("{:x}", Sha256::digest(event.event_id.as_bytes()));
+        fs::rename(path, self.receipts_dir.join(format!("{hash}.json"))).map_err(|error| {
             EventPublishError::new(format!(
                 "failed to remove delivered event {}: {error}",
                 path.display()
             ))
         })?;
-        sync_directory(&self.pending_dir).map_err(|error| {
-            EventPublishError::new(format!(
-                "failed to sync event outbox directory {}: {error}",
-                self.pending_dir.display()
-            ))
-        })?;
+        sync_directory(&self.receipts_dir)
+            .and_then(|_| sync_directory(&self.pending_dir))
+            .map_err(|error| EventPublishError::new(error.to_string()))?;
         let _ = self
             .pending_count
             .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
@@ -299,7 +355,25 @@ impl EventPublisher {
             retry_max_ms: env_u64("ARB_EVENT_RETRY_MAX_MS", 5_000),
             max_pending: env_usize("ARB_EVENT_MAX_PENDING", 100_000),
         };
-        Self::from_config(source, config)
+        // Reuse one publisher per configured outbox in this process. Separate processes
+        // remain excluded by the file lock; callers such as risk/coordinator can share it.
+        type Cached = std::collections::HashMap<PathBuf, (PublisherConfig, EventPublisher)>;
+        static PUBLISHERS: OnceLock<Mutex<Cached>> = OnceLock::new();
+        let mut cache = PUBLISHERS
+            .get_or_init(|| Mutex::new(Cached::new()))
+            .lock()
+            .map_err(|_| EventPublishError::new("publisher cache lock poisoned"))?;
+        if let Some((existing, publisher)) = cache.get(&config.outbox_path) {
+            if existing != &config {
+                return Err(EventPublishError::new(
+                    "conflicting publisher configuration",
+                ));
+            }
+            return Ok(publisher.clone());
+        }
+        let publisher = Self::from_config(source, config.clone())?;
+        cache.insert(config.outbox_path.clone(), (config, publisher.clone()));
+        Ok(publisher)
     }
 
     pub fn from_env(source: impl Into<String>) -> Self {
@@ -393,6 +467,17 @@ impl EventPublisher {
         event_type: &str,
         payload: Value,
     ) -> Result<String, EventPublishError> {
+        self.publish_critical_at(event_id, event_type, now_ms(), payload)
+    }
+
+    /// The caller supplies immutable market time for deterministic replayable events.
+    pub fn publish_critical_at(
+        &self,
+        event_id: String,
+        event_type: &str,
+        occurred_at_ms: u64,
+        payload: Value,
+    ) -> Result<String, EventPublishError> {
         if event_id.trim().is_empty() || event_id.len() > 64 || !event_id.is_ascii() {
             return Err(EventPublishError::new(
                 "critical event_id must be non-empty ASCII text no longer than 64 bytes",
@@ -401,7 +486,7 @@ impl EventPublisher {
         let event = EngineEvent {
             event_id,
             event_type: event_type.to_string(),
-            occurred_at_ms: now_ms(),
+            occurred_at_ms,
             source: self.source.clone(),
             schema_version: 1,
             payload,
@@ -684,12 +769,44 @@ fn publish_to_redis(
         *connection = Some(client.get_connection()?);
     }
     let payload = event.payload.to_string();
-    let result: redis::RedisResult<String> = redis::cmd("XADD")
-        .arg(&config.stream)
-        .arg("MAXLEN")
-        .arg("~")
+    // Never trim an unacknowledged critical record, even when telemetry shares
+    // the stream. Full streams push back into the durable outbox until consumers
+    // advance. MINID trimming is bounded by every group's oldest pending/delivery ID.
+    let script = redis::Script::new(
+        r#"
+        local function less(a,b)
+            local am,as = string.match(a, '(%d+)%-(%d+)')
+            local bm,bs = string.match(b, '(%d+)%-(%d+)')
+            if #am ~= #bm then return #am < #bm end
+            if am ~= bm then return am < bm end
+            if #as ~= #bs then return #as < #bs end
+            return as < bs
+        end
+        if redis.call('XLEN',KEYS[1]) >= tonumber(ARGV[1]) then
+            local groups = redis.call('XINFO','GROUPS',KEYS[1])
+            local cutoff = nil
+            for _,fields in ipairs(groups) do
+                local group, delivered
+                for i=1,#fields,2 do
+                    if fields[i] == 'name' then group = fields[i+1] end
+                    if fields[i] == 'last-delivered-id' then delivered = fields[i+1] end
+                end
+                local pending = redis.call('XPENDING',KEYS[1],group)
+                local safe = delivered
+                if pending[1] > 0 and less(pending[2],safe) then safe = pending[2] end
+                if cutoff == nil or less(safe,cutoff) then cutoff = safe end
+            end
+            if cutoff ~= nil then redis.call('XTRIM',KEYS[1],'MINID',cutoff) end
+            if redis.call('XLEN',KEYS[1]) >= tonumber(ARGV[1]) then
+                return redis.error_reply('event stream backlog capacity reached')
+            end
+        end
+        return redis.call('XADD',KEYS[1],'*',unpack(ARGV,2))
+    "#,
+    );
+    let result: redis::RedisResult<String> = script
+        .key(&config.stream)
         .arg(config.maxlen)
-        .arg("*")
         .arg("event_id")
         .arg(&event.event_id)
         .arg("event_type")
@@ -702,7 +819,7 @@ fn publish_to_redis(
         .arg(event.schema_version)
         .arg("payload")
         .arg(payload)
-        .query(connection.as_mut().expect("connection is initialized"));
+        .invoke(connection.as_mut().expect("connection is initialized"));
     result.map(|_| ())
 }
 
@@ -801,11 +918,28 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-fn now_ns() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos()
+fn canonical_event(event: &EngineEvent) -> Value {
+    let mut value = serde_json::to_value(event).expect("validated event");
+    if event.source == "engine-service"
+        && event.payload["identity_version"] == 2
+        && event.payload["candidate_id"] == event.event_id
+        && matches!(
+            event.event_type.as_str(),
+            "opportunity.detected" | "opportunity.rejected"
+        )
+    {
+        if let Some(payload) = value["payload"].as_object_mut() {
+            // Only this explicit processing field is mutable. Market timestamps stay strict.
+            if payload.get("processing").is_some_and(|p| {
+                p.as_object().is_some_and(|p| {
+                    p.len() == 1 && p.get("processed_at_ms").is_some_and(Value::is_u64)
+                })
+            }) {
+                payload.remove("processing");
+            }
+        }
+    }
+    value
 }
 
 #[cfg(test)]
@@ -1028,6 +1162,172 @@ mod tests {
         assert_eq!(delivered, expected_ids);
 
         let _: redis::RedisResult<i64> = redis::cmd("DEL").arg(&stream).query(&mut connection);
+        let _ = fs::remove_dir_all(path);
+    }
+    #[test]
+    fn deterministic_events_deduplicate_pending_delivered_and_restart() {
+        let path = temp_outbox("canonical");
+        let event = EngineEvent {
+            event_id: "same".into(),
+            event_type: "opportunity.detected".into(),
+            occurred_at_ms: 1000,
+            source: "engine-service".into(),
+            schema_version: 1,
+            payload: serde_json::json!({"identity_version":2,"candidate_id":"same",
+                "scan_timestamp":1000,"price":100.,"processing":{"processed_at_ms":1100}}),
+        };
+        let outbox = Outbox::open(path.clone()).unwrap();
+        let pending = outbox.persist(&event).unwrap();
+        let mut retry = event.clone();
+        retry.payload["processing"]["processed_at_ms"] = Value::from(1200);
+        assert_eq!(outbox.persist(&retry).unwrap(), pending);
+        assert_eq!(outbox.pending_count(), 1);
+        let mut conflict = retry.clone();
+        conflict.payload["price"] = Value::from(101);
+        assert!(outbox.persist(&conflict).is_err());
+        outbox.mark_delivered(&pending).unwrap();
+        assert_eq!(outbox.pending_count(), 0);
+        drop(outbox);
+        let reopened = Outbox::open(path.clone()).unwrap();
+        reopened.persist(&retry).unwrap();
+        assert_eq!(reopened.pending_count(), 0);
+        assert!(reopened.persist(&conflict).is_err());
+        drop(reopened);
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn concurrent_duplicate_outbox_writers_accept_once_and_fail_on_conflict() {
+        let path = temp_outbox("concurrent");
+        let outbox = Arc::new(Outbox::open(path.clone()).unwrap());
+        let mut threads = Vec::new();
+        for _ in 0..8 {
+            let outbox = outbox.clone();
+            threads.push(thread::spawn(move || {
+                outbox
+                    .persist(&EngineEvent {
+                        event_id: "duplicate".into(),
+                        event_type: "trade.executed".into(),
+                        occurred_at_ms: 1000,
+                        source: "test".into(),
+                        schema_version: 1,
+                        payload: Value::Null,
+                    })
+                    .unwrap();
+            }));
+        }
+        for handle in threads {
+            handle.join().unwrap();
+        }
+        assert_eq!(outbox.pending_count(), 1);
+        assert!(Outbox::open(path.clone()).is_err());
+        drop(outbox);
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn outbox_write_failure_never_reports_acceptance() {
+        let path = temp_outbox("write-failure");
+        let outbox = Outbox::open(path.clone()).unwrap();
+        fs::remove_dir_all(&path).unwrap();
+        assert!(outbox
+            .persist(&EngineEvent {
+                event_id: "fail".into(),
+                event_type: "audit.test".into(),
+                occurred_at_ms: 1000,
+                source: "test".into(),
+                schema_version: 1,
+                payload: Value::Null
+            })
+            .is_err());
+        assert_eq!(outbox.pending_count(), 0);
+    }
+    #[test]
+    #[ignore = "requires Redis integration service"]
+    fn redis_backlog_never_trims_pending_critical_events() {
+        let redis_url = env::var("ARB_REDIS_URL").unwrap();
+        let client = redis::Client::open(redis_url.clone()).unwrap();
+        let mut connection = client.get_connection().unwrap();
+        let stream = format!("arb.capacity.{}", Uuid::new_v4());
+        let _: String = redis::cmd("XGROUP")
+            .arg("CREATE")
+            .arg(&stream)
+            .arg("test")
+            .arg("0")
+            .arg("MKSTREAM")
+            .query(&mut connection)
+            .unwrap();
+        let path = temp_outbox("backpressure");
+        let publisher = EventPublisher::from_config(
+            "test".into(),
+            PublisherConfig {
+                redis_url,
+                stream: stream.clone(),
+                maxlen: 2,
+                capacity: 4,
+                outbox_path: path.clone(),
+                retry_initial_ms: 10,
+                retry_max_ms: 20,
+                max_pending: 100,
+            },
+        )
+        .unwrap();
+        for index in 0..3 {
+            publisher
+                .publish_critical("trade.executed", serde_json::json!({"index":index}))
+                .unwrap();
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let length: usize = redis::cmd("XLEN")
+                .arg(&stream)
+                .query(&mut connection)
+                .unwrap();
+            if length == 2 && publisher.outbox.pending_count() == 1 {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(10));
+        }
+        let _: redis::Value = redis::cmd("XREADGROUP")
+            .arg("GROUP")
+            .arg("test")
+            .arg("worker")
+            .arg("STREAMS")
+            .arg(&stream)
+            .arg(">")
+            .query(&mut connection)
+            .unwrap();
+        thread::sleep(Duration::from_millis(50));
+        let rows: Vec<(String, Vec<(String, String)>)> = redis::cmd("XRANGE")
+            .arg(&stream)
+            .arg("-")
+            .arg("+")
+            .query(&mut connection)
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        for (id, _) in rows {
+            let _: usize = redis::cmd("XACK")
+                .arg(&stream)
+                .arg("test")
+                .arg(id)
+                .query(&mut connection)
+                .unwrap();
+        }
+        while publisher.outbox.pending_count() != 0 {
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(10));
+        }
+        let length: usize = redis::cmd("XLEN")
+            .arg(&stream)
+            .query(&mut connection)
+            .unwrap();
+        assert_eq!(length, 2);
+        let _: usize = redis::cmd("DEL")
+            .arg(&stream)
+            .query(&mut connection)
+            .unwrap();
+        drop(publisher);
         let _ = fs::remove_dir_all(path);
     }
 }

@@ -6,8 +6,11 @@ build = "build.rs"
 
 [dependencies]
 anyhow.workspace = true
+fs2 = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 event-bus = { path = "../event-bus" }
+market-data = { path = "../market-data" }
+orderbook = { path = "../orderbook" }
 prost = "0.13"
 risk = { path = "../risk" }
 scanner = { path = "../scanner" }
