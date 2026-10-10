@@ -87,3 +87,5 @@ ARB_RUN_RELIABILITY_INTEGRATION=1 ARB_RUN_OBSERVER_INTEGRATION=1 \
 ARB_ENGINE_BINARY=/absolute/path/to/rust/target/debug/engine-service \
 python -m pytest -q -s tests/test_observer_pipeline_integration.py
 ```
+
+A connected observer also requests a metadata refresh/reconnect when the five-minute metadata freshness limit expires; closing the gate alone must not strand a healthy incremental feed.

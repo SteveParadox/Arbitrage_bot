@@ -114,8 +114,14 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 return Ok(());
             }
             _ = health_tick.tick() => {
+                let now = now_ms();
+                if lifecycle.connected && !lifecycle.recovering && lifecycle.metadata.values().any(|m| !metadata_fresh(m.timestamp, now)) {
+                    lifecycle.invalidate(); scanner.reset_books(); receipts.clear(); feed_health = Value::Null;
+                    state = "reconnecting"; reason = "instrument metadata refresh required".into();
+                    if !replay_mode { let _ = recovery_sender.try_send(()); }
+                }
                 let ready = observer_ready(&lifecycle, &routes, &required, &scanner,
-                    &receipts, &feed_health, now_ms(), settings.max_book_age_ms);
+                    &receipts, &feed_health, now, settings.max_book_age_ms);
                 if state == "scanning" && !ready { state = "stale"; reason = "readiness expired".into(); }
                 publish_health(&events, state, &reason, lifecycle.generation);
                 continue;
@@ -336,12 +342,13 @@ fn observer_ready(
                 .get(symbol)
                 .is_some_and(|at| at.elapsed().as_millis() <= max_age as u128)
                 && lifecycle.metadata.get(symbol).is_some_and(|m| {
-                    validate_instrument(routes, m).is_ok()
-                        && now
-                            .checked_sub(m.timestamp)
-                            .is_some_and(|age| age <= 300_000)
+                    validate_instrument(routes, m).is_ok() && metadata_fresh(m.timestamp, now)
                 })
         })
+}
+
+fn metadata_fresh(timestamp: u64, now: u64) -> bool {
+    now.checked_sub(timestamp).is_some_and(|age| age <= 300_000)
 }
 
 fn publish_health(events: &EventPublisher, state: &str, reason: &str, generation: u64) {
@@ -623,5 +630,11 @@ mod tests {
         lifecycle.invalidate();
         assert!(lifecycle.recovering);
         assert!(lifecycle.metadata.is_empty());
+    }
+    #[test]
+    fn metadata_expiry_requires_refresh_and_rejects_future_timestamps() {
+        assert!(metadata_fresh(1000, 301000));
+        assert!(!metadata_fresh(1000, 301001));
+        assert!(!metadata_fresh(1001, 1000));
     }
 }
