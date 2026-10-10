@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import redis.asyncio as redis
 from redis.exceptions import ResponseError
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DataError
 
@@ -268,6 +269,29 @@ def _persist(
                 with session.begin_nested():
                     result = session.execute(statement)
                     if result.rowcount == 0:
+                        # ON CONFLICT covers both the event ID and Redis stream ID.
+                        # Only an identical event may be treated as an idempotent replay.
+                        # Otherwise a conflicting financial/event record would disappear.
+                        existing = session.scalar(
+                            select(EngineEvent).where(
+                                or_(
+                                    EngineEvent.event_id == event.event_id,
+                                    EngineEvent.stream_id == event.stream_id,
+                                )
+                            ).limit(1)
+                        )
+                        if (
+                            existing is None
+                            or existing.event_id != event.event_id
+                            or existing.event_type != event.event_type
+                            or existing.source != event.source
+                            or existing.schema_version != event.schema_version
+                            or existing.occurred_at_ms != event.occurred_at_ms
+                            or existing.payload != event.payload
+                        ):
+                            raise ValueError(
+                                "conflicting event_id or stream_id; event requires investigation"
+                            )
                         _CONSUMER_METRICS[
                             "database_duplicate_events_total"
                         ] += 1
