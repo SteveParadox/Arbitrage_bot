@@ -99,8 +99,7 @@ data/control/trading_state.json
 The Phase 9 risk engine independently reads the same state before new live approval and before an
 approval crosses the execution gate.
 
-If the Rust gRPC service is unavailable during an authenticated stop request, FastAPI performs a
-local fail-closed write to the shared control file as an emergency fallback. Start has no fallback.
+FastAPI persists durable disabled intent before an authenticated stop request. On connection failure the intent remains, and stop is unconfirmed until fresh engine status plus matching engine-authored disabled state proves application. Start has no activation fallback. See CONTROL_API.md for shared OS locking, restart/expiry and response contracts.
 
 ## Runtime risk limits
 
@@ -211,9 +210,7 @@ ARB_EVENT_QUEUE_CAPACITY=4096
 ARB_EVENT_STREAM_MAXLEN=1000000
 ~~~
 
-Redis Stream trimming is approximate. If Redis is unavailable, the publisher retries. If the local
-bounded queue fills, telemetry may be dropped and Rust logs a warning. Trading safety never depends
-on Redis delivery.
+Critical events use the durable filesystem outbox retained on current main. Redis outages retry asynchronously; failure to guarantee critical handoff blocks new execution. Noncritical telemetry may be dropped under pressure. Persist outbox and command-store volumes across restarts; a volatile container filesystem is not durable storage.
 
 ## Python consumer
 
@@ -279,7 +276,7 @@ If gRPC is unavailable:
 
 ~~~text
 engine_grpc.status = offline
-overall API health = degraded
+overall API health = unhealthy
 ~~~
 
 This does not invent a healthy Rust engine merely because FastAPI itself is responding.
@@ -332,7 +329,7 @@ ARB_EVENT_STREAM=arb.events
 ## Failure semantics
 
 - gRPC unavailable: start, update-limits and reload fail; stop uses the fail-closed fallback.
-- Redis unavailable: command/control and trading safety continue; telemetry retries asynchronously.
+- Redis unavailable: critical outbox retries asynchronously; health trading eligibility is false. Stop remains available and does not need Redis delivery to close the shared runtime gate.
 - PostgreSQL unavailable: Redis messages remain pending and are reclaimed later.
 - runtime limit file malformed: new risk evaluation fails closed.
 - runtime control file malformed: normal live approval fails closed.
@@ -375,3 +372,7 @@ StopTrading repairs corrupt control state
 The ordinary Python unit tests also verify that the configured gRPC timeout is actually passed to
 the RPC, non-positive timeouts fail before network I/O, and mismatched/negative command
 acknowledgements are rejected.
+
+## Audit integration contracts
+
+Canonical health now combines fresh gRPC state, persisted engine heartbeat, Redis group/backlog, DB, outbox, command store, risk, strict runtime control, operator authentication and direct market-health telemetry. Operational availability and trading eligibility are separate. Dashboard and frontend use these same safety contracts. Recovery confirms only matching engine-authored stopped operations, never an old acknowledgement. See [PR2_CRITICAL_AUDIT.md](PR2_CRITICAL_AUDIT.md) for executed boundary tests and unexecuted deployment/exchange validation.

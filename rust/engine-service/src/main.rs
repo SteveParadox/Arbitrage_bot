@@ -11,9 +11,12 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use chrono::Utc;
 use event_bus::EventPublisher;
+use risk::control::{
+    lock_control, read_control, read_stop_intent, stop_pending, ControlState, StopIntent,
+};
 use risk::{current_time_ms, load_risk_config, RiskEngine};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -58,17 +61,6 @@ struct ServiceConfig {
     triangle_config_file: PathBuf,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ControlState {
-    version: u32,
-    enabled: bool,
-    updated_at: String,
-    reason: String,
-    source: String,
-    #[serde(default)]
-    request_id: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct RuntimeLimits {
     version: u32,
@@ -99,6 +91,7 @@ impl EngineControl for EngineControlService {
         );
 
         let _guard = self.mutation_lock.lock().await;
+        let _control_guard = lock_control(&self.config.control_file).map_err(internal)?;
         let mut record =
             match self.begin_command(&message.request_id, "start_trading", &request_fingerprint)? {
                 BeginCommand::Return(reply) => return Ok(Response::new(reply)),
@@ -114,7 +107,16 @@ impl EngineControl for EngineControlService {
                 Status::failed_precondition("deployment live-trading gate is disabled"),
             ));
         }
-        if let Err(error) = read_control(&self.config.control_file) {
+        if stop_pending(&self.config.control_file) {
+            return Err(self.cache_failure(
+                &mut record,
+                Status::failed_precondition(
+                    "emergency stop remains pending or unconfirmed; retry stop before start",
+                ),
+            ));
+        }
+        if !matches!(read_control(&self.config.control_file), Ok(Some(_))) {
+            let error = "missing or invalid authoritative control state";
             return Err(self.cache_failure(
                 &mut record,
                 Status::failed_precondition(format!(
@@ -208,6 +210,7 @@ impl EngineControl for EngineControlService {
         );
 
         let _guard = self.mutation_lock.lock().await;
+        let _control_guard = lock_control(&self.config.control_file).map_err(internal)?;
         let mut record =
             match self.begin_command(&message.request_id, "stop_trading", &request_fingerprint)? {
                 BeginCommand::Return(reply) => return Ok(Response::new(reply)),
@@ -228,6 +231,26 @@ impl EngineControl for EngineControlService {
             )));
         }
 
+        let intent = read_stop_intent(&self.config.control_file);
+        if let Ok(Some(existing)) = &intent {
+            if existing.status != "CONFIRMED_STOPPED" && existing.request_id != message.request_id {
+                return Err(self.cache_failure(
+                    &mut record,
+                    Status::aborted("a newer stop intent is pending; retry its request_id"),
+                ));
+            }
+        }
+        write_json_atomic(
+            &self.config.control_file.with_extension("stop.json"),
+            &StopIntent {
+                version: 1,
+                request_id: message.request_id.clone(),
+                reason: clean_reason(&message.reason, "gRPC stop_trading"),
+                status: "CONFIRMED_STOPPED".into(),
+                updated_at: Utc::now().to_rfc3339(),
+            },
+        )
+        .map_err(internal)?;
         let applied_at_ms = now_ms();
         self.emit_command_event(
             &mut record,
@@ -478,6 +501,8 @@ impl EngineControl for EngineControlService {
         }
         let detail = serde_json::to_string(&json!({
             "summary": summary,
+            "control_request_id": control.as_ref().ok().and_then(|value| value.as_ref()).and_then(|state| state.request_id.as_deref()),
+            "stop_intent": read_stop_intent(&self.config.control_file).ok().flatten(),
             "event_pipeline": event_health,
             "grpc_idempotency_store_status": if idempotency_health.healthy {
                 "healthy"
@@ -934,6 +959,18 @@ async fn main() -> Result<()> {
         .context("ARB_GRPC_IDEMPOTENCY_RETENTION_SECONDS must be a positive integer")?;
     let idempotency = Arc::new(IdempotencyStore::open(idempotency_path, retention_seconds)?);
 
+    {
+        let _guard = lock_control(&config.control_file)?;
+        if matches!(read_control(&config.control_file), Ok(Some(state)) if state.enabled) {
+            write_control(
+                &config.control_file,
+                false,
+                "engine restart requires explicit activation".into(),
+                None,
+            )?;
+        }
+    }
+
     let heartbeat_events = events.clone();
     let heartbeat_idempotency = idempotency.clone();
     let heartbeat_config = config.clone();
@@ -1032,29 +1069,6 @@ fn write_control(
         request_id,
     };
     write_json_atomic(path, &payload)
-}
-
-fn read_control(path: &Path) -> Result<Option<ControlState>> {
-    let raw = match fs::read_to_string(path) {
-        Ok(value) => value,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(None);
-        }
-        Err(error) => return Err(error.into()),
-    };
-    let state: ControlState = serde_json::from_str(&raw)?;
-    if state.version != 1 {
-        bail!("unsupported runtime control version {}", state.version);
-    }
-    if state.reason.trim().is_empty() || state.reason.chars().count() > 256 {
-        bail!("runtime control reason must contain 1-256 characters");
-    }
-    if state.source != "fastapi_control" && state.source != "rust_grpc_control" {
-        bail!("unsupported runtime control source {}", state.source);
-    }
-    chrono::DateTime::parse_from_rfc3339(&state.updated_at)
-        .context("runtime control updated_at must be RFC3339")?;
-    Ok(Some(state))
 }
 
 fn control_snapshot(control: &Result<Option<ControlState>>) -> (bool, String, Option<String>) {

@@ -585,7 +585,12 @@ impl BybitExecutionClient {
                 .iter()
                 .fold(Decimal::ZERO, |acc, fill| acc + fill.quantity);
 
-            let confirmed = total >= target_filled;
+            if total > target_filled {
+                return Err(ExecutionError::Decode(
+                    "exchange execution quantity exceeds order cumulative fill".into(),
+                ));
+            }
+            let confirmed = total == target_filled;
             if !confirm_fills
                 || target_filled == Decimal::ZERO
                 || confirmed
@@ -651,6 +656,7 @@ impl BybitExecutionClient {
     ) -> Result<Vec<ExecutionFill>, ExecutionError> {
         let mut cursor: Option<String> = None;
         let mut output = Vec::new();
+        let mut complete = false;
 
         for _ in 0..self.config.max_execution_pages {
             let mut params = vec![
@@ -687,18 +693,18 @@ impl BybitExecutionClient {
             }
 
             if result.next_page_cursor.is_empty() {
+                complete = true;
                 break;
             }
             cursor = Some(result.next_page_cursor);
         }
 
-        output.sort_by(|left, right| {
-            left.executed_at_ms
-                .cmp(&right.executed_at_ms)
-                .then_with(|| left.execution_id.cmp(&right.execution_id))
-        });
-        output.dedup_by(|left, right| left.execution_id == right.execution_id);
-        Ok(output)
+        if !complete {
+            return Err(ExecutionError::Decode(
+                "execution pagination limit reached; fills remain unconfirmed".into(),
+            ));
+        }
+        canonical_fills(output, order_id)
     }
 
     async fn get_order_by_id(
@@ -880,6 +886,41 @@ impl BybitExecutionClient {
             .map_err(risk_state_error)?;
         Ok(())
     }
+}
+
+fn canonical_fills(
+    fills: Vec<ExecutionFill>,
+    order_id: &str,
+) -> Result<Vec<ExecutionFill>, ExecutionError> {
+    let mut identities = BTreeMap::new();
+    for fill in fills {
+        if fill.execution_id.is_empty()
+            || fill.order_id != order_id
+            || fill.quantity <= Decimal::ZERO
+            || fill.price <= Decimal::ZERO
+            || fill.value < Decimal::ZERO
+        {
+            return Err(ExecutionError::Decode(
+                "invalid exchange execution identity or amounts".into(),
+            ));
+        }
+        if let Some(previous) = identities.get(&fill.execution_id) {
+            if previous != &fill {
+                return Err(ExecutionError::Decode(
+                    "conflicting duplicate exchange execution".into(),
+                ));
+            }
+        } else {
+            identities.insert(fill.execution_id.clone(), fill);
+        }
+    }
+    let mut unique: Vec<_> = identities.into_values().collect();
+    unique.sort_by(|a, b| {
+        a.executed_at_ms
+            .cmp(&b.executed_at_ms)
+            .then_with(|| a.execution_id.cmp(&b.execution_id))
+    });
+    Ok(unique)
 }
 
 fn risk_state_error(error: RiskError) -> ExecutionError {
@@ -1101,6 +1142,53 @@ mod tests {
 
     fn d(value: &str) -> Decimal {
         Decimal::from_str_exact(value).unwrap()
+    }
+
+    #[test]
+    fn fill_identity_deduplicates_exact_replays_and_rejects_conflicts() {
+        let fill = ExecutionFill {
+            execution_id: "exec-1".into(),
+            order_id: "order-1".into(),
+            quantity: d("0.01"),
+            price: d("100"),
+            value: d("1"),
+            fee: d("0.001"),
+            fee_currency: "USDT".into(),
+            is_maker: false,
+            executed_at_ms: 1000,
+        };
+        assert_eq!(
+            canonical_fills(vec![fill.clone(), fill.clone()], "order-1").unwrap(),
+            vec![fill.clone()]
+        );
+        for changed in [
+            ExecutionFill {
+                executed_at_ms: 2000,
+                ..fill.clone()
+            },
+            ExecutionFill {
+                fee: d("0.002"),
+                ..fill.clone()
+            },
+            ExecutionFill {
+                quantity: d("0.02"),
+                ..fill.clone()
+            },
+            ExecutionFill {
+                execution_id: String::new(),
+                ..fill.clone()
+            },
+            ExecutionFill {
+                order_id: "other-order".into(),
+                ..fill.clone()
+            },
+            ExecutionFill {
+                quantity: Decimal::ZERO,
+                ..fill.clone()
+            },
+        ] {
+            assert!(canonical_fills(vec![fill.clone(), changed], "order-1").is_err());
+        }
     }
 
     #[test]

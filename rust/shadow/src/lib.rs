@@ -3,6 +3,8 @@ mod config;
 mod engine;
 mod model;
 
+pub use account::{ReadOnlyAccountClient, ReadOnlyAccountSnapshot, ReadOnlyFeeRate};
+
 pub use config::{load_shadow_config, ShadowConfig};
 pub use engine::ShadowEngine;
 pub use model::{ShadowEvent, ShadowLatencySample, ShadowOpportunity};

@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from analytics.db import get_db
 from analytics.micro_live_models import MicroLiveCycle
 from analytics.models import OpportunityObservation
-from api.runtime_control import read_control_state
 from api.settings import settings
 
 router = APIRouter(prefix="/operations", tags=["operations-dashboard"])
@@ -26,14 +25,30 @@ def _number(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
+def _risk_config_path() -> Path:
+    path = Path(settings.arb_risk_config)
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+def _risk_config() -> dict[str, Any] | None:
+    try:
+        payload = json.loads(_risk_config_path().read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 def _risk_paths() -> tuple[Path, Path]:
     try:
-        raw = json.loads(RISK_CONFIG_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(_risk_config_path().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return (
             REPO_ROOT / "data" / "risk" / "KILL_SWITCH",
             REPO_ROOT / "data" / "risk" / "risk_state.json",
         )
+
+    if not isinstance(raw, dict):
+        return REPO_ROOT / "data/risk/KILL_SWITCH", REPO_ROOT / "data/risk/risk_state.json"
 
     def resolve(value: str, fallback: Path) -> Path:
         if not value:
@@ -41,7 +56,7 @@ def _risk_paths() -> tuple[Path, Path]:
         path = Path(value)
         if path.is_absolute():
             return path
-        return (RISK_CONFIG_PATH.parent / path).resolve()
+        return (_risk_config_path().parent / path).resolve()
 
     return (
         resolve(
@@ -57,7 +72,9 @@ def _risk_paths() -> tuple[Path, Path]:
 
 def _risk_status() -> dict[str, Any]:
     kill_path, state_path = _risk_paths()
-    runtime_visible = kill_path.parent.exists() and state_path.parent.exists()
+    runtime_visible = (
+        _risk_config() is not None and kill_path.parent.exists() and state_path.parent.exists()
+    )
     if not runtime_visible:
         return {
             "available": False,
@@ -73,7 +90,11 @@ def _risk_status() -> dict[str, Any]:
     if kill_active:
         try:
             payload = json.loads(kill_path.read_text(encoding="utf-8"))
-            kill_detail = payload.get("reason") or payload.get("detail")
+            kill_detail = (
+                (payload.get("reason") or payload.get("detail"))
+                if isinstance(payload, dict)
+                else "kill switch file present"
+            )
         except (OSError, json.JSONDecodeError):
             kill_detail = "kill switch file present"
 
@@ -83,11 +104,31 @@ def _risk_status() -> dict[str, Any]:
     if state_persisted:
         try:
             payload = json.loads(state_path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("risk state must be an object")
             breaker = payload.get("circuit_breaker")
-            failures = payload.get("execution_failures_ms") or []
-            if isinstance(failures, list):
-                recent_failures = len(failures)
-        except (OSError, json.JSONDecodeError):
+            failures = payload.get("execution_failures_ms")
+            if not isinstance(failures, list) or any(
+                type(value) is not int or value < 0 for value in failures
+            ):
+                raise ValueError("invalid risk failure history")
+            if breaker is not None and (
+                not isinstance(breaker, dict)
+                or breaker.get("kind")
+                not in {
+                    "execution_failures",
+                    "stale_market_data",
+                    "daily_loss_limit",
+                    "api_health",
+                    "exchange_health",
+                    "clock_skew",
+                }
+                or type(breaker.get("tripped_at_ms")) is not int
+                or not isinstance(breaker.get("detail"), str)
+            ):
+                raise ValueError("invalid risk circuit breaker")
+            recent_failures = len(failures)
+        except (OSError, ValueError):
             breaker = {
                 "kind": "state_unreadable",
                 "detail": "risk state file could not be parsed",
@@ -113,35 +154,21 @@ def _risk_status() -> dict[str, Any]:
 
 
 def _recent_market_activity(db: Session) -> tuple[str, datetime | None]:
-    latest = db.scalar(select(func.max(OpportunityObservation.detected_at)))
-    if latest is None:
-        return "offline", None
+    from api.health import _market_data_status
 
-    age = datetime.now(UTC) - latest
-    if age <= timedelta(seconds=5):
-        return "connected", latest
-    if age <= timedelta(seconds=30):
-        return "stale", latest
-    return "offline", latest
+    market = _market_data_status(db)
+    return market["status"], market["last_event_at"]
 
 
 def _balance_snapshot(db: Session) -> dict[str, Any]:
     latest_cycle = db.scalar(
-        select(MicroLiveCycle)
-        .order_by(desc(MicroLiveCycle.detected_at))
-        .limit(1)
+        select(MicroLiveCycle).order_by(desc(MicroLiveCycle.detected_at)).limit(1)
     )
     return {
         "base_asset": latest_cycle.base_asset if latest_cycle else None,
-        "balance": _number(
-            latest_cycle.account_balance if latest_cycle else None
-        ),
-        "equity_usd": _number(
-            latest_cycle.account_equity_usd if latest_cycle else None
-        ),
-        "exposure_usd": _number(
-            latest_cycle.account_exposure_usd if latest_cycle else None
-        ),
+        "balance": _number(latest_cycle.account_balance if latest_cycle else None),
+        "equity_usd": _number(latest_cycle.account_equity_usd if latest_cycle else None),
+        "exposure_usd": _number(latest_cycle.account_exposure_usd if latest_cycle else None),
         "snapshot_at": latest_cycle.detected_at if latest_cycle else None,
     }
 
@@ -163,12 +190,8 @@ def _performance_snapshot(
     today_stats = db.execute(
         select(
             func.coalesce(func.sum(MicroLiveCycle.realized_pnl), 0),
-            func.count(MicroLiveCycle.trade_id).filter(
-                MicroLiveCycle.reconciled_at.is_not(None)
-            ),
-            func.count(MicroLiveCycle.trade_id).filter(
-                MicroLiveCycle.realized_pnl > 0
-            ),
+            func.count(MicroLiveCycle.trade_id).filter(MicroLiveCycle.reconciled_at.is_not(None)),
+            func.count(MicroLiveCycle.trade_id).filter(MicroLiveCycle.realized_pnl > 0),
             func.coalesce(
                 func.sum(MicroLiveCycle.starting_capital).filter(
                     MicroLiveCycle.reconciled_at.is_not(None)
@@ -182,8 +205,9 @@ def _performance_snapshot(
     ).one()
 
     weekly_pnl = db.scalar(
-        select(func.coalesce(func.sum(MicroLiveCycle.realized_pnl), 0))
-        .where(MicroLiveCycle.reconciled_at >= week)
+        select(func.coalesce(func.sum(MicroLiveCycle.realized_pnl), 0)).where(
+            MicroLiveCycle.reconciled_at >= week
+        )
     )
 
     opportunity_stats = db.execute(
@@ -206,45 +230,42 @@ def _performance_snapshot(
     return {
         "today_pnl": pnl_today,
         "weekly_pnl": float(weekly_pnl or 0),
-        "net_return_pct": (
-            pnl_today / capital * 100.0 if capital else None
-        ),
+        "net_return_pct": (pnl_today / capital * 100.0 if capital else None),
         "detected_opportunities": int(opportunity_stats[0] or 0),
         "executed_trades": executed,
         "rejected_opportunities": int(opportunity_stats[1] or 0),
-        "success_rate_pct": (
-            profitable / executed * 100.0 if executed else None
-        ),
+        "success_rate_pct": (profitable / executed * 100.0 if executed else None),
         "average_net_edge_bps": _number(opportunity_stats[2]),
         "average_latency_ms": _number(today_stats[4]),
     }
 
 
-def _system_snapshot(db: Session) -> dict[str, Any]:
-    websocket_status, last_market_event = _recent_market_activity(db)
-    control = read_control_state()
-    return {
-        "api_status": "online",
-        "websocket_status": websocket_status,
-        "websocket_status_source": "recent opportunity activity proxy",
-        "last_market_event": last_market_event,
-        "trading_enabled": bool(
-            settings.arb_live_trading_enabled and control["enabled"]
-        ),
-        "trading_deployment_enabled": settings.arb_live_trading_enabled,
-        "trading_runtime_enabled": control["enabled"],
-        "risk": _risk_status(),
-    }
-
-
 @router.get("/dashboard")
-def dashboard(db: DatabaseSession) -> dict[str, Any]:
+async def dashboard(db: DatabaseSession) -> dict[str, Any]:
+    from api.control import get_health
+
+    health = await get_health(db)
     now = datetime.now(UTC)
     return {
         "generated_at": now,
         "account": _balance_snapshot(db),
         "performance": _performance_snapshot(db, now),
-        "system": _system_snapshot(db),
+        "system": {
+            "api_status": health["status"],
+            "database_status": health["database_status"],
+            "websocket_status": health["market_stream_status"],
+            "websocket_status_source": "market.health telemetry",
+            "last_market_event": health["last_market_event"],
+            "trading_enabled": health["trading"]["effective_enabled"],
+            "trading_deployment_enabled": health["trading"]["deployment_enabled"],
+            "trading_runtime_enabled": health["trading"]["runtime_enabled"],
+            "trading_risk_allows_new_orders": health["trading"]["risk_allows_new_orders"],
+            "trading_control_reason": health["trading"]["reason"],
+            "stop_outcome": health["trading"]["stop_outcome"],
+            "blocking_reasons": health["trading"]["blocking_reasons"],
+            "control_auth_configured": health["control_auth_configured"],
+            "risk": health["risk"],
+        },
     }
 
 
@@ -282,9 +303,7 @@ def recent_executions(
     limit: int = Query(default=20, ge=1, le=200),
 ) -> list[dict[str, Any]]:
     rows = db.scalars(
-        select(MicroLiveCycle)
-        .order_by(desc(MicroLiveCycle.detected_at))
-        .limit(limit)
+        select(MicroLiveCycle).order_by(desc(MicroLiveCycle.detected_at)).limit(limit)
     ).all()
     return [
         {

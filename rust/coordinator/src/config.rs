@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::Path,
-};
+use std::{fs, path::Path};
 
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -61,13 +58,11 @@ impl CoordinatorConfig {
         }
         if self.normal_slippage_tolerance_percent <= Decimal::ZERO
             || self.normal_slippage_tolerance_percent > Decimal::new(10, 0)
-            || self.emergency_slippage_tolerance_percent
-                < self.normal_slippage_tolerance_percent
+            || self.emergency_slippage_tolerance_percent < self.normal_slippage_tolerance_percent
             || self.emergency_slippage_tolerance_percent > Decimal::new(10, 0)
         {
             return Err(CoordinatorError::InvalidConfig(
-                "slippage tolerances must be positive, <=10%, and emergency >= normal"
-                    .to_string(),
+                "slippage tolerances must be positive, <=10%, and emergency >= normal".to_string(),
             ));
         }
         if self.max_unwind_attempts_per_asset == 0 {
@@ -85,7 +80,6 @@ impl CoordinatorConfig {
 }
 
 fn parse_decimal(field: &str, value: &str) -> Result<Decimal, CoordinatorError> {
-    Decimal::from_str_exact(value).map_err(|_| {
-        CoordinatorError::InvalidConfig(format!("{field} must be a decimal string"))
-    })
+    Decimal::from_str_exact(value)
+        .map_err(|_| CoordinatorError::InvalidConfig(format!("{field} must be a decimal string")))
 }

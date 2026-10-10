@@ -1,0 +1,275 @@
+{
+  "$defs": {
+    "TradingDependencies": {
+      "additionalProperties": false,
+      "properties": {
+        "database": {
+          "title": "Database",
+          "type": "boolean"
+        },
+        "engine": {
+          "title": "Engine",
+          "type": "boolean"
+        },
+        "market_data": {
+          "title": "Market Data",
+          "type": "boolean"
+        },
+        "risk": {
+          "title": "Risk",
+          "type": "boolean"
+        },
+        "redis": {
+          "title": "Redis",
+          "type": "boolean"
+        },
+        "event_consumer": {
+          "title": "Event Consumer",
+          "type": "boolean"
+        },
+        "event_outbox": {
+          "title": "Event Outbox",
+          "type": "boolean"
+        },
+        "command_store": {
+          "title": "Command Store",
+          "type": "boolean"
+        },
+        "control_auth": {
+          "title": "Control Auth",
+          "type": "boolean"
+        },
+        "control_state": {
+          "title": "Control State",
+          "type": "boolean"
+        },
+        "stop_resolved": {
+          "title": "Stop Resolved",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "database",
+        "engine",
+        "market_data",
+        "risk",
+        "redis",
+        "event_consumer",
+        "event_outbox",
+        "command_store",
+        "control_auth",
+        "control_state",
+        "stop_resolved"
+      ],
+      "title": "TradingDependencies",
+      "type": "object"
+    },
+    "TradingHealth": {
+      "additionalProperties": true,
+      "properties": {
+        "deployment_enabled": {
+          "title": "Deployment Enabled",
+          "type": "boolean"
+        },
+        "runtime_enabled": {
+          "title": "Runtime Enabled",
+          "type": "boolean"
+        },
+        "risk_allows_new_orders": {
+          "title": "Risk Allows New Orders",
+          "type": "boolean"
+        },
+        "effective_enabled": {
+          "title": "Effective Enabled",
+          "type": "boolean"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/TradingDependencies"
+        },
+        "blocking_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocking Reasons",
+          "type": "array"
+        },
+        "stop_outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "STOP_REQUESTED",
+                "STOP_UNCONFIRMED",
+                "CONFIRMED_STOPPED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stop Outcome"
+        },
+        "stop_request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stop Request Id"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "deployment_enabled",
+        "runtime_enabled",
+        "risk_allows_new_orders",
+        "effective_enabled",
+        "dependencies",
+        "blocking_reasons",
+        "stop_outcome",
+        "stop_request_id",
+        "updated_at",
+        "reason",
+        "source"
+      ],
+      "title": "TradingHealth",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "status": {
+      "enum": [
+        "ok",
+        "degraded",
+        "unhealthy"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "environment": {
+      "title": "Environment",
+      "type": "string"
+    },
+    "database_status": {
+      "enum": [
+        "online",
+        "offline"
+      ],
+      "title": "Database Status",
+      "type": "string"
+    },
+    "market_stream_status": {
+      "enum": [
+        "unknown",
+        "disconnected",
+        "resynchronizing",
+        "connected_but_stale",
+        "connected_and_fresh",
+        "degraded"
+      ],
+      "title": "Market Stream Status",
+      "type": "string"
+    },
+    "last_market_event": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Last Market Event"
+    },
+    "market_data": {
+      "additionalProperties": true,
+      "title": "Market Data",
+      "type": "object"
+    },
+    "event_pipeline": {
+      "additionalProperties": true,
+      "title": "Event Pipeline",
+      "type": "object"
+    },
+    "redis": {
+      "additionalProperties": true,
+      "title": "Redis",
+      "type": "object"
+    },
+    "risk": {
+      "additionalProperties": true,
+      "title": "Risk",
+      "type": "object"
+    },
+    "engine_grpc": {
+      "additionalProperties": true,
+      "title": "Engine Grpc",
+      "type": "object"
+    },
+    "event_consumer": {
+      "additionalProperties": true,
+      "title": "Event Consumer",
+      "type": "object"
+    },
+    "trading": {
+      "$ref": "#/$defs/TradingHealth"
+    },
+    "control_auth_configured": {
+      "title": "Control Auth Configured",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "status",
+    "generated_at",
+    "environment",
+    "database_status",
+    "market_stream_status",
+    "last_market_event",
+    "market_data",
+    "event_pipeline",
+    "redis",
+    "risk",
+    "engine_grpc",
+    "event_consumer",
+    "trading",
+    "control_auth_configured"
+  ],
+  "title": "HealthResponse",
+  "type": "object"
+}

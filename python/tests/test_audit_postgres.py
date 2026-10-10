@@ -112,7 +112,7 @@ def test_python_routes_rust_scanner_postgres_archive_and_replay(session, tmp_pat
                   ("ETHBTC", .049, .05), ("ETHUSDT", 5.25, 5.3)]]
     process = subprocess.run([str(binary)], input="\n".join(map(json.dumps, events)),
         capture_output=True, text=True, check=True,
-        env={**os.environ, "ARB_TRIANGLE_CONFIG": str(triangles),
+        env={**os.environ, "ARB_SCANNER_REQUIRE_FEED_HEALTH": "false", "ARB_TRIANGLE_CONFIG": str(triangles),
              "ARB_SCANNER_CONFIG": str(settings)})
     scans = [json.loads(line) for line in process.stdout.splitlines()]
     assert len(scans) == 6  # two directed routes, three book updates

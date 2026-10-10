@@ -2,9 +2,7 @@ use std::{collections::BTreeMap, time::Instant};
 
 use event_bus::EventPublisher;
 use execution::{prepare_execution, ExecutionResult};
-use risk::{
-    current_time_ms, EmergencyUnwindIntent, RiskEngine,
-};
+use risk::{current_time_ms, EmergencyUnwindIntent, RiskEngine};
 use rust_decimal::Decimal;
 use scanner::{TradeSide, TriangleRoute};
 use serde_json::json;
@@ -14,9 +12,9 @@ use tracing::error;
 use crate::{
     authorizer::{LegAuthorizationContext, RouteRiskAuthorizer},
     planner::emergency_conversion_for_asset,
-    ConversionLeg, CoordinatorConfig, CoordinatorError, CoordinatorStatus, Holdings,
-    LegExecutionReport, PlannedOrder, RouteExecutionReport, RoutePlanner,
-    UnwindExecutionReport, CoordinatorVenue,
+    ConversionLeg, CoordinatorConfig, CoordinatorError, CoordinatorStatus, CoordinatorVenue,
+    Holdings, LegExecutionReport, PlannedOrder, RouteExecutionReport, RoutePlanner,
+    UnwindExecutionReport,
 };
 
 pub struct ThreeLegCoordinator<V, P, A> {
@@ -58,14 +56,8 @@ where
         route: &TriangleRoute,
         starting_amount: Decimal,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
-        self.execute_route_with_opportunity(
-            risk_engine,
-            trade_id,
-            route,
-            starting_amount,
-            None,
-        )
-        .await
+        self.execute_route_with_opportunity(risk_engine, trade_id, route, starting_amount, None)
+            .await
     }
 
     pub async fn execute_route_for_opportunity(
@@ -183,13 +175,7 @@ where
             let link_id = order_link_id(trade_id, "leg", leg_index + 1, 0);
             let plan = match self
                 .planner
-                .plan_conversion(
-                    route,
-                    &conversion,
-                    input_amount,
-                    link_id,
-                    false,
-                )
+                .plan_conversion(route, &conversion, input_amount, link_id, false)
                 .await
             {
                 Ok(value) => value,
@@ -225,13 +211,7 @@ where
 
             let prepared = if leg_index == 2 {
                 match self
-                    .prepare_risk_reducing_order(
-                        risk_engine,
-                        trade_id,
-                        route,
-                        &plan,
-                        input_amount,
-                    )
+                    .prepare_risk_reducing_order(risk_engine, trade_id, route, &plan, input_amount)
                     .await
                 {
                     Ok(value) => value,
@@ -260,11 +240,7 @@ where
                     holdings: &holdings,
                     now_ms: current_time_ms(),
                 };
-                match self
-                    .authorizer
-                    .authorize_leg(risk_engine, &context)
-                    .await
-                {
+                match self.authorizer.authorize_leg(risk_engine, &context).await {
                     Ok(value) => value,
                     Err(error) if leg_index == 0 => {
                         return Ok(report(
@@ -417,9 +393,7 @@ where
             }
         }
 
-        let positive_residual_before = self
-            .positive_residual_value_base(route, &holdings)
-            .await?;
+        let positive_residual_before = self.positive_residual_value_base(route, &holdings).await?;
         if positive_residual_before > self.config.max_dust_notional_base {
             let unwind_result = self
                 .unwind_all(
@@ -446,9 +420,7 @@ where
                 ));
             }
 
-            let signed_residual = self
-                .signed_residual_value_base(route, &holdings)
-                .await?;
+            let signed_residual = self.signed_residual_value_base(route, &holdings).await?;
             return Ok(report(
                 trade_id,
                 route,
@@ -462,9 +434,7 @@ where
             ));
         }
 
-        let signed_residual = self
-            .signed_residual_value_base(route, &holdings)
-            .await?;
+        let signed_residual = self.signed_residual_value_base(route, &holdings).await?;
         Ok(report(
             trade_id,
             route,
@@ -491,13 +461,9 @@ where
         success_status: CoordinatorStatus,
         reason: Option<String>,
     ) -> Result<RouteExecutionReport, CoordinatorError> {
-        let positive_residual = self
-            .positive_residual_value_base(route, &holdings)
-            .await?;
+        let positive_residual = self.positive_residual_value_base(route, &holdings).await?;
         if positive_residual <= self.config.max_dust_notional_base {
-            let signed_residual = self
-                .signed_residual_value_base(route, &holdings)
-                .await?;
+            let signed_residual = self.signed_residual_value_base(route, &holdings).await?;
             return Ok(report(
                 trade_id,
                 route,
@@ -540,9 +506,7 @@ where
             ));
         }
 
-        let signed_residual_after = self
-            .signed_residual_value_base(route, &holdings)
-            .await?;
+        let signed_residual_after = self.signed_residual_value_base(route, &holdings).await?;
         Ok(report(
             trade_id,
             route,
@@ -573,19 +537,13 @@ where
                 if amount <= Decimal::ZERO {
                     break;
                 }
-                let base_value = self
-                    .planner
-                    .value_in_base(route, &asset, amount)
-                    .await?;
+                let base_value = self.planner.value_in_base(route, &asset, amount).await?;
                 if base_value <= self.config.max_dust_notional_base {
                     break;
                 }
 
                 let conversion = emergency_conversion_for_asset(route, &asset)?;
-                let unwind_trade_id = format!(
-                    "{}:unwind:{}:{}",
-                    trade_id, asset, attempt
-                );
+                let unwind_trade_id = format!("{}:unwind:{}:{}", trade_id, asset, attempt);
                 let plan = self
                     .planner
                     .plan_conversion(
@@ -619,9 +577,7 @@ where
                         )));
                     }
                 };
-                if !result.monitor.state.terminal
-                    || !result.monitor.state.fills_confirmed
-                {
+                if !result.monitor.state.terminal || !result.monitor.state.fills_confirmed {
                     return Err(CoordinatorError::Unwind(format!(
                         "{} unwind order {} unresolved",
                         asset, result.monitor.state.order_id
@@ -644,11 +600,7 @@ where
                 if result.monitor.state.fully_filled {
                     let remaining = self
                         .planner
-                        .value_in_base(
-                            route,
-                            &asset,
-                            positive_holding(holdings, &asset),
-                        )
+                        .value_in_base(route, &asset, positive_holding(holdings, &asset))
                         .await
                         .unwrap_or(Decimal::ZERO);
                     if remaining <= self.config.max_dust_notional_base {
@@ -659,18 +611,11 @@ where
 
             let remaining = positive_holding(holdings, &asset);
             if remaining > Decimal::ZERO {
-                let base_value = self
-                    .planner
-                    .value_in_base(route, &asset, remaining)
-                    .await?;
+                let base_value = self.planner.value_in_base(route, &asset, remaining).await?;
                 if base_value > self.config.max_dust_notional_base {
                     return Err(CoordinatorError::Unwind(format!(
                         "{} remains as {} {} (~{} {}) after maximum unwind attempts",
-                        asset,
-                        remaining,
-                        asset,
-                        base_value,
-                        route.start_asset
+                        asset, remaining, asset, base_value, route.start_asset
                     )));
                 }
             }
@@ -686,15 +631,10 @@ where
         plan: &PlannedOrder,
         exposure_amount: Decimal,
     ) -> Result<execution::PreparedExecution, CoordinatorError> {
-        let (api_health, exchange_health) =
-            self.authorizer.emergency_health().await?;
+        let (api_health, exchange_health) = self.authorizer.emergency_health().await?;
         let exposure_notional = self
             .planner
-            .value_in_base(
-                route,
-                &plan.conversion.from_asset,
-                exposure_amount,
-            )
+            .value_in_base(route, &plan.conversion.from_asset, exposure_amount)
             .await?;
         let intent = EmergencyUnwindIntent {
             trade_id: trade_id.to_string(),
@@ -734,8 +674,7 @@ where
             Ok(report)
                 if matches!(
                     report.status,
-                    CoordinatorStatus::Completed
-                        | CoordinatorStatus::CompletedWithResidualCleanup
+                    CoordinatorStatus::Completed | CoordinatorStatus::CompletedWithResidualCleanup
                 ) =>
             {
                 self.events.publish_critical(
@@ -812,10 +751,7 @@ where
             }
             let amount = positive_holding(holdings, asset);
             if amount > Decimal::ZERO {
-                total += self
-                    .planner
-                    .value_in_base(route, asset, amount)
-                    .await?;
+                total += self.planner.value_in_base(route, asset, amount).await?;
             }
         }
         Ok(total)
@@ -831,7 +767,12 @@ where
             if asset == &route.start_asset || *amount == Decimal::ZERO {
                 continue;
             }
-            if !route.assets.iter().take(3).any(|route_asset| route_asset == asset) {
+            if !route
+                .assets
+                .iter()
+                .take(3)
+                .any(|route_asset| route_asset == asset)
+            {
                 return Ok(None);
             }
             let magnitude = if *amount < Decimal::ZERO {
@@ -839,10 +780,7 @@ where
             } else {
                 *amount
             };
-            let value = self
-                .planner
-                .value_in_base(route, asset, magnitude)
-                .await?;
+            let value = self.planner.value_in_base(route, asset, magnitude).await?;
             total += if *amount < Decimal::ZERO {
                 -value
             } else {
@@ -897,14 +835,8 @@ fn apply_execution(
     })
 }
 
-fn adjust_holding(
-    holdings: &mut Holdings,
-    asset: &str,
-    delta: Decimal,
-) {
-    *holdings
-        .entry(asset.to_string())
-        .or_insert(Decimal::ZERO) += delta;
+fn adjust_holding(holdings: &mut Holdings, asset: &str, delta: Decimal) {
+    *holdings.entry(asset.to_string()).or_insert(Decimal::ZERO) += delta;
 }
 
 fn positive_holding(holdings: &Holdings, asset: &str) -> Decimal {
@@ -930,9 +862,7 @@ fn validate_route(
             "coordinator requires an exact three-leg triangle".to_string(),
         ));
     }
-    if route.assets[0] != route.assets[3]
-        || route.start_asset != route.assets[0]
-    {
+    if route.assets[0] != route.assets[3] || route.start_asset != route.assets[0] {
         return Err(CoordinatorError::InvalidRoute(
             "route must return to its start asset".to_string(),
         ));
@@ -945,12 +875,7 @@ fn validate_route(
     Ok(())
 }
 
-fn order_link_id(
-    trade_id: &str,
-    kind: &str,
-    primary: usize,
-    secondary: usize,
-) -> String {
+fn order_link_id(trade_id: &str, kind: &str, primary: usize, secondary: usize) -> String {
     let mut hasher = Sha256::new();
     hasher.update(trade_id.as_bytes());
     let digest = hex::encode(hasher.finalize());
@@ -967,7 +892,10 @@ fn engage_unresolved_kill_switch(
     risk_engine: &RiskEngine,
     reason: &str,
 ) -> Result<(), CoordinatorError> {
-    error!(reason, "engaging manual kill switch for unresolved execution state");
+    error!(
+        reason,
+        "engaging manual kill switch for unresolved execution state"
+    );
     risk_engine
         .engage_manual_kill_switch(reason, current_time_ms())
         .map_err(|error| CoordinatorError::Risk(error.to_string()))
@@ -986,9 +914,7 @@ fn estimated_report_turnover_base(report: &RouteExecutionReport) -> Decimal {
             nonnegative_decimal(leg.actual_input_spent)
         } else if leg.to_asset == report.base_asset {
             nonnegative_decimal(leg.actual_output_received)
-        } else if leg.requested_quantity > Decimal::ZERO
-            && starting_amount > Decimal::ZERO
-        {
+        } else if leg.requested_quantity > Decimal::ZERO && starting_amount > Decimal::ZERO {
             let ratio = leg.filled_quantity / leg.requested_quantity;
             let capped_ratio = if ratio > Decimal::ONE {
                 Decimal::ONE
@@ -1037,8 +963,7 @@ fn report(
         .copied()
         .unwrap_or(Decimal::ZERO);
     let realized_base_pnl = final_base_amount - starting_amount;
-    let economic_pnl = signed_residual_value_base
-        .map(|residual| realized_base_pnl + residual);
+    let economic_pnl = signed_residual_value_base.map(|residual| realized_base_pnl + residual);
 
     RouteExecutionReport {
         trade_id: trade_id.to_string(),

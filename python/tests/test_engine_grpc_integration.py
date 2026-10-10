@@ -43,9 +43,7 @@ async def _wait_for_status(
         except EngineCommandError as error:
             last_error = error
             await asyncio.sleep(0.25)
-    raise AssertionError(
-        f"Rust gRPC service did not become ready: {last_error}"
-    )
+    raise AssertionError(f"Rust gRPC service did not become ready: {last_error}")
 
 
 def _redis() -> Redis:
@@ -80,17 +78,11 @@ def _wait_for_command_event(
         if rows:
             return rows[-1]
         time.sleep(0.1)
-    raise AssertionError(
-        f"Redis event for command request_id={request_id} was not observed"
-    )
+    raise AssertionError(f"Redis event for command request_id={request_id} was not observed")
 
 
 def _strategy_state() -> dict:
-    return json.loads(
-        Path(os.environ["ARB_STRATEGY_RELOAD_FILE"]).read_text(
-            encoding="utf-8"
-        )
-    )
+    return json.loads(Path(os.environ["ARB_STRATEGY_RELOAD_FILE"]).read_text(encoding="utf-8"))
 
 
 async def _raw_reload(
@@ -98,9 +90,7 @@ async def _raw_reload(
     reason: str,
     timeout: float,
 ):
-    async with grpc.aio.insecure_channel(
-        os.environ["ARB_ENGINE_GRPC_TARGET"]
-    ) as channel:
+    async with grpc.aio.insecure_channel(os.environ["ARB_ENGINE_GRPC_TARGET"]) as channel:
         stub = engine_control_pb2_grpc.EngineControlStub(channel)
         return await stub.ReloadStrategy(
             engine_control_pb2.ReloadStrategyRequest(
@@ -126,9 +116,7 @@ def _restart_engine_service() -> None:
             break
         time.sleep(0.05)
 
-    log_path = Path(
-        os.environ.get("ARB_ENGINE_LOG_FILE", "/tmp/engine-service.log")
-    )
+    log_path = Path(os.environ.get("ARB_ENGINE_LOG_FILE", "/tmp/engine-service.log"))
     log_handle = log_path.open("ab")
     process = subprocess.Popen(
         [str(binary)],
@@ -257,8 +245,7 @@ def test_same_request_id_with_different_payload_is_rejected() -> None:
 def test_lost_response_redis_outage_and_database_duplicate_are_safe() -> None:
     if os.getenv("ARB_RUN_RELIABILITY_INTEGRATION") != "1":
         pytest.fail(
-            "reliability integration was selected without "
-            "ARB_RUN_RELIABILITY_INTEGRATION=1"
+            "reliability integration was selected without ARB_RUN_RELIABILITY_INTEGRATION=1"
         )
     request_id = f"cross-{uuid.uuid4().hex}"
     reason = "lost response while Redis is paused"
@@ -315,11 +302,7 @@ def test_lost_response_redis_outage_and_database_duplicate_are_safe() -> None:
             assert count == 1
     finally:
         with get_session_factory()() as session:
-            session.execute(
-                delete(EngineEvent).where(
-                    EngineEvent.event_id == parsed.event_id
-                )
-            )
+            session.execute(delete(EngineEvent).where(EngineEvent.event_id == parsed.event_id))
             session.commit()
 
 
@@ -327,9 +310,7 @@ def test_completed_request_survives_engine_restart() -> None:
     required = ("ARB_ENGINE_BINARY", "ARB_ENGINE_PID_FILE")
     missing = [name for name in required if not os.getenv(name)]
     if missing:
-        pytest.fail(
-            "restart reliability test requires: " + ", ".join(missing)
-        )
+        pytest.fail("restart reliability test requires: " + ", ".join(missing))
 
     client = EngineGrpcClient()
     request_id = f"restart-{uuid.uuid4().hex}"
@@ -356,3 +337,54 @@ def test_completed_request_survives_engine_restart() -> None:
     assert after["request_id"] == request_id
     _wait_for_command_event(request_id)
     assert len(_command_events(request_id)) == 1
+
+
+def test_stop_intent_grpc_verification_and_database_health_boundary() -> None:
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.settings import settings
+    from api import runtime_control
+    from analytics.engine_event_models import EngineEvent
+    from sqlalchemy import select
+
+    token = "integration-control-token-0123456789-abcdef"
+    old_token = settings.arb_control_api_token
+    settings.arb_control_api_token = token
+    request_id = "api-stop-" + uuid.uuid4().hex
+    try:
+        with TestClient(app) as api:
+            body = {"reason": "API emergency-stop boundary test", "request_id": request_id}
+            result = api.post(
+                "/trading/stop", json=body, headers={"Authorization": "Bearer " + token}
+            )
+            assert result.status_code == 200
+            assert result.json()["stop_outcome"] == "CONFIRMED_STOPPED"
+            assert result.json()["exposure_confirmed_flat"] is False
+            # Repeat the same operation: cached Rust reply must still be verified.
+            duplicate = api.post(
+                "/trading/stop", json=body, headers={"Authorization": "Bearer " + token}
+            )
+            assert duplicate.json()["engine_state_confirmed"] is True
+            assert runtime_control.read_control_state()["enabled"] is False
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                response = api.get("/health")
+                if response.json()["event_pipeline"]["status"] == "online":
+                    break
+                time.sleep(0.1)
+            else:
+                pytest.fail("engine heartbeat was not persisted and exposed through health")
+            health = response.json()
+            assert health["trading"]["effective_enabled"] is False
+            with get_session_factory()() as db:
+                heartbeat = db.get(EngineEvent, health["event_pipeline"]["last_event_id"])
+                assert heartbeat is not None
+                event = db.scalar(
+                    select(EngineEvent).where(
+                        EngineEvent.event_type == "engine.state_changed",
+                        EngineEvent.payload["request_id"].as_string() == request_id,
+                    )
+                )
+                assert event is not None
+    finally:
+        settings.arb_control_api_token = old_token

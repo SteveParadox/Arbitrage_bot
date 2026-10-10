@@ -1,3 +1,4 @@
+import { tradingState } from "./tradingState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   API_URL,
@@ -382,9 +383,9 @@ export function App() {
           ? "warn"
           : "bad";
   const wsState =
-    summary.system.websocket_status === "connected"
+    summary.system.websocket_status === "connected_and_fresh"
       ? "ok"
-      : summary.system.websocket_status === "stale"
+      : summary.system.websocket_status === "connected_but_stale" || summary.system.websocket_status === "resynchronizing"
         ? "warn"
         : summary.system.websocket_status === "unknown"
           ? "muted"
@@ -512,21 +513,25 @@ export function App() {
               detail={
                 summary.system.last_market_event
                   ? "Last event " + formatTime(summary.system.last_market_event)
-                  : "No recent opportunity activity"
+                  : "No recent market-data health telemetry"
               }
             />
             <StatusPill
               label="Trading"
-              value={summary.system.trading_enabled ? "Enabled" : "Stopped"}
-              state={summary.system.trading_enabled ? "warn" : "ok"}
+              value={tradingState(summary.system.trading_enabled, summary.system.stop_outcome, Boolean(error))}
+              state={error || summary.system.stop_outcome === "STOP_UNCONFIRMED" || summary.system.stop_outcome === "STOP_REQUESTED" ? "warn" : summary.system.trading_enabled ? "warn" : "ok"}
               detail={
-                !summary.system.trading_deployment_enabled
+                error
+                  ? "Latest authoritative state unavailable"
+                  : summary.system.stop_outcome === "STOP_UNCONFIRMED" || summary.system.stop_outcome === "STOP_REQUESTED"
+                    ? "New trading is blocked; retry the stop to verify engine state. Exposure is unverified."
+                    : !summary.system.trading_deployment_enabled
                   ? "Deployment master gate is disabled"
                   : !summary.system.trading_runtime_enabled
                     ? "Runtime control gate is stopped"
                     : !summary.system.trading_risk_allows_new_orders
                       ? "Risk gate is blocking new orders"
-                      : "Deployment, runtime, and risk gates are open"
+                      : summary.system.blocking_reasons.length ? "Blocked: " + summary.system.blocking_reasons.join(", ") : "All required dependencies are ready"
               }
             />
             <StatusPill

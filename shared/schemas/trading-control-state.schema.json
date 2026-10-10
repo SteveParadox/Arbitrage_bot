@@ -3,14 +3,43 @@
   "$id": "https://arbitrage-bot.local/schemas/trading-control-state.schema.json",
   "title": "TradingControlState",
   "type": "object",
-  "required": ["version", "enabled", "updated_at", "reason", "source"],
+  "required": [
+    "version",
+    "enabled",
+    "updated_at",
+    "reason",
+    "source"
+  ],
   "properties": {
-    "version": { "const": 1 },
-    "enabled": { "type": "boolean" },
-    "updated_at": { "type": "string", "format": "date-time" },
-    "reason": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "version": {
+      "const": 1
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
     "source": {
-      "enum": ["fastapi_control", "rust_grpc_control"]
+      "enum": [
+        "fastapi_control",
+        "rust_grpc_control"
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_-]+$"
     }
   },
   "additionalProperties": false

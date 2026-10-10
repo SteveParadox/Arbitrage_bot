@@ -1,3 +1,5 @@
+import { validateHealth, validateControl } from "./contracts";
+import type { StopOutcome } from "./tradingState";
 export type RiskStatus = {
   available: boolean;
   state:
@@ -52,6 +54,9 @@ export type HealthResponse = {
     runtime_enabled: boolean;
     risk_allows_new_orders: boolean;
     effective_enabled: boolean;
+    stop_outcome: StopOutcome;
+    blocking_reasons: string[];
+    dependencies: Record<string, boolean>;
     updated_at: string | null;
     reason: string | null;
     source: string;
@@ -75,6 +80,8 @@ export type DashboardSummary = {
     trading_risk_allows_new_orders: boolean;
     trading_control_reason: string | null;
     control_auth_configured: boolean;
+    stop_outcome: StopOutcome;
+    blocking_reasons: string[];
     risk: RiskStatus;
   };
 };
@@ -217,14 +224,19 @@ export type PerformanceAnalytics = {
 };
 
 export type TradingControlResponse = {
-  status: "started" | "stopped";
-  effective_enabled: boolean;
-  control: {
-    version: number;
-    enabled: boolean;
-    updated_at: string;
-    reason: string;
-    source: string;
+  status: "started" | "stopped" | "stop_requested_fallback";
+  effective_enabled: boolean | null;
+  engine_state_confirmed: boolean;
+  stop_outcome: StopOutcome;
+  request_id: string | null;
+  exposure_confirmed_flat: boolean;
+  warning?: string;
+  command?: {
+    accepted: boolean;
+    command: "start_trading" | "stop_trading";
+    request_id: string;
+    detail: string;
+    applied_at_ms: number;
   };
 };
 
@@ -252,7 +264,10 @@ async function request<T>(
     if (!response.ok) {
       const detail = await response
         .json()
-        .then((body: { detail?: string }) => body.detail)
+        .then((body: { detail?: unknown }) => {
+          const detail = body.detail;
+          return typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : undefined;
+        })
         .catch(() => undefined);
       throw new Error(
         detail
@@ -260,7 +275,10 @@ async function request<T>(
           : `API ${response.status}: ${response.statusText}`,
       );
     }
-    return (await response.json()) as T;
+    const value: unknown = await response.json();
+    if (path === "/health") validateHealth(value);
+    if (path.startsWith("/trading/")) validateControl(value);
+    return value as T;
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === "AbortError") {
       throw new Error("Dashboard API request timed out");
@@ -311,6 +329,8 @@ export async function fetchDashboard(): Promise<DashboardSummary> {
         health.trading.risk_allows_new_orders,
       trading_control_reason: health.trading.reason,
       control_auth_configured: health.control_auth_configured,
+      stop_outcome: health.trading.stop_outcome,
+      blocking_reasons: health.trading.blocking_reasons,
       risk: health.risk,
     },
   };
@@ -350,7 +370,7 @@ async function tradingCommand(
   return request<TradingControlResponse>(`/trading/${action}`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, request_id: crypto.randomUUID() }),
   });
 }
 

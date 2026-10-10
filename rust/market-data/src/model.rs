@@ -18,6 +18,7 @@ pub enum MarketDataEvent {
     Instrument(InstrumentMetadata),
     Ticker(TickerUpdate),
     Status(StatusEvent),
+    Health(serde_json::Value),
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -76,6 +77,7 @@ pub(crate) struct WsEnvelope {
     pub data: Option<serde_json::Value>,
     pub success: Option<bool>,
     pub op: Option<String>,
+    pub req_id: Option<String>,
     pub ret_msg: Option<String>,
 }
 

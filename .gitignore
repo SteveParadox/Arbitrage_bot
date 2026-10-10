@@ -38,3 +38,6 @@ data/control/risk_limits.json
 data/control/strategy_reload.json
 
 data/event-outbox/
+
+data/control/*.lock
+rust/*/data/event-outbox/

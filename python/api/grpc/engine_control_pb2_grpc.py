@@ -1,5 +1,4 @@
 # Generated gRPC bindings for engine_control.proto.
-import grpc
 
 from api.grpc import engine_control_pb2 as engine__control__pb2
 

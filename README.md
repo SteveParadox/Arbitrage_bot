@@ -6,6 +6,8 @@ A Rust + Python triangular-arbitrage research, simulation, paper-trading, monito
 >
 > **No profitability claim:** technical correctness, backtests, replay results, shadow observations, or canary calibration do not guarantee profitable trading. Real results depend on fees, bid/ask spread, liquidity, queue position, latency, slippage, precision constraints, partial fills, outages, and exchange behavior.
 
+The current control/reconciliation correction matrix, test evidence, merge blocker and readiness assessment are in [docs/PR2_CRITICAL_AUDIT.md](docs/PR2_CRITICAL_AUDIT.md).
+
 The Phase 1-8 technical audit is available in [docs/AUDIT_REPORT_2026-09-30.md](docs/AUDIT_REPORT_2026-09-30.md). More focused implementation notes are linked throughout this README.
 
 ## Contents
@@ -286,11 +288,9 @@ The Python client generates a request ID for every call and rejects acknowledgem
 
 ### Current command-reliability boundary
 
-On the current **main** branch, request IDs are validated but the Rust server does **not** persist or cache request IDs for server-side deduplication. The Python client also does not perform command-status reconciliation after a deadline. Therefore:
+Rust persists command request IDs and fingerprints and exposes command status. Python retries transient failures with the same operation ID and checks status after ambiguous deadlines. A timeout remains uncertain until actual state is verified. Reusing an ID with different parameters is rejected.
 
-> A gRPC timeout is ambiguous: the caller may not know whether a mutating command executed before the response was lost.
-
-Do not automatically retry a timed-out mutating command as though it were known not to have executed. **StopTrading** has a separate local fail-closed fallback in FastAPI, but the Rust engine state is explicitly reported as unconfirmed when that fallback is used.
+Stop persists a shared disabled intent before dispatch. Fresh engine status and a matching engine-authored disabled record are required for confirmation. Unconfirmed stops block starts, survive reconnection, and can be safely retried with the same ID. Confirmation disables new normal trades; it does not claim orders cancelled or positions closed.
 
 ### Rust -> Python events: Redis Streams
 
@@ -357,33 +357,15 @@ The current shared runtime state is:
 data/control/trading_state.json
 ~~~
 
-The Rust gRPC service writes successful start/stop transitions atomically. FastAPI reads the same state, and its stop fallback can write a fail-closed stopped state if gRPC is unavailable.
-
-The risk engine independently reads this control file. Missing, unreadable, invalid, or unsupported state is treated fail-closed for normal live approval.
-
-The repository uses versioned control JSON with an **enabled** boolean, timestamp, reason, and source. It does not currently implement a richer STOPPED/STARTING/RUNNING/STOPPING/HALTED/ERROR state machine, engine instance ID, or monotonic state version counter.
+Rust owns authoritative activation. FastAPI persists disabled intent before requesting a stop. Both writers share an OS advisory lock and atomic file replacement. Missing, malformed, oversized, unsupported, future-dated or expired enabled state fails closed. Restart requires explicit activation. An unresolved or corrupt `trading_state.stop.json` latch blocks starts and normal risk approvals.
 
 ### GET /health
 
-FastAPI **GET /health** currently checks and reports:
+Health separately reports infrastructure availability, fresh gRPC engine status, Redis consumer lag, persisted worker heartbeat, event outbox, command store, risk readiness, operator-token configuration, market data and trading eligibility. The dashboard uses this same calculation. Every required dependency must pass before `effective_enabled` is true; operational availability alone is insufficient.
 
-- PostgreSQL connectivity;
-- recent market activity inferred from opportunity observations;
-- Rust gRPC control-service status;
-- runtime/deployment trading gates;
-- risk files, kill switch, and circuit breaker;
-- whether control authentication is configured.
+Market states are `connected_and_fresh`, `connected_but_stale`, `disconnected`, `resynchronizing`, `degraded` and `unknown`. Readiness requires acknowledged subscriptions and every configured required symbol's initialized, synchronized book within both exchange and receive-time age limits. Opportunity activity is not used as a feed-health proxy. Health thresholds are configurable, and market freshness cannot be looser than the Rust risk configuration.
 
-Overall status is **ok** or **degraded**.
-
-Important current limits:
-
-- Redis is not independently pinged by **GET /health**.
-- Bybit REST and WebSocket connectivity are not independently queried by **GET /health**.
-- market-stream status is an activity proxy based on recent opportunity observations, not a direct WebSocket liveness probe.
-- Rust **GetStatus** validates control/risk configuration but is not a complete dependency graph for scanner, Redis, execution, and Bybit.
-
-The engine-control service also emits **engine.health** events every five seconds.
+Canonical response schemas are exported to `shared/schemas/health-response.schema.json` and `trading-control-response.schema.json`. The frontend validates them at runtime and displays unknown or unconfirmed outcomes conservatively. See [CONTROL_API.md](docs/CONTROL_API.md).
 
 ## Risk and execution safety
 
@@ -979,13 +961,13 @@ CI targets Python 3.12, Node 22, PostgreSQL 16, Redis 7, and the stable Rust too
 | Failure | Current behavior |
 |---|---|
 | Redis unavailable after publisher queueing | Rust publisher retries connection/write in its background thread |
-| Rust event queue full/disconnected | Event is logged and dropped on current main; no durable outbox |
+| Critical Rust event handoff unavailable | Durable outbox retains critical events; new execution fails closed if handoff cannot be guaranteed |
 | PostgreSQL unavailable during Redis consumption | Consumer session fails; unacknowledged Redis messages remain pending and can be reclaimed |
 | Malformed Redis event | Copied to dead-letter stream, then acknowledged |
 | Permanent PostgreSQL data rejection | Isolated, copied to dead-letter stream, then acknowledged |
 | Rust gRPC unavailable on start/update/reload | FastAPI returns service-unavailable-style failure |
 | Rust gRPC unavailable on stop | FastAPI writes local stopped state fail-closed and reports engine state unconfirmed |
-| gRPC deadline after mutation may have executed | Ambiguous on current main; no server-side dedup/status reconciliation |
+| gRPC deadline after mutation may have executed | Retry same operation ID, query command status, and independently verify actual trading state; uncertainty stays disabled |
 | Runtime control file missing | Fail-closed stopped state |
 | Runtime control file corrupt/unsupported | Rust status unhealthy; normal live approval fails closed |
 | Runtime limits invalid | Rust status unhealthy; new risk evaluation fails closed |
@@ -994,7 +976,7 @@ CI targets Python 3.12, Node 22, PostgreSQL 16, Redis 7, and the stable Rust too
 | Order monitoring timeout | Optional cancel request followed by state confirmation |
 | Definitive later-leg failure | Coordinator can attempt configured risk-reducing unwind |
 | Accepted order with unknown final state | Coordinator avoids blind opposite order and requires reconciliation/kill-switch handling |
-| Process restart | File-backed kill switch, breaker state, control state, PostgreSQL, and Redis AOF provide partial durability; in-memory publisher queue does not survive restart |
+| Process restart | Durable event outbox and command store recover; runtime activation requires an explicit start and unresolved stop remains blocking |
 
 ## Logging and observability
 
@@ -1136,11 +1118,11 @@ Before any live validation, verify all of the following:
 
 The following are current implementation limits on **main**, not hypothetical future concerns:
 
-1. **Rust event publication is not fully durable.** The bounded local queue can drop an event when full/disconnected; no Rust-side durable outbox exists.
-2. **gRPC mutations are not server-idempotent.** Request IDs are validated and echoed, but the Rust server does not deduplicate repeated request IDs.
-3. **Mutating gRPC timeouts are ambiguous.** The Python client has deadlines but no command-status RPC or automatic reconciliation of timed-out mutations.
-4. **Health aggregation is incomplete.** FastAPI directly checks PostgreSQL and Rust gRPC, but does not independently ping Redis or Bybit REST/WebSocket. Market-stream health is inferred from recent opportunity activity.
-5. **Control state is shared-file based.** It is versioned and fail-closed, but there is no engine instance ID, monotonic state version, or richer transition state machine.
+1. **Durability depends on persistent mounts.** Critical event outbox and command idempotency records must survive container replacement; noncritical telemetry may be dropped under pressure.
+2. **Ambiguous exchange outcomes still require investigation.** Command status and verified stops do not prove positions flat or replace exchange reconciliation.
+3. **Health requires complete telemetry configuration.** Required symbols must cover deployed routes; missing or stale telemetry blocks eligibility. No live Bybit dependency probe was executed by this audit.
+4. **Manual reconciliation is operator reported.** It is authenticated, PostgreSQL-locked and retry-safe, but does not independently validate exchange reports.
+5. **Control state is shared-file based.** Strict validation, activation expiry and a stop latch are implemented; a durable shared filesystem remains required. There is no distributed consensus or monotonic engine-epoch protocol.
 6. **Compose is a control-plane stack.** It does not run the market-data/scanner/shadow/canary/coordinator pipeline end to end.
 7. **No autonomous production live runner is packaged.** Execution and coordinator logic exist as Rust components, but current repository wiring does not turn every scanner opportunity into an unattended live route execution daemon.
 8. **Paper replay is not exchange-perfect.** Exact quantity rounding/order constraints are not fully modeled as realized exchange behavior, and very large histories still need stronger memory/streaming bounds.
@@ -1174,7 +1156,7 @@ Foundation
   -> performance analytics
 ~~~
 
-The next production-hardening work should focus on the verified limitations above: durable event handoff, command idempotency/reconciliation, authoritative state/versioning, direct dependency health, packaging the runtime topology, and production observability/security.
+The next production-hardening work should focus on the verified limitations above: deployed lifecycle verification, current exchange instrument constraints, shared-capital reservation, packaging the runtime topology, and production observability/security.
 
 ## Contributing
 

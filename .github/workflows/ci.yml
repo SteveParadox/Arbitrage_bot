@@ -47,8 +47,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install
+      - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
 
   profitability-parity:
@@ -90,6 +91,12 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: alembic upgrade head
+      - run: alembic downgrade 0006_engine_events
+      - run: alembic upgrade head
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --manifest-path ../rust/Cargo.toml -p scanner
+      - name: Reconciliation concurrency and paper lifecycle
+        run: pytest tests/test_reconciliation_postgres.py tests/test_audit_postgres.py -q
       - name: Phase 17 PostgreSQL analytics integration
         run: pytest tests/test_performance_analytics_postgres.py -q
       - run: pytest tests/test_opportunity_postgres.py

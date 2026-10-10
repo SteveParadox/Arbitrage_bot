@@ -6,6 +6,8 @@ autobins = false
 
 [dependencies]
 anyhow.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+fs2 = "0.4"
 rust_decimal = "1"
 serde.workspace = true
 serde_json = "1"

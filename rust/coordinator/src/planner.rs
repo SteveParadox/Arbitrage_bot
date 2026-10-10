@@ -1,21 +1,13 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use orderbook::{BookUpdate, ExecutionEstimate, OrderBookEngine};
 use risk::SymbolRules;
-use rust_decimal::{
-    prelude::ToPrimitive,
-    Decimal,
-};
+use rust_decimal::{prelude::ToPrimitive, Decimal};
 use scanner::{TradeSide, TriangleRoute};
 use tokio::sync::RwLock;
 
-use crate::{
-    ConversionLeg, CoordinatorConfig, CoordinatorError, PlannedOrder,
-};
+use crate::{ConversionLeg, CoordinatorConfig, CoordinatorError, PlannedOrder};
 
 #[async_trait]
 pub trait RoutePlanner: Send + Sync {
@@ -60,10 +52,7 @@ impl LiveBookPlanner {
         Arc::clone(&self.books)
     }
 
-    pub async fn apply_book_update(
-        &self,
-        update: BookUpdate,
-    ) -> Result<(), CoordinatorError> {
+    pub async fn apply_book_update(&self, update: BookUpdate) -> Result<(), CoordinatorError> {
         self.books
             .write()
             .await
@@ -72,12 +61,9 @@ impl LiveBookPlanner {
     }
 
     fn rules_for(&self, symbol: &str) -> Result<SymbolRules, CoordinatorError> {
-        self.rules
-            .get(symbol)
-            .cloned()
-            .ok_or_else(|| CoordinatorError::Planning(format!(
-                "missing execution rules for {symbol}"
-            )))
+        self.rules.get(symbol).cloned().ok_or_else(|| {
+            CoordinatorError::Planning(format!("missing execution rules for {symbol}"))
+        })
     }
 }
 
@@ -109,24 +95,14 @@ impl RoutePlanner for LiveBookPlanner {
         }
 
         let requested_base = match conversion.side {
-            TradeSide::Buy => {
-                floor_to_step(
-                    decimal_from_f64(
-                        "estimated_base",
-                        rough.filled_base_quantity,
-                    )?,
-                    rules.qty_step,
-                )
-            }
-            TradeSide::Sell if emergency && !rough.complete => {
-                floor_to_step(
-                    decimal_from_f64(
-                        "visible_sell_base",
-                        rough.filled_base_quantity,
-                    )?,
-                    rules.qty_step,
-                )
-            }
+            TradeSide::Buy => floor_to_step(
+                decimal_from_f64("estimated_base", rough.filled_base_quantity)?,
+                rules.qty_step,
+            ),
+            TradeSide::Sell if emergency && !rough.complete => floor_to_step(
+                decimal_from_f64("visible_sell_base", rough.filled_base_quantity)?,
+                rules.qty_step,
+            ),
             TradeSide::Sell => floor_to_step(input_amount, rules.qty_step),
         };
         if requested_base < rules.min_order_qty {
@@ -155,10 +131,7 @@ impl RoutePlanner for LiveBookPlanner {
             )));
         }
 
-        let quote_spend = decimal_from_f64(
-            "estimated_quote",
-            exact.filled_quote_quantity,
-        )?;
+        let quote_spend = decimal_from_f64("estimated_quote", exact.filled_quote_quantity)?;
         if conversion.side == TradeSide::Buy && quote_spend > input_amount {
             return Err(CoordinatorError::Planning(format!(
                 "rounded BUY would spend {} {}, more than available {}",
@@ -167,32 +140,23 @@ impl RoutePlanner for LiveBookPlanner {
         }
 
         let estimated_output = match conversion.side {
-            TradeSide::Buy => decimal_from_f64(
-                "estimated_output",
-                exact.filled_base_quantity,
-            )?,
+            TradeSide::Buy => decimal_from_f64("estimated_output", exact.filled_base_quantity)?,
             TradeSide::Sell => quote_spend,
         };
         let planned_input_amount = match conversion.side {
             TradeSide::Buy => quote_spend,
             TradeSide::Sell => requested_base,
         };
-        let estimated_notional_base = value_in_base_with_books(
-            &books,
-            route,
-            &conversion.from_asset,
-            planned_input_amount,
-        )?;
+        let estimated_notional_base =
+            value_in_base_with_books(&books, route, &conversion.from_asset, planned_input_amount)?;
         let liquidity_ratio = if emergency && !rough.complete {
             (planned_input_amount / input_amount).min(Decimal::ONE)
         } else {
             Decimal::ONE
         };
 
-        let slippage = decimal_from_f64(
-            "slippage_bps",
-            exact.slippage_bps.unwrap_or(0.0).max(0.0),
-        )?;
+        let slippage =
+            decimal_from_f64("slippage_bps", exact.slippage_bps.unwrap_or(0.0).max(0.0))?;
         let tolerance = if emergency {
             self.config.emergency_slippage_tolerance_percent
         } else {
@@ -253,11 +217,7 @@ fn value_in_base_with_books(
     }
 
     let conversion = unwind_conversion(route, asset)?;
-    let estimate = estimate_input_conversion(
-        books,
-        &conversion,
-        to_f64("mark_amount", amount)?,
-    )?;
+    let estimate = estimate_input_conversion(books, &conversion, to_f64("mark_amount", amount)?)?;
     if !estimate.complete {
         return Err(CoordinatorError::Planning(format!(
             "cannot fully value {} {} back to {}",
@@ -318,24 +278,22 @@ fn to_f64(field: &str, value: Decimal) -> Result<f64, CoordinatorError> {
     value
         .to_f64()
         .filter(|number| number.is_finite() && *number > 0.0)
-        .ok_or_else(|| CoordinatorError::Numeric(format!(
-            "{field} cannot be represented as positive finite f64"
-        )))
+        .ok_or_else(|| {
+            CoordinatorError::Numeric(format!(
+                "{field} cannot be represented as positive finite f64"
+            ))
+        })
 }
 
-fn decimal_from_f64(
-    field: &str,
-    value: f64,
-) -> Result<Decimal, CoordinatorError> {
+fn decimal_from_f64(field: &str, value: f64) -> Result<Decimal, CoordinatorError> {
     if !value.is_finite() || value < 0.0 {
         return Err(CoordinatorError::Numeric(format!(
             "{field} is not finite/non-negative"
         )));
     }
     let text = format!("{value:.18}");
-    Decimal::from_str_exact(&text).map_err(|_| {
-        CoordinatorError::Numeric(format!("{field} could not convert from {value}"))
-    })
+    Decimal::from_str_exact(&text)
+        .map_err(|_| CoordinatorError::Numeric(format!("{field} could not convert from {value}")))
 }
 
 pub(crate) fn emergency_conversion_for_asset(

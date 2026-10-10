@@ -570,48 +570,15 @@ impl RiskEngine {
     }
 
     fn runtime_trading_control_status(&self) -> (bool, String) {
-        let raw = match fs::read_to_string(&self.config.trading_control_file) {
-            Ok(value) => value,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return (
-                    false,
-                    "runtime trading control is disabled: state file is missing".to_string(),
-                );
-            }
-            Err(error) => {
-                return (
-                    false,
-                    format!("runtime trading control is disabled: cannot read state: {error}"),
-                );
-            }
-        };
-
-        let payload: serde_json::Value = match serde_json::from_str(&raw) {
-            Ok(value) => value,
-            Err(error) => {
-                return (
-                    false,
-                    format!("runtime trading control is disabled: invalid JSON: {error}"),
-                );
-            }
-        };
-
-        if payload.get("version").and_then(serde_json::Value::as_u64) != Some(1) {
-            return (
+        match crate::control::read_control(&self.config.trading_control_file) {
+            Ok(Some(state)) if state.enabled => (true, "runtime trading control is enabled".into()),
+            Ok(_) => (
                 false,
-                "runtime trading control is disabled: unsupported state version".to_string(),
-            );
-        }
-
-        match payload.get("enabled").and_then(serde_json::Value::as_bool) {
-            Some(true) => (true, "runtime trading control is enabled".to_string()),
-            Some(false) => (
-                false,
-                "runtime trading control is stopped by the control API".to_string(),
+                "runtime trading control is missing, stopped, or stop is pending".into(),
             ),
-            None => (
+            Err(error) => (
                 false,
-                "runtime trading control is disabled: missing boolean enabled field".to_string(),
+                format!("runtime trading control is disabled: invalid state: {error}"),
             ),
         }
     }
@@ -805,7 +772,7 @@ mod tests {
         let trading_control_file = state_file.parent().unwrap().join("trading_state.json");
         let runtime_limits_file = state_file.parent().unwrap().join("risk_limits.json");
         fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
-        fs::write(&trading_control_file, br#"{"version":1,"enabled":true}"#).unwrap();
+        fs::write(&trading_control_file, serde_json::to_vec(&serde_json::json!({"version":1,"enabled":true,"updated_at":chrono::Utc::now().to_rfc3339(),"reason":"test enabled","source":"rust_grpc_control"})).unwrap()).unwrap();
         RiskConfig {
             version: 1,
             max_market_data_age_ms: 500,
@@ -1147,7 +1114,7 @@ mod tests {
         let cfg = config("runtime-control-preview");
         fs::write(
             &cfg.trading_control_file,
-            br#"{"version":1,"enabled":false}"#,
+            br#"{"version":1,"enabled":false,"updated_at":"2026-10-01T21:00:00Z","reason":"test stopped","source":"rust_grpc_control"}"#,
         )
         .unwrap();
         let mut engine = RiskEngine::new(cfg).unwrap();
@@ -1175,7 +1142,7 @@ mod tests {
             .into_approval()
             .unwrap();
 
-        fs::write(control_file, br#"{"version":1,"enabled":false}"#).unwrap();
+        fs::write(control_file, br#"{"version":1,"enabled":false,"updated_at":"2026-10-01T21:00:00Z","reason":"test stopped","source":"rust_grpc_control"}"#).unwrap();
 
         let error = engine
             .validate_approval(&approval, "trade-1", now + 20)

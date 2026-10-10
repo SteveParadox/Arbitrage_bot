@@ -81,6 +81,7 @@ def test_risk_status_reports_kill_switch_and_breaker(
             {
                 "circuit_breaker": {
                     "kind": "stale_market_data",
+                    "tripped_at_ms": 1,
                     "detail": "book age exceeded limit",
                 },
                 "execution_failures_ms": [1, 2, 3],

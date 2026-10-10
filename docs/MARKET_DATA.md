@@ -68,3 +68,9 @@ Phase 5 scanner rebuild the same local books from the public data stream.
 
 Application logs are written to stderr while market-data events are written to stdout, so the
 stream can be piped safely into another process.
+
+## Feed readiness telemetry
+
+The connector emits `health` NDJSON at `BYBIT_HEALTH_INTERVAL_MS` (default 250). Connected sockets alone are insufficient: all subscription batch IDs must be acknowledged successfully, every required book must have a snapshot and valid synchronization, and exchange/receive timestamps must be fresh. Health includes per-symbol update IDs, sequences and ages. Missing acknowledgements/snapshots mean resynchronizing; stale books mean connected_but_stale; reconnect statuses clear scanner books and readiness.
+
+The scanner publishes this as Redis `market.health` telemetry. Live scanning requires a recent acknowledged healthy record within scanner max_book_age_ms, in addition to existing book age/skew/sequence checks. `ARB_SCANNER_REQUIRE_FEED_HEALTH=false` is only for historical offline replay. API required-symbol coverage uses `ARB_MARKET_REQUIRED_SYMBOLS` and a freshness threshold no looser than the configured risk engine. Missing/expired telemetry blocks eligibility even when the socket is connected or opportunities were recently found.

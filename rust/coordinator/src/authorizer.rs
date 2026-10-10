@@ -3,9 +3,7 @@ use execution::{prepare_execution, ExecutionMode, PreparedExecution};
 use risk::{RiskContext, RiskEngine, ServiceHealth, TradeIntent};
 use scanner::TriangleRoute;
 
-use crate::{
-    CoordinatorError, Holdings, PlannedOrder,
-};
+use crate::{CoordinatorError, Holdings, PlannedOrder};
 
 pub struct LegAuthorizationContext<'a> {
     pub trade_id: &'a str,
