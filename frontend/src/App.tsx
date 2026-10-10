@@ -501,6 +501,12 @@ export function App() {
 
           <div className="status-strip">
             <StatusPill
+              label="Autonomous observer"
+              value={summary.system.observer_state.replaceAll("_", " ")}
+              state={summary.system.observer_state === "scanning" ? "ok" : "muted"}
+              detail="Market observation only; automatic order execution is unavailable"
+            />
+            <StatusPill
               label="API"
               value={error ? "offline" : summary.system.api_status}
               state={apiState}

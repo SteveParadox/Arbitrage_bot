@@ -221,6 +221,11 @@
       "title": "Market Data",
       "type": "object"
     },
+    "observer": {
+      "additionalProperties": true,
+      "title": "Observer",
+      "type": "object"
+    },
     "event_pipeline": {
       "additionalProperties": true,
       "title": "Event Pipeline",
@@ -262,6 +267,7 @@
     "market_stream_status",
     "last_market_event",
     "market_data",
+    "observer",
     "event_pipeline",
     "redis",
     "risk",

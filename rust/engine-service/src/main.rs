@@ -27,6 +27,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 mod idempotency;
+mod observer;
 
 pub mod proto {
     tonic::include_proto!("arbitrage.engine.v1");
@@ -1006,16 +1007,35 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Observation is part of the managed engine process. It never dispatches
+    // exchange orders; execution requires a separate, durable safety pipeline.
+    let observer_enabled = env::var("ARB_ENGINE_AUTOSTART")
+        .unwrap_or_else(|_| "false".into())
+        .parse::<bool>()
+        .context("ARB_ENGINE_AUTOSTART must be true or false")?;
+    let observer_task = observer_enabled.then(|| {
+        let events = events.clone();
+        let triangle_path = config.triangle_config_file.clone();
+        tokio::spawn(async move { observer::run(triangle_path, repo_root, events).await })
+    });
+
     info!(%addr, "engine gRPC control service listening");
-    Server::builder()
+    let server = Server::builder()
         .add_service(EngineControlServer::new(EngineControlService {
             config,
             events,
             idempotency,
             mutation_lock: Arc::new(Mutex::new(())),
         }))
-        .serve(addr)
-        .await?;
+        .serve(addr);
+    if let Some(task) = observer_task {
+        tokio::select! {
+            result = server => result?,
+            result = task => result.context("observation supervisor panicked")??,
+        }
+    } else {
+        server.await?;
+    }
     Ok(())
 }
 

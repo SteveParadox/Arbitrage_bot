@@ -358,6 +358,8 @@ dependencies = [
  "anyhow",
  "chrono",
  "event-bus",
+ "market-data",
+ "orderbook",
  "prost",
  "protoc-bin-vendored",
  "risk",

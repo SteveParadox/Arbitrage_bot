@@ -53,6 +53,7 @@ class HealthResponse(ResponseModel):
     ]
     last_market_event: datetime | None
     market_data: dict[str, Any]
+    observer: dict[str, Any]
     event_pipeline: dict[str, Any]
     redis: dict[str, Any]
     risk: dict[str, Any]

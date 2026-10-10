@@ -48,6 +48,7 @@ services:
     env_file:
       - ../.env
     environment:
+      ARB_ENGINE_AUTOSTART: ${ARB_ENGINE_AUTOSTART:-false}
       ARB_ENGINE_GRPC_ADDR: 0.0.0.0:50051
       ARB_REDIS_URL: redis://redis:6379/0
       ARB_EVENT_OUTBOX_PATH: /app/data/event-outbox

@@ -6,6 +6,7 @@ import logging
 import os
 import socket
 from dataclasses import dataclass
+from decimal import Decimal
 
 import redis.asyncio as redis
 from redis.exceptions import ResponseError
@@ -14,6 +15,7 @@ from sqlalchemy.exc import DataError
 
 from analytics.db import get_session_factory
 from analytics.engine_event_models import EngineEvent
+from analytics.opportunity_store import OpportunityStore
 from api.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -243,6 +245,11 @@ def _persist(
 ) -> list[tuple[StreamEvent, str]]:
     rejected: list[tuple[StreamEvent, str]] = []
     with get_session_factory()() as session:
+        opportunity_store = OpportunityStore(
+            session,
+            min_net_edge_bps=Decimal(str(settings.arb_opportunity_min_net_bps)),
+            max_continuity_gap_ms=settings.arb_opportunity_max_gap_ms,
+        )
         for event in events:
             statement = (
                 insert(EngineEvent)
@@ -264,7 +271,15 @@ def _persist(
                         _CONSUMER_METRICS[
                             "database_duplicate_events_total"
                         ] += 1
-            except DataError as error:
+                    elif (
+                        event.source == "engine-service"
+                        and event.event_type in {"opportunity.detected", "opportunity.rejected"}
+                        and "candidate_id" in event.payload
+                    ):
+                        # One transaction commits the event and its dashboard observation.
+                        # On retry, the event's unique ID prevents duplicate accounting.
+                        opportunity_store.record_scan(event.payload)
+            except (DataError, KeyError, TypeError, ValueError, OverflowError) as error:
                 rejected.append((event, str(error)))
         session.commit()
     return rejected

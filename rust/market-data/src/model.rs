@@ -1,7 +1,7 @@
 use orderbook::PriceLevel;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MarketDataEvent {
     OrderBook {
@@ -21,7 +21,7 @@ pub enum MarketDataEvent {
     Health(serde_json::Value),
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NormalizedQuote {
     pub symbol: String,
     pub bid: f64,
@@ -29,7 +29,7 @@ pub struct NormalizedQuote {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NormalizedTrade {
     pub symbol: String,
     pub side: String,
@@ -39,7 +39,7 @@ pub struct NormalizedTrade {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TickerUpdate {
     pub symbol: String,
     pub last_price: Option<f64>,
@@ -48,7 +48,7 @@ pub struct TickerUpdate {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InstrumentMetadata {
     pub symbol: String,
     pub status: String,
@@ -61,7 +61,7 @@ pub struct InstrumentMetadata {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StatusEvent {
     pub state: String,
     pub detail: String,
