@@ -1710,12 +1710,16 @@ name = "scanner"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dotenvy",
  "event-bus",
+ "fs2",
+ "market-data",
  "orderbook",
  "rust_decimal",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
