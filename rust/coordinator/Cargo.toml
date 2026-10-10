@@ -18,3 +18,6 @@ sha2 = "0.10"
 thiserror = "2"
 tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

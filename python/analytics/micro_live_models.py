@@ -14,6 +14,7 @@ from sqlalchemy import (
     Numeric,
     String,
     func,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,12 +92,15 @@ class MicroLiveCycle(Base):
     reconciled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    reconciliation_digest: Mapped[str | None] = mapped_column(String(64))
+    reconciliation_request_id: Mapped[str | None] = mapped_column(String(64))
     raw_candidate_event: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
+        UniqueConstraint("reconciliation_request_id", name="uq_micro_live_reconciliation_request"),
         Index("ix_micro_live_cycle_session_detected", "session_id", "detected_at"),
         Index("ix_micro_live_cycle_route_detected", "route_id", "detected_at"),
         Index(

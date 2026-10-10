@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use anyhow::{anyhow, Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -75,6 +78,10 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     let (mut write, mut read) = socket.split();
 
     let topics = subscription_topics(config);
+    let mut pending_subscriptions: HashSet<String> = subscription_requests(&topics)
+        .iter()
+        .filter_map(|v| v["req_id"].as_str().map(str::to_owned))
+        .collect();
     validate_subscription_topics(&topics)?;
     for request in subscription_requests(&topics) {
         write
@@ -93,7 +100,16 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
     let mut heartbeat = time::interval(config.heartbeat_interval);
     heartbeat.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
-    let stale_check_every = (config.stale_after / 2).max(Duration::from_millis(500));
+    let health_interval_ms = std::env::var("BYBIT_HEALTH_INTERVAL_MS")
+        .unwrap_or_else(|_| "250".into())
+        .parse::<u64>()
+        .context("invalid BYBIT_HEALTH_INTERVAL_MS")?;
+    if !(50..=5000).contains(&health_interval_ms) {
+        return Err(anyhow!(
+            "BYBIT_HEALTH_INTERVAL_MS must be between 50 and 5000"
+        ));
+    }
+    let stale_check_every = Duration::from_millis(health_interval_ms);
     let mut stale_check = time::interval(stale_check_every);
     stale_check.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
 
@@ -113,6 +129,9 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
                 )).await.context("failed to send heartbeat")?;
             }
             _ = stale_check.tick() => {
+                let health = crate::health::snapshot(&config.symbols, &pending_subscriptions,
+                    &books, &book_receipts, config.stale_after, now_ms());
+                sender.send(MarketDataEvent::Health(health)).await?;
                 if let Some((symbol, received)) = book_receipts.iter()
                     .find(|(_, received)| received.elapsed() > config.stale_after) {
                     return Err(anyhow!(
@@ -125,6 +144,13 @@ async fn run_connection(config: &Config, sender: &mpsc::Sender<MarketDataEvent>)
                 let message = message.ok_or_else(|| anyhow!("websocket stream closed"))??;
                 match message {
                     Message::Text(text) => {
+                        let envelope: WsEnvelope = serde_json::from_str(text.as_ref())?;
+                        if envelope.op.as_deref() == Some("subscribe") {
+                            let request_id = envelope.req_id.as_deref().ok_or_else(|| anyhow!("subscription acknowledgement missing req_id"))?;
+                            if envelope.success != Some(true) || !pending_subscriptions.remove(request_id) {
+                                return Err(anyhow!("subscription acknowledgement rejected or unexpected"));
+                            }
+                        }
                         handle_text(
                             text.as_ref(),
                             &mut books,

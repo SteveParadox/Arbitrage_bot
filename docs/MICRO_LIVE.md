@@ -140,7 +140,11 @@ realized_pnl - expected_pnl
 
 from the stored prediction.
 
-A candidate can only be reconciled once; a second attempt returns HTTP 409.
+Use `Authorization: Bearer <ARB_CONTROL_API_TOKEN>` from a privileged operator or authorized job; query-string credentials are ignored. Requests should carry a stable ASCII `request_id` for retries.
+
+PostgreSQL is required. Cycle and session rows are locked in one transaction with bounded lock/statement timeouts. Identical normalized financial payloads return the stored result with `duplicate=true` without changing counters or P&L. Different payloads, legacy already-reconciled records, or a request ID reused for another trade return HTTP 409. Transient database failures roll back and return HTTP 503; retry the same ID and payload. Migration `0007_reconciliation_idempotency` adds the digest and unique request identity without altering prior financial data.
+
+Amounts must be finite and fit database precision; fee maps, notes and identities are bounded. Responses explicitly report `source=operator_reported` and `exchange_confirmed=false`. This manual calibration endpoint does not query exchange orders/fills, cancel orders, close positions, or activate trading. Existing bearer authorization is a privileged capability; there is no separate JWT expiry/role service introduced here.
 
 ## PostgreSQL
 

@@ -1,0 +1,70 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "status": {
+      "enum": [
+        "started",
+        "stopped",
+        "stop_requested_fallback"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "effective_enabled": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Effective Enabled"
+    },
+    "engine_state_confirmed": {
+      "title": "Engine State Confirmed",
+      "type": "boolean"
+    },
+    "stop_outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "CONFIRMED_STOPPED",
+            "STOP_UNCONFIRMED"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stop Outcome"
+    },
+    "request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Request Id"
+    },
+    "exposure_confirmed_flat": {
+      "const": false,
+      "default": false,
+      "title": "Exposure Confirmed Flat",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "status",
+    "effective_enabled",
+    "engine_state_confirmed"
+  ],
+  "title": "TradingControlResponse",
+  "type": "object"
+}

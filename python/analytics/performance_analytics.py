@@ -140,7 +140,7 @@ def build_performance_analytics(
 
     actual_cycles = sorted(
         by_trade_id.values(),
-        key=lambda cycle: cycle.occurred_at,
+        key=lambda cycle: _aware(cycle.occurred_at),
     )
     matched_capture = _matched_opportunity_capture(
         db,
@@ -800,3 +800,7 @@ def _finite(value: float) -> bool:
 
 def _float(value: Decimal | float | int) -> float:
     return float(value)
+
+
+def _aware(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

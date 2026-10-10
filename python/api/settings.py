@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -18,7 +19,13 @@ class Settings(BaseSettings):
     arb_live_trading_enabled: bool = False
     arb_cors_origins: str = "http://localhost:5173"
     arb_control_api_token: str = ""
+    arb_risk_config: str = "shared/config/risk.json"
     arb_control_state_file: str = "data/control/trading_state.json"
+    arb_control_state_max_age_seconds: int = Field(default=3600, ge=1, le=86400)
+    arb_health_event_max_age_ms: int = Field(default=15000, ge=1000, le=60000)
+    arb_market_data_max_age_ms: int = Field(default=10000, ge=1, le=60000)
+    arb_market_required_symbols: str = "BTCUSDT,ETHUSDT,ETHBTC"
+    arb_reconciliation_lock_timeout_ms: int = Field(default=2000, ge=1, le=10000)
     arb_engine_grpc_target: str = "127.0.0.1:50051"
     arb_engine_grpc_token: str = ""
     arb_engine_grpc_timeout_seconds: float = 2.0
@@ -32,9 +39,7 @@ class Settings(BaseSettings):
     arb_event_batch_size: int = 100
     arb_event_retry_seconds: float = 2.0
 
-    arb_database_url: str = (
-        "postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage"
-    )
+    arb_database_url: str = "postgresql+psycopg://arbitrage:arbitrage@localhost:5432/arbitrage"
     arb_opportunity_min_net_bps: float = 0.0
     arb_opportunity_max_gap_ms: int = 2_000
     arb_opportunity_batch_size: int = 250
@@ -47,11 +52,7 @@ class Settings(BaseSettings):
     bybit_api_secret: str = ""
 
     def cors_origins(self) -> list[str]:
-        return [
-            value.strip()
-            for value in self.arb_cors_origins.split(",")
-            if value.strip()
-        ]
+        return [value.strip() for value in self.arb_cors_origins.split(",") if value.strip()]
 
     def safe_summary(self) -> dict[str, object]:
         return {

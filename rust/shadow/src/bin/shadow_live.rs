@@ -59,9 +59,7 @@ async fn main() -> Result<()> {
     let shadow_config = load_shadow_config(&shadow_path)?;
     let triangle_config = load_triangle_config(&triangle_path)?;
     if triangle_config.routes.is_empty() {
-        bail!(concat!(
-            "shared/config/triangles.json contains no routes; ",+            "generate current mainnet spot triangles first"
-        ));
+        bail!("shared/config/triangles.json contains no routes; generate current mainnet spot triangles first");
     }
     if triangle_config.source.testnet {
         bail!("shadow-live requires mainnet triangle metadata");

@@ -44,7 +44,7 @@ deeper analysis.
 
 ## Authentication
 
-Only the two mutating control endpoints require authentication.
+All privileged mutation routes (trading controls, engine limits/reload, and micro-live reconciliation) require the existing operator bearer. Read-only analytics do not grant this privilege.
 
 Configure:
 
@@ -81,8 +81,7 @@ FastAPI-controlled switch.
 `POST /trading/start` cannot override a disabled deployment gate, active manual kill switch, or
 active circuit breaker.
 
-`POST /trading/stop` is idempotent and always writes the runtime state to stopped after successful
-authentication.
+`POST /trading/stop` first persists disabled intent when the shared volume is writable, then dispatches the Rust command. Persistence or communication errors remain explicit; authentication does not prove stop completion.
 
 ## Shared runtime state
 
@@ -106,7 +105,7 @@ Example:
 }
 ```
 
-Missing, unreadable, invalid, or unsupported state fails closed.
+Missing, unreadable, incomplete, invalid, oversized, duplicate-key, future-dated or unsupported state fails closed. Enabled records expire after `ARB_CONTROL_STATE_MAX_AGE_SECONDS` (default 3600). Invalid records are retained for diagnosis; startup never restores active trading. Both languages use the same schemas and OS lock.
 
 The Rust risk engine reads the same file before every normal live risk evaluation and again when an
 existing normal approval crosses the execution gate. The execution client also revalidates that
@@ -134,7 +133,7 @@ curl -X POST http://localhost:8000/trading/start \
   -d '{"reason":"operator approved micro-live session"}'
 ```
 
-A successful response includes the new runtime state.
+A successful response includes the verified runtime state and command acknowledgement. `effective_enabled` is null: use `/health` for full dependency/risk eligibility. Missing valid authoritative state or a pending stop returns HTTP 409; issue a verified stop to initialize/recover control first.
 
 Start returns HTTP 409 if:
 
@@ -154,6 +153,14 @@ curl -X POST http://localhost:8000/trading/stop \
 
 Stopping does not clear the manual kill switch or a circuit breaker.
 
+Send a stable ASCII `request_id` (1–64 characters) and retain it for retries. `trading_state.stop.json` progresses through `STOP_REQUESTED`, `STOP_UNCONFIRMED` or `CONFIRMED_STOPPED`. Pending, malformed or uncertain intent blocks activation even if an older enabled record remains.
+
+Confirmed response: `status=stopped`, `stop_outcome=CONFIRMED_STOPPED`, `effective_enabled=false`, `engine_state_confirmed=true`. Confirmation requires fresh independent engine status and matching engine-authored disabled state for that operation.
+
+Uncertain response: `status=stop_requested_fallback`, `stop_outcome=STOP_UNCONFIRMED`, `effective_enabled=null`, `engine_state_confirmed=false`. A timeout is not proof of execution. Retry the same operation ID; after reconnection, health can also confirm a matching verified disabled state. Never automatically reactivate.
+
+`exposure_confirmed_flat=false` on both responses: stopping disables new normal trades; it does not cancel outstanding orders or close positions. Exchange-confirmed reconciliation is needed to claim exposure eliminated.
+
 ## Health
 
 `GET /health` reports:
@@ -161,7 +168,10 @@ Stopping does not clear the manual kill switch or a circuit breaker.
 ```text
 API status
 database status
-market-stream activity
+acknowledged required-symbol market freshness/synchronization
+fresh engine gRPC status, outbox and command store
+Redis connectivity/backlog and persisted consumer heartbeat
+stop outcome and dependency blocking reasons
 risk state
 deployment trading gate
 runtime trading gate
@@ -231,7 +241,12 @@ FastAPI -> Rust engine-control: gRPC
 ~~~
 
 FastAPI no longer opens the normal runtime trading gate directly. The Rust gRPC service owns the
-authoritative start command. Stop retains a fail-closed shared-file fallback for the specific case
-where the gRPC service is unavailable.
+authoritative start command. Stop persists a durable shared disabled intent before dispatch, preserves it on communication failure, and reports uncertainty until independently verified.
 
 See RUST_PYTHON_BOUNDARY.md for the gRPC and Redis contracts.
+
+## Canonical contracts and development startup
+
+Generate the shared frontend JSON schemas with `python scripts/export_control_contracts.py`; regression tests compare them with backend serialization schemas. Missing safety fields are errors, never affirmative defaults.
+
+Compose binds PostgreSQL to 127.0.0.1 and runs `migrate` before API startup. The Compose database credentials are disposable development defaults; do not use this stack unchanged for production. Configure secrets and private networking separately. See [SECURITY.md](SECURITY.md) and [PR2_CRITICAL_AUDIT.md](PR2_CRITICAL_AUDIT.md).

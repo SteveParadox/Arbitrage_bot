@@ -2,7 +2,7 @@ use std::{
     fs,
     io::{self, BufRead},
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
@@ -24,6 +24,7 @@ fn main() -> Result<()> {
 
     let triangle_config = load_triangle_config(&triangle_path)?;
     let scanner_settings = load_scanner_settings(&scanner_config_path)?;
+    let feed_health_max_age = Duration::from_millis(scanner_settings.max_book_age_ms);
     let profitability_path = std::env::var("ARB_PROFITABILITY_CONFIG")
         .map(|value| resolve_path(&repo_root, &value))
         .unwrap_or_else(|_| resolve_path(&repo_root, &scanner_settings.profitability_config_path));
@@ -45,6 +46,10 @@ fn main() -> Result<()> {
         record_path.display()
     );
 
+    let mut feed_required = std::env::var("ARB_SCANNER_REQUIRE_FEED_HEALTH")
+        .unwrap_or_else(|_| "true".into())
+        != "false";
+    let mut feed_heartbeat = None;
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = line?;
@@ -70,6 +75,20 @@ fn main() -> Result<()> {
             )
         {
             scanner.reset_books();
+            feed_required = true;
+            feed_heartbeat = None;
+            events.publish(
+                "market.health",
+                serde_json::json!({
+                    "state": value.get("state"), "symbols": {}, "timestamp": value.get("timestamp"),
+                }),
+            );
+        }
+        if event_type == Some("health") {
+            let now_ms = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
+            feed_heartbeat =
+                feed_health_is_fresh(&value, now_ms, feed_health_max_age).then(Instant::now);
+            events.publish("market.health", value.clone());
         }
         if event_type != Some("order_book") {
             continue;
@@ -91,7 +110,9 @@ fn main() -> Result<()> {
                 continue;
             }
         };
-        if records.is_empty() {
+        let feed_ready =
+            feed_heartbeat.is_some_and(|at: Instant| at.elapsed() <= feed_health_max_age);
+        if records.is_empty() || (feed_required && !feed_ready) {
             continue;
         }
 
@@ -105,6 +126,14 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn feed_health_is_fresh(value: &serde_json::Value, now_ms: u64, max_age: Duration) -> bool {
+    value["state"] == "connected_and_fresh"
+        && value["subscriptions_confirmed"] == true
+        && value["timestamp"].as_u64().is_some_and(|timestamp| {
+            timestamp <= now_ms && now_ms - timestamp <= max_age.as_millis() as u64
+        })
 }
 
 fn load_scanner_settings(path: &Path) -> Result<ScannerSettings> {
@@ -178,4 +207,23 @@ fn read_generation(path: &Path) -> Option<String> {
         .get("generation")
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn stale_unknown_or_unacknowledged_feed_health_never_unlocks_scanner() {
+        let healthy = serde_json::json!({"state":"connected_and_fresh",
+            "subscriptions_confirmed":true,"timestamp":1000});
+        let limit = Duration::from_millis(500);
+        assert!(feed_health_is_fresh(&healthy, 1000, limit));
+        assert!(!feed_health_is_fresh(&healthy, 1501, limit));
+        assert!(!feed_health_is_fresh(&healthy, 999, limit));
+        for field in ["timestamp", "state", "subscriptions_confirmed"] {
+            let mut invalid = healthy.clone();
+            invalid.as_object_mut().unwrap().remove(field);
+            assert!(!feed_health_is_fresh(&invalid, 1000, limit));
+        }
+    }
 }

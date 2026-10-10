@@ -6,18 +6,16 @@ use std::{
 use async_trait::async_trait;
 use coordinator::{
     CoordinatorConfig, CoordinatorError, CoordinatorStatus, CoordinatorVenue,
-    LegAuthorizationContext, PlannedOrder, RiskEngineAuthorizer, RiskIntentProvider,
-    RoutePlanner, ThreeLegCoordinator,
+    LegAuthorizationContext, PlannedOrder, RiskEngineAuthorizer, RiskIntentProvider, RoutePlanner,
+    ThreeLegCoordinator,
 };
 use execution::{
-    ExecutionAttemptError, ExecutionError, ExecutionFill, ExecutionMode,
-    ExecutionOrderRequest, ExecutionResult, ExecutionStage, MonitorResult,
-    OrderExecutionState, OrderSide, OrderType, PlaceOrderAck, PreparedExecution,
-    TimeInForce,
+    ExecutionAttemptError, ExecutionError, ExecutionFill, ExecutionMode, ExecutionOrderRequest,
+    ExecutionResult, ExecutionStage, MonitorResult, OrderExecutionState, OrderSide, OrderType,
+    PlaceOrderAck, PreparedExecution, TimeInForce,
 };
 use risk::{
-    current_time_ms, RiskConfig, RiskContext, RiskEngine, ServiceHealth,
-    SymbolRules, TradeIntent,
+    current_time_ms, RiskConfig, RiskContext, RiskEngine, ServiceHealth, SymbolRules, TradeIntent,
 };
 use rust_decimal::Decimal;
 use scanner::{TradeSide, TriangleLeg, TriangleRoute};
@@ -90,7 +88,7 @@ fn risk_config(name: &str) -> RiskConfig {
     let trading_control_file = base.join("trading_state.json");
     std::fs::write(
         &trading_control_file,
-        br#"{"version":1,"enabled":true}"#,
+        serde_json::to_vec(&serde_json::json!({"version":1,"enabled":true,"updated_at":chrono::Utc::now().to_rfc3339(),"reason":"test enabled","source":"rust_grpc_control"})).unwrap(),
     )
     .unwrap();
     RiskConfig {

@@ -1,8 +1,9 @@
 import os
+import uuid
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from analytics.db import Base
@@ -84,7 +85,10 @@ def scan(timestamp_ms: int, net_bps: float, accepted: bool) -> dict:
 
 def test_postgres_funnel_and_deduplication() -> None:
     engine = create_engine(DATABASE_URL)
-    Base.metadata.drop_all(engine)
+    schema = "test_opportunity_" + uuid.uuid4().hex
+    with engine.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+    engine = engine.execution_options(schema_translate_map={None: schema})
     Base.metadata.create_all(engine)
 
     now_ms = int(datetime.now(UTC).timestamp() * 1000)
@@ -104,4 +108,6 @@ def test_postgres_funnel_and_deduplication() -> None:
         assert summary["opportunity_windows"] == 1
         assert summary["max_window_duration_ms"] == 500
 
-    Base.metadata.drop_all(engine)
+    with engine.begin() as connection:
+        connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+    engine.dispose()

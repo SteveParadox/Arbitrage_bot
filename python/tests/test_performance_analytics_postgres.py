@@ -64,6 +64,7 @@ def _add_canary_cycle(
             reconciled_cycles=1,
         )
     )
+    session.flush()  # Persist the parent session before its FK-dependent cycle.
     session.add(
         MicroLiveCycle(
             trade_id=trade_id,
@@ -201,18 +202,14 @@ def test_phase17_aggregates_correctly_on_postgres() -> None:
         assert analytics["funnel"]["actual_profit_total"] == pytest.approx(1.75)
         assert analytics["funnel"]["matched_opportunity_windows"] == 1
         assert analytics["funnel"]["matched_actual_cycles"] == 1
-        assert analytics["funnel"]["matched_expected_profit_total"] == pytest.approx(
-            2.0
-        )
+        assert analytics["funnel"]["matched_expected_profit_total"] == pytest.approx(2.0)
         assert analytics["funnel"]["matched_actual_profit_total"] == pytest.approx(1.25)
         assert analytics["funnel"]["matched_profit_capture_pct"] == pytest.approx(62.5)
 
         assert analytics["profit"]["total_profit"] == pytest.approx(1.75)
         assert analytics["profit"]["profit_per_cycle"] == pytest.approx(0.875)
         assert analytics["profit"]["estimated_turnover"] == pytest.approx(550.0)
-        assert analytics["profit"]["profit_per_1000_turnover"] == pytest.approx(
-            1.75 / 550 * 1000
-        )
+        assert analytics["profit"]["profit_per_1000_turnover"] == pytest.approx(1.75 / 550 * 1000)
 
         assert analytics["distributions"]["net_edge_bps"]["count"] == 1
         assert analytics["distributions"]["opportunity_survival_ms"]["count"] == 1
@@ -231,27 +228,17 @@ def test_phase17_aggregates_correctly_on_postgres() -> None:
         with Session(engine) as session:
             session.execute(
                 delete(MicroLiveCycle).where(
-                    MicroLiveCycle.trade_id.in_(
-                        [engine_trade_id, canary_trade_id]
-                    )
+                    MicroLiveCycle.trade_id.in_([engine_trade_id, canary_trade_id])
                 )
             )
             session.execute(
-                delete(MicroLiveRun).where(
-                    MicroLiveRun.id.in_([duplicate_run_id, canary_run_id])
-                )
+                delete(MicroLiveRun).where(MicroLiveRun.id.in_([duplicate_run_id, canary_run_id]))
             )
             session.execute(
                 delete(EngineEvent).where(
-                    EngineEvent.event_id.in_(
-                        [attempt_event_id, terminal_event_id]
-                    )
+                    EngineEvent.event_id.in_([attempt_event_id, terminal_event_id])
                 )
             )
-            session.execute(
-                delete(OpportunityWindow).where(
-                    OpportunityWindow.id == window_id
-                )
-            )
+            session.execute(delete(OpportunityWindow).where(OpportunityWindow.id == window_id))
             session.commit()
         engine.dispose()
