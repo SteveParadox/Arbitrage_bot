@@ -213,12 +213,7 @@ fn configured_path(root: &std::path::Path, name: &str, default: &str) -> PathBuf
     }
 }
 
-fn feed_ready(
-    value: &Value,
-    required: &BTreeSet<String>,
-    now: u64,
-    max_age_ms: u64,
-) -> bool {
+fn feed_ready(value: &Value, required: &BTreeSet<String>, now: u64, max_age_ms: u64) -> bool {
     // Do not trust a top-level healthy flag alone. Require individual book
     // synchronization and both exchange/receive freshness clocks.
     let Some(health_at) = value["timestamp"].as_u64() else {
@@ -333,7 +328,10 @@ mod tests {
         unconfirmed["subscriptions_confirmed"] = Value::Bool(false);
         assert!(!feed_ready(&unconfirmed, &required, 1000, 100));
         let mut missing = fresh;
-        missing["symbols"].as_object_mut().unwrap().remove("ETHUSDT");
+        missing["symbols"]
+            .as_object_mut()
+            .unwrap()
+            .remove("ETHUSDT");
         assert!(!feed_ready(&missing, &required, 1000, 100));
     }
 

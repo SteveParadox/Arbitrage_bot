@@ -14,6 +14,13 @@ the candidate event and the opportunity observation in one PostgreSQL
 transaction, and `/health` reports the observer state. The dashboard shows
 that state separately from trading controls.
 
+The connector reloads instrument metadata before each WebSocket connection,
+including reconnects. Spot metadata records `basePrecision` as the quantity
+increment and retains `minOrderAmt` and `maxMarketOrderQty` separately; Bybit
+deprecates spot `minOrderQty`. These public-data fields do not authorize an
+order. A future execution path must recheck current filters and account state
+before submission.
+
 Example after provisioning route configuration, PostgreSQL, Redis, migrations,
 and the existing internal gRPC token:
 

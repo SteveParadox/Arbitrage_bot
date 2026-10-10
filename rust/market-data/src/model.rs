@@ -58,6 +58,10 @@ pub struct InstrumentMetadata {
     pub tick_size: Option<f64>,
     pub qty_step: Option<f64>,
     pub min_order_qty: Option<f64>,
+    /// Spot orders are checked against this quote-currency minimum. Bybit
+    /// deprecates spot minOrderQty in favor of minOrderAmt.
+    pub min_order_amt: Option<f64>,
+    pub max_market_order_qty: Option<f64>,
     pub timestamp: u64,
 }
 
@@ -158,6 +162,9 @@ pub(crate) struct PriceFilter {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LotSizeFilter {
     pub qty_step: Option<String>,
+    pub base_precision: Option<String>,
+    pub min_order_amt: Option<String>,
+    pub max_market_order_qty: Option<String>,
     pub min_order_qty: Option<String>,
 }
 

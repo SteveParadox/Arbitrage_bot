@@ -26,9 +26,13 @@ type TickerCache = HashMap<String, (Option<f64>, Option<f64>, Option<f64>)>;
 
 pub async fn run(config: Config, sender: mpsc::Sender<MarketDataEvent>) -> Result<()> {
     let mut metadata_delay = config.reconnect_min;
+    let mut delay = config.reconnect_min;
     loop {
+        // Refresh filters on every connection attempt. Metadata can change while
+        // the public socket is down; stale symbol rules must not survive a
+        // reconnect and make a route appear executable.
         match fetch_and_emit_instruments(&config, &sender).await {
-            Ok(()) => break,
+            Ok(()) => metadata_delay = config.reconnect_min,
             Err(error) => {
                 warn!(
                     error = %error,
@@ -46,12 +50,9 @@ pub async fn run(config: Config, sender: mpsc::Sender<MarketDataEvent>) -> Resul
                 .await;
                 time::sleep(metadata_delay).await;
                 metadata_delay = (metadata_delay * 2).min(config.reconnect_max);
+                continue;
             }
         }
-    }
-
-    let mut delay = config.reconnect_min;
-    loop {
         match run_connection(&config, &sender).await {
             Ok(()) => delay = config.reconnect_min,
             Err(error) => {
@@ -398,36 +399,46 @@ async fn fetch_and_emit_instruments(
             .ok_or_else(|| anyhow!("instrument metadata not found for {symbol}"))?;
 
         sender
-            .send(MarketDataEvent::Instrument(InstrumentMetadata {
-                symbol: instrument.symbol,
-                status: instrument.status,
-                base_coin: instrument.base_coin,
-                quote_coin: instrument.quote_coin,
-                settle_coin: instrument.settle_coin,
-                tick_size: parse_optional(
-                    instrument
-                        .price_filter
-                        .as_ref()
-                        .and_then(|filter| filter.tick_size.as_deref()),
-                )?,
-                qty_step: parse_optional(
-                    instrument
-                        .lot_size_filter
-                        .as_ref()
-                        .and_then(|filter| filter.qty_step.as_deref()),
-                )?,
-                min_order_qty: parse_optional(
-                    instrument
-                        .lot_size_filter
-                        .as_ref()
-                        .and_then(|filter| filter.min_order_qty.as_deref()),
-                )?,
-                timestamp: response.time,
-            }))
+            .send(MarketDataEvent::Instrument(normalize_instrument(
+                instrument,
+                response.time,
+            )?))
             .await?;
     }
 
     Ok(())
+}
+
+fn normalize_instrument(
+    instrument: crate::model::RawInstrument,
+    timestamp: u64,
+) -> Result<InstrumentMetadata> {
+    let lot = instrument.lot_size_filter.as_ref();
+    Ok(InstrumentMetadata {
+        symbol: instrument.symbol,
+        status: instrument.status,
+        base_coin: instrument.base_coin,
+        quote_coin: instrument.quote_coin,
+        settle_coin: instrument.settle_coin,
+        tick_size: parse_optional(
+            instrument
+                .price_filter
+                .as_ref()
+                .and_then(|filter| filter.tick_size.as_deref()),
+        )?,
+        qty_step: parse_optional(lot.and_then(|filter| {
+            filter
+                .base_precision
+                .as_deref()
+                .or(filter.qty_step.as_deref())
+        }))?,
+        min_order_qty: parse_optional(lot.and_then(|filter| filter.min_order_qty.as_deref()))?,
+        min_order_amt: parse_optional(lot.and_then(|filter| filter.min_order_amt.as_deref()))?,
+        max_market_order_qty: parse_optional(
+            lot.and_then(|filter| filter.max_market_order_qty.as_deref()),
+        )?,
+        timestamp,
+    })
 }
 
 fn parse_optional(value: Option<&str>) -> Result<Option<f64>> {
@@ -461,6 +472,23 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spot_filters_use_base_precision_and_quote_minimum() {
+        let raw = serde_json::from_value(json!({
+            "symbol":"BTCUSDT", "status":"Trading", "baseCoin":"BTC",
+            "quoteCoin":"USDT", "priceFilter":{"tickSize":"0.01"},
+            "lotSizeFilter":{"basePrecision":"0.000001", "quotePrecision":"0.00000001",
+                "minOrderQty":"0.000001", "minOrderAmt":"5",
+                "maxMarketOrderQty":"2"}
+        }))
+        .unwrap();
+        let metadata = normalize_instrument(raw, 123).unwrap();
+        assert_eq!(metadata.qty_step, Some(0.000001));
+        assert_eq!(metadata.min_order_amt, Some(5.0));
+        assert_eq!(metadata.max_market_order_qty, Some(2.0));
+        assert_eq!(metadata.tick_size, Some(0.01));
+    }
 
     #[test]
     fn spot_subscriptions_are_batched_at_ten_arguments() {
