@@ -133,7 +133,10 @@ async fn main() -> Result<()> {
                         let now = now_ms();
                         let is_ready = active.len() == required.len()
                             && health_is_usable(&h, &required, now, settings.max_book_age_ms);
-                        if ready && !is_ready { scanner.reset_books(); }
+                        // A transient stale health report closes the gate, but we keep
+                        // book state until the connector issues an actual reconnect.
+                        // Clearing local books on every transient report would lose
+                        // snapshots and leave a healthy delta stream unable to recover.
                         ready = is_ready;
                         health_at = if is_ready { now } else { 0 };
                         events.publish("market.health", h);
