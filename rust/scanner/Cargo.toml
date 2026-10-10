@@ -7,6 +7,10 @@ autobins = false
 [dependencies]
 anyhow.workspace = true
 event-bus = { path = "../event-bus" }
+market-data = { path = "../market-data" }
+fs2 = "0.4"
+dotenvy = "0.15"
+tokio.workspace = true
 orderbook = { path = "../orderbook" }
 serde.workspace = true
 serde_json = "1"
@@ -24,3 +28,7 @@ path = "src/bin/scan_live.rs"
 [[bin]]
 name = "profitability-fixture"
 path = "src/bin/profitability_fixture.rs"
+
+[[bin]]
+name = "auto-observe"
+path = "src/bin/auto_observe.rs"
