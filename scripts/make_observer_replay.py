@@ -37,7 +37,7 @@ def main() -> None:
     (args.directory / "triangles.json").write_text(json.dumps(config), encoding="utf-8")
 
     now = int(time.time() * 1000)
-    events: list[dict] = []
+    events: list[dict] = [{"type":"status", "state":"connecting", "detail":"replay metadata", "timestamp":now}]
     for instrument in instruments:
         events.append(
             {
@@ -50,6 +50,8 @@ def main() -> None:
                 "tick_size": 0.00001,
                 "qty_step": 0.00001,
                 "min_order_qty": 0.00001,
+                "min_order_amt": 5.0,
+                "max_market_order_qty": 1000.0,
                 "timestamp": now,
             }
         )
@@ -107,7 +109,7 @@ def main() -> None:
     ]
     events.append(rejected)
     (args.directory / "market.jsonl").write_text(
-        "".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events),
+        "".join(json.dumps({"type":"session", "generation":1, "event":event}, separators=(",", ":")) + "\n" for event in events),
         encoding="utf-8",
     )
     print(args.directory / "triangles.json")

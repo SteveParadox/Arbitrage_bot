@@ -263,32 +263,24 @@ def _persist(
                     occurred_at_ms=event.occurred_at_ms,
                     payload=event.payload,
                 )
-                .on_conflict_do_nothing()
+                .on_conflict_do_nothing().returning(EngineEvent.event_id)
             )
             try:
                 with session.begin_nested():
-                    result = session.execute(statement)
-                    if result.rowcount == 0:
+                    inserted = session.execute(statement).scalar_one_or_none()
+                    if inserted is None:
                         # ON CONFLICT covers both the event ID and Redis stream ID.
                         # Only an identical event may be treated as an idempotent replay.
                         # Otherwise a conflicting financial/event record would disappear.
-                        existing = session.scalar(
+                        existing_rows = session.scalars(
                             select(EngineEvent).where(
                                 or_(
                                     EngineEvent.event_id == event.event_id,
                                     EngineEvent.stream_id == event.stream_id,
                                 )
-                            ).limit(1)
-                        )
-                        if (
-                            existing is None
-                            or existing.event_id != event.event_id
-                            or existing.event_type != event.event_type
-                            or existing.source != event.source
-                            or existing.schema_version != event.schema_version
-                            or existing.occurred_at_ms != event.occurred_at_ms
-                            or existing.payload != event.payload
-                        ):
+                            )
+                        ).all()
+                        if len(existing_rows) != 1 or not _same_event(existing_rows[0], event):
                             raise ValueError(
                                 "conflicting event_id or stream_id; event requires investigation"
                             )
@@ -302,8 +294,40 @@ def _persist(
                     ):
                         # One transaction commits the event and its dashboard observation.
                         # On retry, the event's unique ID prevents duplicate accounting.
+                        if event.payload["candidate_id"] != event.event_id:
+                            raise ValueError("candidate_id must match event_id")
                         opportunity_store.record_scan(event.payload)
             except (DataError, KeyError, TypeError, ValueError, OverflowError) as error:
                 rejected.append((event, str(error)))
         session.commit()
     return rejected
+
+
+def _canonical_payload(event) -> dict:
+    payload = dict(event.payload)
+    if (
+        event.source == "engine-service"
+        and event.event_type in {"opportunity.detected", "opportunity.rejected"}
+        and payload.get("identity_version") == 2
+        and payload.get("candidate_id") == event.event_id
+    ):
+        processing = payload.get("processing")
+        if (
+            isinstance(processing, dict)
+            and set(processing) == {"processed_at_ms"}
+            and type(processing["processed_at_ms"]) is int
+            and processing["processed_at_ms"] >= 0
+        ):
+            payload.pop("processing")
+    return payload
+
+
+def _same_event(existing, event: StreamEvent) -> bool:
+    return (
+        existing.event_id == event.event_id
+        and existing.event_type == event.event_type
+        and existing.source == event.source
+        and existing.schema_version == event.schema_version
+        and existing.occurred_at_ms == event.occurred_at_ms
+        and _canonical_payload(existing) == _canonical_payload(event)
+    )

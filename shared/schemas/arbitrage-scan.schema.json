@@ -18,26 +18,106 @@
     "execution_enabled"
   ],
   "properties": {
-    "scan_timestamp": { "type": "integer", "minimum": 0 },
-    "trigger_symbol": { "type": "string" },
-    "trigger_timestamp": { "type": "integer", "minimum": 0 },
-    "trigger_update_id": { "type": "integer", "minimum": 0 },
-    "trigger_sequence": { "type": "integer", "minimum": 0 },
-    "route_id": { "type": "string" },
-    "triangle_id": { "type": "string" },
-    "start_asset": { "type": "string" },
-    "start_amount": { "type": ["number", "null"] },
-    "final_amount": { "type": ["number", "null"] },
-    "gross_profit": { "type": ["number", "null"] },
-    "gross_return_pct": { "type": ["number", "null"] },
-    "gross_return_bps": { "type": ["number", "null"] },
-    "gross_profitable": { "type": ["boolean", "null"] },
-    "expected_net_profit": { "type": ["number", "null"] },
-    "expected_net_return_pct": { "type": ["number", "null"] },
-    "expected_net_return_bps": { "type": ["number", "null"] },
-    "expected_final_amount": { "type": ["number", "null"] },
-    "net_profitable": { "type": ["boolean", "null"] },
-    "profitability": { "type": ["object", "null"] },
+    "scan_timestamp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trigger_symbol": {
+      "type": "string"
+    },
+    "trigger_timestamp": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trigger_update_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trigger_sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "route_id": {
+      "type": "string"
+    },
+    "triangle_id": {
+      "type": "string"
+    },
+    "start_asset": {
+      "type": "string"
+    },
+    "start_amount": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "final_amount": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "gross_profit": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "gross_return_pct": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "gross_return_bps": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "gross_profitable": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "expected_net_profit": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "expected_net_return_pct": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "expected_net_return_bps": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "expected_final_amount": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "net_profitable": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "profitability": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "status": {
       "enum": [
         "complete",
@@ -49,10 +129,30 @@
         "calculation_error"
       ]
     },
-    "reason": { "type": ["string", "null"] },
-    "oldest_book_timestamp": { "type": ["integer", "null"] },
-    "newest_book_timestamp": { "type": ["integer", "null"] },
-    "book_timestamp_skew_ms": { "type": ["integer", "null"] },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "oldest_book_timestamp": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "newest_book_timestamp": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "book_timestamp_skew_ms": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
     "legs": {
       "type": "array",
       "maxItems": 3,
@@ -71,8 +171,52 @@
         ]
       }
     },
-    "fees_included": { "type": "boolean" },
-    "execution_enabled": { "const": false }
+    "fees_included": {
+      "type": "boolean"
+    },
+    "execution_enabled": {
+      "const": false
+    },
+    "strategy_version": {
+      "type": "string"
+    },
+    "configuration_hash": {
+      "type": "string"
+    },
+    "market_versions": {
+      "type": "array"
+    },
+    "market_fingerprint": {
+      "type": "string"
+    },
+    "candidate_id": {
+      "type": "string"
+    },
+    "identity_version": {
+      "const": 2
+    },
+    "instrument_config_hash": {
+      "type": "string"
+    },
+    "instrument_filters": {
+      "type": "object"
+    },
+    "evaluation_status": {
+      "enum": [
+        "observed",
+        "rejected"
+      ]
+    },
+    "processing": {
+      "type": "object",
+      "properties": {
+        "processed_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

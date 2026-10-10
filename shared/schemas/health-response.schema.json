@@ -1,5 +1,77 @@
 {
   "$defs": {
+    "ObserverHealth": {
+      "additionalProperties": true,
+      "properties": {
+        "state": {
+          "enum": [
+            "offline",
+            "connecting",
+            "synchronizing",
+            "scanning",
+            "degraded",
+            "reconnecting",
+            "stale",
+            "failed",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "execution_enabled": {
+          "const": false,
+          "title": "Execution Enabled",
+          "type": "boolean"
+        },
+        "scanner_ready": {
+          "default": false,
+          "title": "Scanner Ready",
+          "type": "boolean"
+        },
+        "age_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Age Ms"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation"
+        }
+      },
+      "required": [
+        "state",
+        "execution_enabled"
+      ],
+      "title": "ObserverHealth",
+      "type": "object"
+    },
     "TradingDependencies": {
       "additionalProperties": false,
       "properties": {
@@ -222,9 +294,7 @@
       "type": "object"
     },
     "observer": {
-      "additionalProperties": true,
-      "title": "Observer",
-      "type": "object"
+      "$ref": "#/$defs/ObserverHealth"
     },
     "event_pipeline": {
       "additionalProperties": true,

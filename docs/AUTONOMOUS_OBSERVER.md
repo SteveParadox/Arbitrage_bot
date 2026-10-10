@@ -25,7 +25,7 @@ Example after provisioning route configuration, PostgreSQL, Redis, migrations,
 and the existing internal gRPC token:
 
 ```sh
-ARB_ENGINE_AUTOSTART=true BYBIT_TESTNET=true \
+ARB_LIVE_TRADING_ENABLED=false ARB_TRADING_MODE=observe ARB_ENGINE_AUTOSTART=true BYBIT_TESTNET=true \
   cargo run --manifest-path rust/Cargo.toml -p engine-service
 ```
 
@@ -52,3 +52,38 @@ The normal Redis, outbox, and gRPC configuration still applies. Replay refuses
 to start outside development with the live deployment gate explicitly false.
 The fixture emits an accepted candidate followed by a rejected candidate.
 Its prices are synthetic and cannot be used to estimate real returns.
+
+Connection attempts now carry one explicit generation, starting before metadata
+fetches. Required metadata is emitted only as a complete fetched snapshot; old
+generation messages are ignored. A scanner book error requests a controlled
+connector reconnect, clears all books/metadata and waits for every new snapshot.
+Readiness checks both connector telemetry and scanner book/receive freshness.
+
+Candidate identity v2 uses route/strategy/configuration hashes, instrument filter
+versions, trigger identifiers and every route book version. Price/depth and
+profitability remain strict payload data: altered data under the same identity
+is a conflict. Market time is immutable; only `processing.processed_at_ms` may
+change on a replay. The consumer checks every row matching either event or stream
+identity and commits the engine event and observation in one transaction.
+
+One observer lock prevents competing managed observers. One publisher lock per
+outbox prevents competing processes; in-process callers share the publisher.
+Outbox receipts retain accepted event identities across delivery and restart.
+Keep receipts on durable storage; monitor disk growth. Do not delete receipts
+while an identity can still be replayed. Redis capacity trimming never advances
+past any group's pending boundary. When no safe trim is possible, publication
+retries from disk instead of discarding unpersisted records. An abandoned consumer
+group deliberately blocks unsafe trimming and requires operational recovery.
+
+Local outbox acceptance and Redis delivery are distinct from PostgreSQL commit.
+Only a consumer database commit followed by stream acknowledgement confirms
+persistence. `/health` reports observer/scanner, event pipeline, and trading gates
+separately. A scanning observer cannot authorize exchange orders.
+
+Additional process test (using isolated, migrated PostgreSQL and Redis):
+
+```sh
+ARB_RUN_RELIABILITY_INTEGRATION=1 ARB_RUN_OBSERVER_INTEGRATION=1 \
+ARB_ENGINE_BINARY=/absolute/path/to/rust/target/debug/engine-service \
+python -m pytest -q -s tests/test_observer_pipeline_integration.py
+```

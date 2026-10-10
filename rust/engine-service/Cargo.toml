@@ -6,6 +6,7 @@ build = "build.rs"
 
 [dependencies]
 anyhow.workspace = true
+fs2 = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 event-bus = { path = "../event-bus" }
 market-data = { path = "../market-data" }

@@ -1016,7 +1016,17 @@ async fn main() -> Result<()> {
     let observer_task = observer_enabled.then(|| {
         let events = events.clone();
         let triangle_path = config.triangle_config_file.clone();
-        tokio::spawn(async move { observer::run(triangle_path, repo_root, events).await })
+        tokio::spawn(async move {
+            let result = observer::run(triangle_path, repo_root, events.clone()).await;
+            if let Err(error) = &result {
+                events.publish(
+                    "engine.observer",
+                    json!({"state":"failed","scanner_ready":false,
+                    "reason":error.to_string(),"execution_enabled":false}),
+                );
+            }
+            result
+        })
     });
 
     info!(%addr, "engine gRPC control service listening");

@@ -358,6 +358,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "event-bus",
+ "fs2",
  "market-data",
  "orderbook",
  "prost",
@@ -396,9 +397,11 @@ dependencies = [
 name = "event-bus"
 version = "0.1.0"
 dependencies = [
+ "fs2",
  "redis",
  "serde",
  "serde_json",
+ "sha2",
  "tracing",
  "uuid",
 ]
@@ -1717,6 +1720,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.21",
 ]
 

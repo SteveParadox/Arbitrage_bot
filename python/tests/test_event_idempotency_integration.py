@@ -177,3 +177,105 @@ def test_observer_candidates_update_dashboard_ledger_once() -> None:
                 EngineEvent.event_id == event.event_id
             ))
             session.commit()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("price", 102), ("direction", "SELL"), ("net_profitable", False),
+    ("scan_timestamp", 1700000000001), ("processing", {"processed_at_ms": 2000, "extra": True}),
+])
+def test_versioned_candidate_replay_only_exempts_explicit_processing(field, value):
+    from dataclasses import replace
+    identity = uuid.uuid4().hex
+    first = StreamEvent(f"s-{identity}", identity, "opportunity.rejected", "engine-service", 1,
+        1700000000000, {"identity_version": 2, "candidate_id": identity,
+        "scan_timestamp": 1700000000000, "price": 101, "direction": "BUY",
+        "net_profitable": True, "processing": {"processed_at_ms": 1800}})
+    # Use a non-observer source for initial malformed scan? Persist a valid rejected scan.
+    payload = dict(first.payload, route_id=f"it-{identity}", triangle_id="BTC-ETH-USDT",
+        start_asset="USDT", trigger_symbol="ETHUSDT", trigger_update_id=1, trigger_sequence=1,
+        start_amount=100, status="missing_book", legs=[], fees_included=False)
+    first = replace(first, payload=payload)
+    try:
+        assert _persist([first]) == []
+        replay = replace(first, stream_id=f"r-{identity}", payload=dict(payload,
+            processing={"processed_at_ms": 1900}))
+        assert _persist([replay]) == []
+        conflict = replace(replay, stream_id=f"c-{identity}", payload=dict(replay.payload, **{field: value}))
+        assert len(_persist([conflict])) == 1
+        with get_session_factory()() as session:
+            assert session.scalar(select(func.count()).select_from(OpportunityObservation).where(
+                OpportunityObservation.route_id == payload["route_id"])) == 1
+    finally:
+        _cleanup_candidate(first)
+
+
+def _cleanup_candidate(event):
+    with get_session_factory()() as session:
+        session.execute(delete(OpportunityObservation).where(
+            OpportunityObservation.route_id == event.payload["route_id"]))
+        session.execute(delete(OpportunityWindow).where(
+            OpportunityWindow.route_id == event.payload["route_id"]))
+        session.execute(delete(EngineEvent).where(EngineEvent.event_id == event.event_id))
+        session.commit()
+
+
+def test_event_and_stream_identity_resolve_to_different_rows_rejects():
+    from dataclasses import replace
+    first = StreamEvent(f"s-{uuid.uuid4().hex}", uuid.uuid4().hex,
+        "engine.state_changed", "engine-service", 1, 1000, {"runtime_enabled": False})
+    second = replace(first, event_id=uuid.uuid4().hex, stream_id=f"s-{uuid.uuid4().hex}")
+    try:
+        assert _persist([first, second]) == []
+        ambiguous = replace(first, stream_id=second.stream_id)
+        assert len(_persist([ambiguous])) == 1
+    finally:
+        with get_session_factory()() as session:
+            session.execute(delete(EngineEvent).where(EngineEvent.event_id.in_([first.event_id, second.event_id])))
+            session.commit()
+
+
+def test_concurrent_candidate_delivery_has_one_event_and_observation():
+    from concurrent.futures import ThreadPoolExecutor
+    from dataclasses import replace
+    identity = uuid.uuid4().hex
+    event = StreamEvent(f"s-{identity}", identity, "opportunity.rejected", "engine-service", 1, 1700000000000,
+        {"candidate_id":identity, "scan_timestamp":1700000000000, "route_id":f"it-{identity}",
+         "triangle_id":"BTC-ETH-USDT", "start_asset":"USDT", "trigger_symbol":"ETHUSDT",
+         "trigger_update_id":1, "trigger_sequence":1, "start_amount":100, "status":"missing_book",
+         "legs":[], "fees_included":False})
+    try:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(_persist, [replace(event,stream_id=f"{index}-{identity}")]) for index in range(8)]
+            assert all(f.result() == [] for f in futures)
+        with get_session_factory()() as session:
+            assert session.scalar(select(func.count()).select_from(EngineEvent).where(
+                EngineEvent.event_id == identity)) == 1
+            assert session.scalar(select(func.count()).select_from(OpportunityObservation).where(
+                OpportunityObservation.route_id == event.payload["route_id"])) == 1
+    finally:
+        _cleanup_candidate(event)
+
+
+def test_candidate_savepoint_rolls_back_and_retry_succeeds(monkeypatch):
+    from analytics.opportunity_store import OpportunityStore
+    identity = uuid.uuid4().hex
+    event = StreamEvent(f"s-{identity}", identity,"opportunity.rejected","engine-service",1,1700000000000,
+        {"candidate_id":identity,"scan_timestamp":1700000000000,"route_id":f"it-{identity}",
+         "triangle_id":"BTC-ETH-USDT","start_asset":"USDT","trigger_symbol":"ETHUSDT",
+         "trigger_update_id":1,"trigger_sequence":1,"start_amount":100,"status":"missing_book",
+         "legs":[],"fees_included":False})
+    original = OpportunityStore.record_scan
+    def fail(self, payload):
+        original(self, payload)
+        raise ValueError("injected failure after ledger write")
+    try:
+        monkeypatch.setattr(OpportunityStore,"record_scan",fail)
+        assert len(_persist([event])) == 1
+        with get_session_factory()() as session:
+            assert session.get(EngineEvent,identity) is None
+            assert session.scalar(select(func.count()).select_from(OpportunityObservation).where(
+                OpportunityObservation.route_id == event.payload["route_id"])) == 0
+        monkeypatch.setattr(OpportunityStore,"record_scan",original)
+        assert _persist([event]) == []
+    finally:
+        _cleanup_candidate(event)

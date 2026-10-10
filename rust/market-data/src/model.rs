@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MarketDataEvent {
+    /// Every connector attempt has one generation, including metadata and health.
+    Session {
+        generation: u64,
+        event: Box<MarketDataEvent>,
+    },
     OrderBook {
         symbol: String,
         bids: Vec<PriceLevel>,

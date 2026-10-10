@@ -1,3 +1,4 @@
+import { ObserverState } from "./ObserverState";
 import { tradingState } from "./tradingState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -92,7 +93,7 @@ function StatusPill({
   detail,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   state: "ok" | "warn" | "bad" | "muted";
   detail?: string;
 }) {
@@ -501,8 +502,8 @@ export function App() {
 
           <div className="status-strip">
             <StatusPill
-              label="Autonomous observer"
-              value={summary.system.observer_state.replaceAll("_", " ")}
+              label="Market observer"
+              value={<ObserverState state={summary.system.observer_state} />}
               state={summary.system.observer_state === "scanning" ? "ok" : "muted"}
               detail="Market observation only; automatic order execution is unavailable"
             />

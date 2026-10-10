@@ -157,6 +157,7 @@ impl LocalOrderBook {
         self.update_id = update.update_id;
         self.sequence = update.sequence;
         self.initialized = true;
+        self.validate_spread()?;
         Ok(())
     }
 
@@ -539,7 +540,10 @@ mod tests {
         let mut book = LocalOrderBook::new("ETHUSDT");
         let mut crossed = snapshot();
         crossed.bids[0].price = 2600.;
-        book.apply(crossed).unwrap();
+        assert!(matches!(
+            book.apply(crossed),
+            Err(OrderBookError::CrossedBook(_))
+        ));
         assert!(matches!(
             book.buy_with_quote(400.),
             Err(OrderBookError::CrossedBook(_))

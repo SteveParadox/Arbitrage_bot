@@ -48,7 +48,8 @@ export type HealthResponse = {
   database_status: "online" | "offline" | string;
   market_stream_status: string;
   last_market_event: string | null;
-  observer: { state: string; execution_enabled: boolean; age_ms?: number };
+  observer: { state: "offline" | "connecting" | "synchronizing" | "scanning" | "degraded" | "reconnecting" | "stale" | "failed" | "unknown";
+    execution_enabled: false; scanner_ready?: boolean; age_ms?: number | null };
   risk: RiskStatus;
   trading: {
     deployment_enabled: boolean;

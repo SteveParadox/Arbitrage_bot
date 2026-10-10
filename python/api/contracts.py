@@ -38,6 +38,22 @@ class TradingHealth(ResponseModel):
     source: str
 
 
+class ObserverHealth(ResponseModel):
+    state: Literal["offline", "connecting", "synchronizing", "scanning", "degraded",
+                   "reconnecting", "stale", "failed", "unknown"]
+    execution_enabled: Literal[False]
+    scanner_ready: bool = False
+    age_ms: int | None = None
+    reason: str | None = None
+    generation: int | None = None
+
+    @model_validator(mode="after")
+    def scanning_requires_books(self):
+        if self.state == "scanning" and not self.scanner_ready:
+            raise ValueError("scanning requires scanner readiness")
+        return self
+
+
 class HealthResponse(ResponseModel):
     status: Literal["ok", "degraded", "unhealthy"]
     generated_at: datetime
@@ -53,7 +69,7 @@ class HealthResponse(ResponseModel):
     ]
     last_market_event: datetime | None
     market_data: dict[str, Any]
-    observer: dict[str, Any]
+    observer: ObserverHealth
     event_pipeline: dict[str, Any]
     redis: dict[str, Any]
     risk: dict[str, Any]

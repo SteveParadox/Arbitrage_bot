@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use event_bus::EventPublisher;
+use fs2::FileExt;
 use market_data::{
     config::{Category, Config},
     connector,
@@ -25,6 +26,24 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::warn;
 
 pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublisher) -> Result<()> {
+    validate_read_only_mode(
+        std::env::var("ARB_TRADING_MODE").ok().as_deref(),
+        std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
+    )?;
+    let lock_path = configured_path(
+        &repo_root,
+        "ARB_OBSERVER_LOCK",
+        "data/control/observer.lock",
+    );
+    fs::create_dir_all(lock_path.parent().context("observer lock has no parent")?)?;
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)?;
+    lock.try_lock_exclusive()
+        .context("another managed observer is running")?;
     let routes = load_triangle_config(&triangle_path)?;
     let required = routes.required_symbols();
     if required.is_empty() {
@@ -50,6 +69,8 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
         .map_err(|error| anyhow!(error))?;
 
     let (sender, mut receiver) = mpsc::channel(1024);
+    let (recovery_sender, recovery) = mpsc::channel(1);
+    let replay_mode = std::env::var("ARB_OBSERVER_REPLAY_FILE").is_ok();
     let connector_task: JoinHandle<Result<()>> =
         if let Ok(replay) = std::env::var("ARB_OBSERVER_REPLAY_FILE") {
             if !replay_allowed(
@@ -66,46 +87,134 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             if feed.category != Category::Spot || feed.testnet != routes.source.testnet {
                 bail!("market feed must be spot and match the triangle configuration environment");
             }
+            if feed.orderbook_depth < 50 {
+                bail!("observer requires book depth >= 50");
+            }
             feed.symbols = required.iter().cloned().collect();
+            feed.subscribe_trades = false;
+            feed.subscribe_tickers = false;
             // The scanner's time bound governs the connection heartbeat as well.
             feed.stale_after = feed
                 .stale_after
                 .min(std::time::Duration::from_millis(settings.max_book_age_ms));
-            tokio::spawn(connector::run(feed, sender))
+            tokio::spawn(connector::run_with_recovery(feed, sender, recovery))
         };
     let _guard = ConnectorGuard(Some(connector_task));
-    let mut metadata = HashMap::new();
-    let mut ready_at = None;
-    events.publish(
-        "engine.observer",
-        json!({"state": "connecting", "required_symbols": required, "execution_enabled": false}),
-    );
+    let mut lifecycle = Lifecycle::default();
+    let mut receipts: HashMap<String, std::time::Instant> = HashMap::new();
+    let mut feed_health = Value::Null;
+    let mut state = "connecting";
+    let mut reason = "starting public observation".to_string();
+    let mut health_tick = tokio::time::interval(std::time::Duration::from_millis(250));
     loop {
-        let event = receiver
-            .recv()
-            .await
-            .ok_or_else(|| anyhow!("market-data connector ended"))?;
-        match event {
-            MarketDataEvent::Instrument(instrument) => {
-                validate_instrument(&routes, &instrument)?;
-                metadata.insert(instrument.symbol.clone(), instrument);
+        let event = tokio::select! {
+            signal = tokio::signal::ctrl_c() => {
+                signal?;
+                publish_health(&events, "offline", "observer shutdown", lifecycle.generation);
+                return Ok(());
             }
-            MarketDataEvent::Status(status)
-                if matches!(
-                    status.state.as_str(),
-                    "connected" | "reconnecting" | "metadata_retry"
-                ) =>
-            {
+            _ = health_tick.tick() => {
+                let ready = observer_ready(&lifecycle, &routes, &required, &scanner,
+                    &receipts, &feed_health, now_ms(), settings.max_book_age_ms);
+                if state == "scanning" && !ready { state = "stale"; reason = "readiness expired".into(); }
+                publish_health(&events, state, &reason, lifecycle.generation);
+                continue;
+            }
+            event = receiver.recv() => match event {
+                Some(event) => event,
+                None => {
+                    publish_health(&events, "failed", "market connector terminated", lifecycle.generation);
+                    bail!("market-data connector ended");
+                }
+            }
+        };
+        let MarketDataEvent::Session { generation, event } = event else {
+            // Ungenerated events cannot reopen a managed observation gate.
+            continue;
+        };
+        if let MarketDataEvent::Status(status) = event.as_ref() {
+            if status.state == "connecting" && generation > lifecycle.generation {
+                lifecycle.begin(generation);
                 scanner.reset_books();
-                ready_at = None;
-                events.publish("engine.observer", json!({"state": "synchronizing", "reason": status.state, "execution_enabled": false}));
+                receipts.clear();
+                feed_health = Value::Null;
+                state = "connecting";
+                reason = status.detail.clone();
+            }
+        }
+        if generation != lifecycle.generation || generation == 0 {
+            continue;
+        }
+        match *event {
+            MarketDataEvent::Instrument(instrument) => {
+                if lifecycle.recovering {
+                    continue;
+                }
+                if let Err(error) = validate_instrument(&routes, &instrument) {
+                    lifecycle.metadata.remove(&instrument.symbol);
+                    lifecycle.recovering = true;
+                    state = "degraded";
+                    reason = error.to_string();
+                    if !replay_mode {
+                        let _ = recovery_sender.try_send(());
+                    }
+                } else {
+                    lifecycle
+                        .metadata
+                        .insert(instrument.symbol.clone(), instrument);
+                }
+            }
+            MarketDataEvent::Status(status) => {
+                match status.state.as_str() {
+                    "connected" if !lifecycle.recovering => {
+                        lifecycle.connected = true;
+                        state = "synchronizing";
+                    }
+                    "reconnecting" | "metadata_retry" | "disconnected" => {
+                        lifecycle.invalidate();
+                        scanner.reset_books();
+                        receipts.clear();
+                        feed_health = Value::Null;
+                        state = "reconnecting";
+                    }
+                    _ => {}
+                }
+                reason = status.detail;
+                events.publish(
+                    "market.health",
+                    json!({"state":status.state,
+                    "timestamp":now_ms(), "generation":generation, "detail":reason}),
+                );
             }
             MarketDataEvent::Health(value) => {
-                let ready = feed_ready(&value, &required, now_ms(), settings.max_book_age_ms)
-                    && required.iter().all(|symbol| metadata.contains_key(symbol));
-                ready_at = ready.then_some(std::time::Instant::now());
-                events.publish("market.health", value);
-                events.publish("engine.observer", json!({"state": if ready {"scanning"} else {"synchronizing"}, "execution_enabled": false}));
+                if lifecycle.recovering {
+                    continue;
+                }
+                feed_health = value;
+                let ready = observer_ready(
+                    &lifecycle,
+                    &routes,
+                    &required,
+                    &scanner,
+                    &receipts,
+                    &feed_health,
+                    now_ms(),
+                    settings.max_book_age_ms,
+                );
+                state = if ready {
+                    "scanning"
+                } else if feed_health["state"] == "connected_but_stale" {
+                    "stale"
+                } else {
+                    "synchronizing"
+                };
+                reason = if ready {
+                    "all metadata, acknowledgements and books ready"
+                } else {
+                    "required observation dependencies incomplete or stale"
+                }
+                .into();
+                events.publish("market.health", feed_health.clone());
             }
             MarketDataEvent::OrderBook {
                 symbol,
@@ -116,9 +225,13 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 sequence,
                 is_snapshot,
             } => {
-                if !metadata.contains_key(&symbol) {
+                if lifecycle.recovering
+                    || !lifecycle.connected
+                    || !lifecycle.metadata.contains_key(&symbol)
+                {
                     continue;
                 }
+                let receipt_symbol = symbol.clone();
                 let records = match scanner.on_book_update(BookUpdate {
                     symbol,
                     bids,
@@ -130,45 +243,114 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 }) {
                     Ok(records) => records,
                     Err(error) => {
-                        ready_at = None;
-                        warn!(%error, "book rejected; waiting for new snapshots");
-                        events.publish("engine.observer", json!({"state":"synchronizing", "reason":error.to_string(), "execution_enabled":false}));
+                        lifecycle.invalidate();
+                        scanner.reset_books();
+                        receipts.clear();
+                        feed_health = Value::Null;
+                        state = "reconnecting";
+                        reason = format!("scanner desynchronized: {error}");
+                        warn!(%error, "scanner requested coordinated snapshot recovery");
+                        if !replay_mode {
+                            let _ = recovery_sender.try_send(());
+                        }
+                        publish_health(&events, state, &reason, generation);
                         continue;
                     }
                 };
-                if ready_at.is_none_or(|at: std::time::Instant| {
-                    at.elapsed().as_millis() > settings.max_book_age_ms as u128
-                }) {
+                receipts.insert(receipt_symbol, std::time::Instant::now());
+                if !observer_ready(
+                    &lifecycle,
+                    &routes,
+                    &required,
+                    &scanner,
+                    &receipts,
+                    &feed_health,
+                    now_ms(),
+                    settings.max_book_age_ms,
+                ) {
                     continue;
                 }
+                state = "scanning";
                 for record in records {
                     events
                         .ensure_critical_ready()
                         .map_err(|error| anyhow!(error.to_string()))?;
-                    let candidate_id = candidate_id(&record);
-                    let accepted = record.status == ScanStatus::Complete
-                        && record.net_profitable == Some(true)
-                        && record
-                            .expected_net_profit
-                            .is_some_and(|profit| profit > 0.0);
-                    let kind = if accepted {
-                        "opportunity.detected"
-                    } else {
-                        "opportunity.rejected"
-                    };
-                    let mut payload = serde_json::to_value(&record)?;
-                    payload["candidate_id"] = Value::String(candidate_id.clone());
-                    payload["evaluation_status"] =
-                        Value::String(if accepted { "observed" } else { "rejected" }.into());
-                    payload["execution_enabled"] = Value::Bool(false);
+                    let (candidate_id, kind, payload) =
+                        candidate_event(&record, &lifecycle.metadata)?;
                     events
-                        .publish_critical_with_id(candidate_id, kind, payload)
+                        .publish_critical_at(candidate_id, kind, record.trigger_timestamp, payload)
                         .map_err(|error| anyhow!("candidate journal unavailable: {error}"))?;
                 }
             }
             _ => {}
         }
+        publish_health(&events, state, &reason, generation);
     }
+}
+
+fn validate_read_only_mode(mode: Option<&str>, live: Option<&str>) -> Result<()> {
+    if mode.unwrap_or("observe") != "observe" || live != Some("false") {
+        bail!("managed observation requires ARB_TRADING_MODE=observe and ARB_LIVE_TRADING_ENABLED=false");
+    }
+    Ok(())
+}
+
+#[derive(Default)]
+struct Lifecycle {
+    generation: u64,
+    metadata: HashMap<String, InstrumentMetadata>,
+    connected: bool,
+    recovering: bool,
+}
+impl Lifecycle {
+    fn begin(&mut self, generation: u64) {
+        self.generation = generation;
+        self.metadata.clear();
+        self.connected = false;
+        self.recovering = false;
+    }
+    fn invalidate(&mut self) {
+        self.metadata.clear();
+        self.connected = false;
+        self.recovering = true;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn observer_ready(
+    lifecycle: &Lifecycle,
+    routes: &TriangleConfig,
+    required: &BTreeSet<String>,
+    scanner: &ArbitrageScanner,
+    receipts: &HashMap<String, std::time::Instant>,
+    feed: &Value,
+    now: u64,
+    max_age: u64,
+) -> bool {
+    lifecycle.connected
+        && !lifecycle.recovering
+        && feed_ready(feed, required, now, max_age)
+        && scanner.books_ready(required, now, max_age)
+        && required.iter().all(|symbol| {
+            receipts
+                .get(symbol)
+                .is_some_and(|at| at.elapsed().as_millis() <= max_age as u128)
+                && lifecycle.metadata.get(symbol).is_some_and(|m| {
+                    validate_instrument(routes, m).is_ok()
+                        && now
+                            .checked_sub(m.timestamp)
+                            .is_some_and(|age| age <= 300_000)
+                })
+        })
+}
+
+fn publish_health(events: &EventPublisher, state: &str, reason: &str, generation: u64) {
+    events.publish(
+        "engine.observer",
+        json!({"state":state, "reason":reason,
+        "generation":generation, "scanner_ready":state == "scanning", "execution_enabled":false,
+        "persistence_state":"local_outbox_accepted_is_not_database_confirmation"}),
+    );
 }
 
 fn replay_allowed(environment: Option<&str>, live_gate: Option<&str>) -> bool {
@@ -256,6 +438,19 @@ fn feed_ready(value: &Value, required: &BTreeSet<String>, now: u64, max_age_ms: 
 }
 
 fn validate_instrument(routes: &TriangleConfig, instrument: &InstrumentMetadata) -> Result<()> {
+    if !routes.required_symbols().contains(&instrument.symbol) {
+        bail!("unexpected instrument {}", instrument.symbol);
+    }
+    for (name, filter) in [
+        ("tickSize", instrument.tick_size),
+        ("basePrecision", instrument.qty_step),
+        ("minOrderAmt", instrument.min_order_amt),
+        ("maxMarketOrderQty", instrument.max_market_order_qty),
+    ] {
+        if !filter.is_some_and(|v| v.is_finite() && v > 0.0) {
+            bail!("{} missing/invalid {name}", instrument.symbol);
+        }
+    }
     if instrument.status != "Trading" {
         bail!("{} is not Trading", instrument.symbol);
     }
@@ -276,16 +471,58 @@ fn validate_instrument(routes: &TriangleConfig, instrument: &InstrumentMetadata)
     Ok(())
 }
 
-fn candidate_id(record: &scanner::ArbitrageScanRecord) -> String {
-    let key = format!(
-        "{}:{}:{}:{}:{}",
-        record.route_id,
-        record.trigger_symbol,
-        record.trigger_timestamp,
-        record.trigger_sequence,
-        record.trigger_update_id
+fn candidate_event(
+    record: &scanner::ArbitrageScanRecord,
+    metadata: &HashMap<String, InstrumentMetadata>,
+) -> Result<(String, &'static str, Value)> {
+    let instruments: serde_json::Map<String, Value> = record
+        .market_versions
+        .iter()
+        .filter_map(|version| {
+            let symbol = version["symbol"].as_str()?;
+            let m = metadata.get(symbol)?;
+            Some((
+                symbol.to_string(),
+                json!({"status":m.status,"base_coin":m.base_coin,"quote_coin":m.quote_coin,
+            "tick_size":m.tick_size,"qty_step":m.qty_step,"min_order_amt":m.min_order_amt,
+            "max_market_order_qty":m.max_market_order_qty}),
+            ))
+        })
+        .collect();
+    let instrument_hash = format!(
+        "{:x}",
+        Sha256::digest(Value::Object(instruments.clone()).to_string().as_bytes())
     );
-    format!("{:x}", Sha256::digest(key.as_bytes()))
+    let identity = json!({"identity_version":2, "route_id":record.route_id,
+        "configuration_hash":record.configuration_hash, "strategy_version":record.strategy_version,
+        "trigger_symbol":record.trigger_symbol, "trigger_timestamp":record.trigger_timestamp,
+        "trigger_sequence":record.trigger_sequence, "trigger_update_id":record.trigger_update_id,
+        "market_versions":record.market_versions,"instrument_config_hash":instrument_hash});
+    let candidate_id = format!("{:x}", Sha256::digest(identity.to_string().as_bytes()));
+    let accepted = record.status == ScanStatus::Complete
+        && record.net_profitable == Some(true)
+        && record
+            .expected_net_profit
+            .is_some_and(|profit| profit > 0.0);
+    let mut payload = serde_json::to_value(record)?;
+    // Canonical market time drives the journal; processing time is separate audit metadata.
+    payload["scan_timestamp"] = json!(record.trigger_timestamp);
+    payload["processing"] = json!({"processed_at_ms":record.scan_timestamp});
+    payload["candidate_id"] = json!(candidate_id);
+    payload["instrument_config_hash"] = json!(instrument_hash);
+    payload["instrument_filters"] = Value::Object(instruments);
+    payload["identity_version"] = json!(2);
+    payload["evaluation_status"] = json!(if accepted { "observed" } else { "rejected" });
+    payload["execution_enabled"] = json!(false);
+    Ok((
+        candidate_id,
+        if accepted {
+            "opportunity.detected"
+        } else {
+            "opportunity.rejected"
+        },
+        payload,
+    ))
 }
 
 fn now_ms() -> u64 {
@@ -341,5 +578,50 @@ mod tests {
         assert!(!replay_allowed(Some("development"), None));
         assert!(!replay_allowed(Some("development"), Some("true")));
         assert!(!replay_allowed(Some("production"), Some("false")));
+    }
+    #[test]
+    fn managed_mode_rejects_execution_or_implicit_live_permission() {
+        assert!(validate_read_only_mode(None, Some("false")).is_ok());
+        for mode in ["live", "micro_live", "paper", "testnet"] {
+            assert!(validate_read_only_mode(Some(mode), Some("false")).is_err());
+        }
+        assert!(validate_read_only_mode(Some("observe"), None).is_err());
+        assert!(validate_read_only_mode(Some("observe"), Some("true")).is_err());
+    }
+
+    #[test]
+    fn reconnect_invalidates_metadata_before_connected_event() {
+        let mut lifecycle = Lifecycle::default();
+        lifecycle.begin(1);
+        let instrument = InstrumentMetadata {
+            symbol: "BTCUSDT".into(),
+            status: "Trading".into(),
+            base_coin: "BTC".into(),
+            quote_coin: "USDT".into(),
+            settle_coin: None,
+            tick_size: Some(0.01),
+            qty_step: Some(0.001),
+            min_order_qty: None,
+            min_order_amt: Some(5.),
+            max_market_order_qty: Some(100.),
+            timestamp: 1000,
+        };
+        lifecycle
+            .metadata
+            .insert(instrument.symbol.clone(), instrument.clone());
+        lifecycle.connected = true;
+        lifecycle.invalidate();
+        assert!(lifecycle.metadata.is_empty());
+        assert!(!lifecycle.connected);
+        lifecycle.begin(2);
+        lifecycle
+            .metadata
+            .insert(instrument.symbol.clone(), instrument);
+        // Connected messages only acknowledge this generation, never erase its metadata.
+        lifecycle.connected = true;
+        assert_eq!(lifecycle.metadata.len(), 1);
+        lifecycle.invalidate();
+        assert!(lifecycle.recovering);
+        assert!(lifecycle.metadata.is_empty());
     }
 }

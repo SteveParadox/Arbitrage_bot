@@ -64,11 +64,18 @@ def _observer_status(db: Session) -> dict[str, Any]:
     age = int(datetime.now(UTC).timestamp() * 1000) - event.occurred_at_ms
     payload = event.payload if isinstance(event.payload, dict) else {}
     state = payload.get("state")
-    if state not in {"connecting", "synchronizing", "scanning"}:
+    if state not in {"offline", "connecting", "synchronizing", "scanning", "degraded",
+                     "reconnecting", "stale", "failed"}:
         state = "unknown"
     if age < 0 or age > settings.arb_health_event_max_age_ms:
         state = "stale"
-    return {"state": state, "execution_enabled": False, "age_ms": age}
+    if state == "scanning" and age > settings.arb_market_data_max_age_ms:
+        state = "stale"
+    if state == "scanning" and payload.get("scanner_ready") is not True:
+        state = "degraded"
+    return {"state": state, "execution_enabled": False, "age_ms": age,
+            "scanner_ready": state == "scanning", "reason": payload.get("reason"),
+            "generation": payload.get("generation")}
 
 
 def _market_data_status(db: Session) -> dict[str, Any]:
