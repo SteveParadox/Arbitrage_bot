@@ -6,9 +6,9 @@
 - Original PR: #2, `audit/end-to-end-2026-10-01`, head `19cd13a9ae49dc916c9c1e51139bf31ea96a7316`.
 - Inspected main and integration base: `26ad6f2a503703b5b4f38b3b88b8a262b75b8c5b` (re-fetched after implementation; unchanged).
 - Original merge base: `f17ef7dab86f3342540bbaa08e10376629979db8`; PR contains 20 commits, 12 changed files, 423 additions and 52 deletions. The complete patch, history, comments, reviews and checks were inspected. No review submissions or outstanding discussion comments were present. The draft PR is conflicted against current main.
-- Replacement branch: `audit/pr2-critical-integration`, built from latest main; no collaborator branch was rewritten.
+- Replacement PR: [#6](https://github.com/SteveParadox/Arbitrage_bot/pull/6), open and without merge conflicts. Branch: `audit/pr2-critical-integration`, built from latest main; no collaborator branch was rewritten.
 - PR #2 is superseded by the replacement implementation. Its branch and review history are preserved pending the replacement merge.
-- Merge: **not performed**. There is no merge SHA. GitHub Actions on the inspected main failed before any steps ran: “The job was not started because your account is locked due to a billing issue.” Main workflow run: [37336708566](https://github.com/SteveParadox/Arbitrage_bot/actions/runs/37336708566).
+- Merge: **not performed**. There is no merge SHA. GitHub Actions on the inspected main failed before any steps ran: “The job was not started because your account is locked due to a billing issue.” Main workflow run: [37336708566](https://github.com/SteveParadox/Arbitrage_bot/actions/runs/37336708566). All six replacement PR jobs also failed with zero steps and the same billing annotation: [38026915065](https://github.com/SteveParadox/Arbitrage_bot/actions/runs/38026915065). The additional Ubuntu runner migration notice is informational.
 - Resolve the GitHub billing lock, rerun every check on the replacement head, inspect any CI failures and current main changes, and satisfy the remaining merge gates before merging. Local success does not substitute for GitHub checks. No branch-protection or security check was bypassed.
 
 ## Correction matrix
@@ -61,13 +61,13 @@ Validation used Python 3.12.14, stable Rust 1.99.0, Node tooling, PostgreSQL 16.
 | Redis publisher outage/restart tests (--ignored) | Both passed |
 | Alembic empty database -> head; 0007 -> 0006; 0006 -> head | All passed against PostgreSQL 16 |
 | Shared backend/frontend API schema exports | Passed in Python suite |
-| Frontend npm run lint (tsc --noEmit) | Passed |
+| Frontend npm ci and npm run lint (ESLint) | Passed |
 | Frontend npm test | 5 passed |
 | Frontend npm run build | TypeScript and production Vite build passed |
 | scripts/check_profitability_parity.py | Passed |
 | Compose duplicate-key/schema structure regression | Passed |
 | Git diff whitespace/conflict check | Passed |
-| GitHub CI | Blocked/failed before execution on inspected main by account billing lock; replacement result tracked in PR |
+| GitHub CI | All six replacement PR jobs failed before execution due to account billing lock; no local test failure is inferred from that result |
 
 A FastAPI/Starlette httpx deprecation warning remains; it did not fail tests. No failing local checks remain at publication.
 
