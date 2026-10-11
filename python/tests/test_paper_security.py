@@ -91,6 +91,9 @@ def test_forged_tokens_share_source_quota(secured, monkeypatch):
 
 def production(monkeypatch):
     monkeypatch.setenv("ARB_LIVE_TRADING_ENABLED", "false")
+    for name in ("ARB_OBSERVER_REPLAY_FILE", "ARB_PAPER_CRASH_AT", "ARB_PAPER_CRASH_AFTER_LEG",
+                 "ARB_TEST_GRPC_RESPONSE_DELAY_MS", "ARB_REPLAY_CLOCK", "BYBIT_API_KEY", "BYBIT_API_SECRET"):
+        monkeypatch.delenv(name, raising=False)
     return dict(_env_file=None, arb_env="production", arb_trading_mode="paper",
                 arb_control_api_token=ADMIN, arb_engine_grpc_token="grpc-"+"g"*40,
                 arb_cors_origins="https://dashboard.example.org", arb_trusted_hosts="api.example.org",
@@ -113,6 +116,16 @@ def test_production_rejects_unsafe_configuration(monkeypatch, override):
 
 def test_production_accepts_explicit_paper_configuration(monkeypatch):
     assert Settings(**production(monkeypatch)).arb_live_trading_enabled is False
+
+
+@pytest.mark.parametrize("name,value", [("ARB_OBSERVER_REPLAY_FILE", "fixture.jsonl"),
+    ("ARB_PAPER_CRASH_AT", "after_intent"), ("ARB_PAPER_CRASH_AFTER_LEG", "1"),
+    ("ARB_TEST_GRPC_RESPONSE_DELAY_MS", "100"), ("ARB_REPLAY_CLOCK", "virtual")])
+def test_production_rejects_development_hooks(monkeypatch, name, value):
+    config=production(monkeypatch)
+    monkeypatch.setenv(name,value)
+    with pytest.raises(ValidationError,match="development replay and fault hooks forbidden"):
+        Settings(**config)
 
 
 def test_invalid_grants_and_secrets_are_not_echoed(monkeypatch):

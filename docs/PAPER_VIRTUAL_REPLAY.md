@@ -16,11 +16,31 @@ EOF disables execution, reconciles PostgreSQL, requires no pending financial wor
 
 Account clock mode is persisted in existing JSON config and immutable. Restart restores committed financial time, applies existing fenced recovery, disables spending and quarantines historical replay rather than replaying liquidity over existing fills. Use a fresh account for a repeat. No schema migration is required. ARB_PAPER_STATE_DIR allows account-isolated persistent risk/control files.
 
-## Validation status
+## Historical reconstruction status
 
 This checkpoint was reconstructed after the temporary environment reset twice. The prior local reconstruction passed format, strict Clippy, 106 Rust tests and 18 frontend tests; those results are historical and are not a final test attestation for this published checkpoint. Its first financial integration run passed 51 tests and failed four new tests: three decimal-string scale assertions and one refresh-fixture trigger error. The assertions now compare exact Decimal values, and the trigger explicitly references the book before metadata refresh. A rerun was interrupted by the environment reset; no result is claimed.
 
 The new regression suite covers repeated profitable/loss/partial replays with pg_sleep order delays, 25/50/100/200/500ms logical latency, crash quarantine, malformed schedules, same-time market/fill ordering and 310 logical cycles with metadata refresh. Final validation results will be recorded separately.
+
+## Published continuation
+
+`3a587d7cf2f251eaef7fa9606c7b4ee964e2565e` delivers the continued clock,
+security and crash coverage work. Account clock configuration is scoped to its
+account ID. Replay EOF uses a bounded hashed critical-event ID. Durable outbox
+JSON uses exact float round-trip parsing, preventing false identity conflicts
+while continuing to reject changed payloads with the same ID.
+
+After reproducing off-tick floating-point artifacts in the synthetic generator,
+price increments are calculated with Decimal. The unchanged paper precision
+filter correctly rejected those malformed fixture prices; it is not relaxed.
+The corrected virtual suite passed **17 tests in 197.92 seconds**, including
+all **310 completed cycles**, independently reconciled from all persisted rows.
+This is accelerated logical-time evidence, not a long-duration wall-time soak.
+
+Account-scoped authorization, distributed quotas, emergency-stop availability,
+body bounds, production startup checks and secret-file support are now delivered.
+See [PAPER_SECURITY.md](PAPER_SECURITY.md) for the actual configuration and
+remaining deployment acceptance, not a production-security certification.
 
 ## Reproduction
 
@@ -43,9 +63,9 @@ Also provide ARB_DATABASE_URL, ARB_REDIS_URL and separate strong ARB_CONTROL_API
 
 1. Validate the exact published clock head, resolve all failures and publish independent persisted traces.
 2. Extend and run the fault matrix: every leg/transaction crash boundary, cancellation/fill races, concurrent recovery, real disk-full/outbox failure, reordered messages and infrastructure outages.
-3. Restore/validate production security hardening: tenant-scoped viewer/operator/admin permissions, distributed fail-closed limits with emergency-stop availability, bounded requests, secret files, restricted PostgreSQL roles, host/origin/TLS controls and non-root deployment. Those earlier unpushed changes were lost; they are not delivered by this clock checkpoint.
+3. Validate deployed production security: the tenant permissions, distributed limits, body bounds, secret files and startup role checks are implemented. TLS/proxy trust, secret rotation, least-privilege ACLs, private networks and non-root/volume acceptance remain unverified.
 4. Start the real Docker stack; verify migrations, persistent state paths, health checks, graceful shutdown and restart under active cycles. Validate public Bybit metadata/session separately.
-5. Implement persistent soak diagnostics and periodic independent whole-ledger checks; run measured real-time 30-minute, multi-hour, then 24-hour profiles with active restarts, resources/backlog/accounting recorded. Accelerated logical time is not wall-time stability evidence.
+5. Persistent soak samples and independent whole-ledger checks are implemented in scripts/run_paper_soak.py. Validate them, then run measured real-time 30-minute, multi-hour, then 24-hour profiles with active restarts, resources/backlog/accounting recorded. The current CLI supports bounded runs up to one hour per profile; longer restart-aware orchestration still needs implementation. Accelerated logical time is not wall-time stability evidence.
 6. Rerun full Rust/Python/frontend, PostgreSQL/Redis/gRPC reliability, migrations and browser checks on final PR head. Keep draft while critical/high findings or acceptance blockers remain.
 
 Real private Bybit execution, exchange-confirmed fills, live balance reconciliation and production stability are not verified. Live trading stays disabled; no merge is authorized by this task.

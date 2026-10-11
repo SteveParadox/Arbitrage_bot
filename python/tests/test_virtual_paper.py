@@ -11,7 +11,7 @@ import psycopg
 import pytest
 from paper_reference import read_snapshot, verify
 from test_autonomous_paper import ROOT, URL, create, enable, fixture, sql, start_engine, stop, wait
-pytest_plugins = ("test_autonomous_paper",)
+from test_autonomous_paper import api as api
 pytestmark = pytest.mark.skipif(os.getenv("ARB_RUN_PAPER_INTEGRATION") != "1", reason="requires disposable PostgreSQL, Redis and actual Rust runtime")
 
 def frozen_fixture(directory, scenario="profitable"):

@@ -112,9 +112,14 @@ def main():
                                             snapshot = read_snapshot(connection, account)
                                             verified = verify(snapshot)
                                             event_count = connection.execute("SELECT count(*) FROM paper_events WHERE account_id=%s", (account,)).fetchone()[0]
-                                        memory = Path(f"/proc/{engine.pid}/status").read_text()
-                                        resources = {line.split(":",1)[0]:line.split(":",1)[1].strip()
-                                                     for line in memory.splitlines() if line.startswith(("VmRSS:", "VmSize:", "Threads:"))}
+                                        try:
+                                            memory = Path(f"/proc/{engine.pid}/status").read_text()
+                                            resources = {line.split(":",1)[0]:line.split(":",1)[1].strip()
+                                                         for line in memory.splitlines() if line.startswith(("VmRSS:", "VmSize:", "Threads:"))}
+                                        except OSError as error:
+                                            # Some sandboxes expose a different PID namespace in /proc.
+                                            # Financial verification remains mandatory; metrics aren't invented.
+                                            resources = {"available":False,"source":"procfs","errno":error.errno}
                                         with Redis.from_url(os.environ["ARB_REDIS_URL"], socket_timeout=2) as redis:
                                             stream = redis.xinfo_stream("arb.paper.soak.api") if redis.exists("arb.paper.soak.api") else {}
                                         samples.append({"elapsed_seconds":time.monotonic()-started,
