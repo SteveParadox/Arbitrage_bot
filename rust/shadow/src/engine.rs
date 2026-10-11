@@ -966,6 +966,7 @@ mod tests {
     fn risk_engine() -> RiskEngine {
         let base = std::env::temp_dir().join(format!("shadow-risk-{}", std::process::id()));
         let config = RiskConfig {
+            paper_portfolio_limits: Default::default(),
             version: 1,
             max_market_data_age_ms: 500,
             min_net_edge_bps: d("0"),

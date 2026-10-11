@@ -92,6 +92,7 @@ fn risk_config(name: &str) -> RiskConfig {
     )
     .unwrap();
     RiskConfig {
+        paper_portfolio_limits: Default::default(),
         version: 1,
         max_market_data_age_ms: 500,
         min_net_edge_bps: d("5"),

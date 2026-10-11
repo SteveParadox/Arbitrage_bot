@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    path::Path,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, path::Path};
 
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -42,6 +38,22 @@ impl RiskEngine {
         now_ms: u64,
     ) -> Result<RiskDecision, RiskError> {
         self.evaluate_internal(intent, context, now_ms, true)
+    }
+
+    pub fn evaluate_with_portfolio(
+        &mut self,
+        intent: &TradeIntent,
+        context: &RiskContext,
+        stats: &crate::PortfolioStats,
+        now_ms: u64,
+    ) -> Result<RiskDecision, RiskError> {
+        let mut checks = portfolio_checks(&self.config.paper_portfolio_limits, stats);
+        if checks.iter().any(|c| !c.passed) {
+            return Ok(rejected(intent, checks));
+        }
+        let mut decision = self.evaluate(intent, context, now_ms)?;
+        decision.checks.append(&mut checks);
+        Ok(decision)
     }
 
     pub fn preview(
@@ -607,10 +619,7 @@ impl RiskEngine {
 }
 
 pub fn current_time_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    runtime_clock::now_ms()
 }
 
 fn load_state(path: &Path) -> Result<PersistentRiskState, RiskError> {
@@ -747,6 +756,40 @@ fn runtime_decimal(field: &str, raw: Option<&str>, default: Decimal) -> Result<D
     }
 }
 
+/// Shared checks used before approval and again under the capital transaction lock.
+pub fn portfolio_checks(
+    limits: &crate::PortfolioLimits,
+    stats: &crate::PortfolioStats,
+) -> Vec<RiskCheckResult> {
+    vec![
+        check(
+            RiskCheck::MaximumAssetExposure,
+            stats.projected_asset_exposure >= Decimal::ZERO
+                && stats.projected_asset_exposure <= limits.max_asset_exposure,
+            format!(
+                "projected per-asset upper bound={}, maximum={}",
+                stats.projected_asset_exposure, limits.max_asset_exposure
+            ),
+        ),
+        check(
+            RiskCheck::MaximumDrawdown,
+            stats.drawdown >= Decimal::ZERO && stats.drawdown < limits.max_drawdown,
+            format!(
+                "closed-equity drawdown={}, maximum={}",
+                stats.drawdown, limits.max_drawdown
+            ),
+        ),
+        check(
+            RiskCheck::ConsecutiveLosses,
+            stats.consecutive_losses < limits.max_consecutive_losses,
+            format!(
+                "consecutive closed losses={}, maximum={}",
+                stats.consecutive_losses, limits.max_consecutive_losses
+            ),
+        ),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -774,6 +817,7 @@ mod tests {
         fs::create_dir_all(trading_control_file.parent().unwrap()).unwrap();
         fs::write(&trading_control_file, serde_json::to_vec(&serde_json::json!({"version":1,"enabled":true,"updated_at":chrono::Utc::now().to_rfc3339(),"reason":"test enabled","source":"rust_grpc_control"})).unwrap()).unwrap();
         RiskConfig {
+            paper_portfolio_limits: Default::default(),
             version: 1,
             max_market_data_age_ms: 500,
             min_net_edge_bps: d("5"),
@@ -1194,5 +1238,21 @@ mod tests {
             .validate_approval(&approval, "trade-1", now + 101)
             .unwrap_err();
         assert!(matches!(error, RiskError::GateClosed(_)));
+    }
+    #[test]
+    fn portfolio_limits_reject_drawdown_asset_exposure_and_loss_streak() {
+        let limits = crate::PortfolioLimits::default();
+        let mut stats = crate::PortfolioStats {
+            projected_asset_exposure: d("100"),
+            drawdown: Decimal::ZERO,
+            consecutive_losses: 0,
+        };
+        assert!(portfolio_checks(&limits, &stats).iter().all(|c| c.passed));
+        stats.drawdown = d("50");
+        assert!(!portfolio_checks(&limits, &stats)[1].passed);
+        stats.projected_asset_exposure = d("1001");
+        assert!(!portfolio_checks(&limits, &stats)[0].passed);
+        stats.consecutive_losses = 3;
+        assert!(!portfolio_checks(&limits, &stats)[2].passed);
     }
 }

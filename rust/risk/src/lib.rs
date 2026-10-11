@@ -3,12 +3,12 @@ pub mod control;
 mod engine;
 mod model;
 
-pub use config::{load_risk_config, RiskConfig};
-pub use engine::{current_time_ms, RiskEngine};
+pub use config::{load_risk_config, PortfolioLimits, RiskConfig};
+pub use engine::{current_time_ms, portfolio_checks, RiskEngine};
 pub use model::{
-    BreakerKind, CircuitBreakerState, EmergencyUnwindIntent, ProposedOrderLeg, RiskApproval,
-    RiskApprovalKind, RiskCheck, RiskCheckResult, RiskContext, RiskDecision, RiskStatus,
-    ServiceHealth, SymbolRules, TradeIntent,
+    BreakerKind, CircuitBreakerState, EmergencyUnwindIntent, PortfolioStats, ProposedOrderLeg,
+    RiskApproval, RiskApprovalKind, RiskCheck, RiskCheckResult, RiskContext, RiskDecision,
+    RiskStatus, ServiceHealth, SymbolRules, TradeIntent,
 };
 
 use thiserror::Error;

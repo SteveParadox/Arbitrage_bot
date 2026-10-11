@@ -480,6 +480,7 @@ fn normalize_instrument(
                 .or(filter.qty_step.as_deref())
         }))?,
         min_order_qty: parse_optional(lot.and_then(|filter| filter.min_order_qty.as_deref()))?,
+        quote_precision: parse_optional(lot.and_then(|filter| filter.quote_precision.as_deref()))?,
         min_order_amt: parse_optional(lot.and_then(|filter| filter.min_order_amt.as_deref()))?,
         max_market_order_qty: parse_optional(
             lot.and_then(|filter| filter.max_market_order_qty.as_deref()),

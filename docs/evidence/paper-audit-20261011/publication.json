@@ -1,0 +1,12 @@
+{
+  "main_sha": "5528b27d23f82c9b9e4137d88ac772149b5cbb36",
+  "initial_pr_head": "08bf8a7ad2d3b6ac0d38536dbcaefe17817f9af0",
+  "tested_local_correction_sha": "9790510fc4f03170028afa7bf8f9d1f9937f3cac",
+  "published_correction_sha": "211b5b695fc70c6a979710b93431210ed8b66a35",
+  "correction_tree_sha": "da3a58b66b072ebdcce3c9418762b693306fb6ec",
+  "pr_url": "https://github.com/SteveParadox/Arbitrage_bot/pull/9",
+  "publication_branch": "codex/autonomous-paper-trading-engine",
+  "final_head_note": "The final PR head is a documentation/evidence-only child of the published correction SHA; its exact SHA is recorded in the PR description and delivery response.",
+  "live_trading_enabled": false,
+  "merge_ready": false
+}

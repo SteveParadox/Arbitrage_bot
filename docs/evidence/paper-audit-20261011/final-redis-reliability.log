@@ -1,0 +1,48 @@
+   Compiling syn v3.0.7
+   Compiling smallvec v1.16.3
+   Compiling typenum v1.20.1
+   Compiling serde_core v1.0.229
+   Compiling memchr v2.8.3
+   Compiling form_urlencoded v1.2.2
+   Compiling getrandom v0.4.3
+   Compiling syn v2.0.119
+   Compiling tracing-core v0.1.36
+   Compiling uuid v1.28.0
+   Compiling combine v4.6.8
+   Compiling generic-array v0.14.7
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.9
+   Compiling synstructure v0.14.0
+   Compiling serde_json v1.0.151
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling serde_derive v1.0.229
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling tracing-attributes v0.1.31
+   Compiling serde v1.0.229
+   Compiling tracing v0.1.44
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling redis v0.27.6
+   Compiling event-bus v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/event-bus)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.27s
+     Running unittests src/lib.rs (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/target/debug/deps/event_bus-debb814781da4dcd)
+
+running 3 tests
+test tests::redis_backlog_never_trims_pending_critical_events ... ok
+test tests::redis_pause_preserves_critical_event_and_recovers ...

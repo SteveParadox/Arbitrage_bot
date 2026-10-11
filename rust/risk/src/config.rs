@@ -6,11 +6,28 @@ use std::{
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PortfolioLimits {
+    pub max_asset_exposure: Decimal,
+    pub max_drawdown: Decimal,
+    pub max_consecutive_losses: usize,
+}
+impl Default for PortfolioLimits {
+    fn default() -> Self {
+        Self {
+            max_asset_exposure: Decimal::from(1000),
+            max_drawdown: Decimal::from(50),
+            max_consecutive_losses: 3,
+        }
+    }
+}
+
 use crate::RiskError;
 
 #[derive(Debug, Clone)]
 pub struct RiskConfig {
     pub version: u32,
+    pub paper_portfolio_limits: PortfolioLimits,
     pub max_market_data_age_ms: u64,
     pub min_net_edge_bps: Decimal,
     pub max_slippage_bps: Decimal,
@@ -33,6 +50,8 @@ pub struct RiskConfig {
 #[derive(Debug, Deserialize)]
 struct RiskConfigFile {
     version: u32,
+    #[serde(default)]
+    paper_portfolio_limits: PortfolioLimits,
     max_market_data_age_ms: u64,
     min_net_edge_bps: String,
     max_slippage_bps: String,
@@ -59,6 +78,7 @@ pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError>
 
     let config = RiskConfig {
         version: file.version,
+        paper_portfolio_limits: file.paper_portfolio_limits,
         max_market_data_age_ms: file.max_market_data_age_ms,
         min_net_edge_bps: parse_decimal("min_net_edge_bps", &file.min_net_edge_bps)?,
         max_slippage_bps: parse_decimal("max_slippage_bps", &file.max_slippage_bps)?,
@@ -83,6 +103,14 @@ pub fn load_risk_config(path: impl AsRef<Path>) -> Result<RiskConfig, RiskError>
 
 impl RiskConfig {
     pub fn validate(&self) -> Result<(), RiskError> {
+        if self.paper_portfolio_limits.max_asset_exposure <= Decimal::ZERO
+            || self.paper_portfolio_limits.max_drawdown <= Decimal::ZERO
+            || self.paper_portfolio_limits.max_consecutive_losses == 0
+        {
+            return Err(RiskError::InvalidConfig(
+                "portfolio limits must be positive".into(),
+            ));
+        }
         if self.version != 1 {
             return Err(RiskError::InvalidConfig(format!(
                 "unsupported risk config version {}",

@@ -1,0 +1,39 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> arbitrage-bot-dashboard@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.3 /workspace/scratch/029697e70c9a/Arbitrage_bot/frontend
+
+ ❯ tests/paper.test.tsx (5 tests | 1 failed) 126ms
+   × does not restore an account after disconnecting with a refresh in flight 41ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/paper.test.tsx > does not restore an account after disconnecting with a refresh in flight
+AssertionError: expected <button></button> to be null
+
+- Expected:
+null
+
++ Received:
+<button>
+  Start paper trading
+</button>
+
+ ❯ tests/paper.test.tsx:66:53
+     64|   // Let every completion handler run before checking for stale contro…
+     65|   await new Promise(resolve => setTimeout(resolve, 20));
+     66|   expect(screen.queryByText("Start paper trading")).toBeNull();
+       |                                                     ^
+     67| });
+     68|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 17 passed (18)
+   Start at  11:18:15
+   Duration  1.12s (environment 56%, tests 18%, import 16%, transform 10%, worker 1%)

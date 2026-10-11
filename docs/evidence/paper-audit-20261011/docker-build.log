@@ -1,0 +1,2 @@
+time="2026-10-11T11:28:50+01:00" level=warning msg="Docker Compose is configured to build using Bake, but buildx isn't installed"
+permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Head "http://%2Fvar%2Frun%2Fdocker.sock/_ping": dial unix /var/run/docker.sock: socket: operation not permitted

@@ -261,7 +261,12 @@ def test_lost_response_redis_outage_and_database_duplicate_are_safe() -> None:
                 timeout=0.05,
             )
         )
-    assert error.value.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+    # Tonic / grpcio versions may surface the expired deadline as a server cancellation.
+    # Accept only the specific timeout cancellation, never an unrelated CANCELLED result.
+    assert error.value.code() == grpc.StatusCode.DEADLINE_EXCEEDED or (
+        error.value.code() == grpc.StatusCode.CANCELLED
+        and error.value.details() == "Timeout expired"
+    )
 
     retry = asyncio.run(
         _raw_reload(

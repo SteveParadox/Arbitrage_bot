@@ -1,0 +1,22 @@
+   Compiling event-bus v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/event-bus)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.61s
+     Running unittests src/lib.rs (rust/target/debug/deps/event_bus-fe222396a0335f32)
+
+running 1 test
+test tests::persisted_float_payload_retries_without_false_identity_conflict ... FAILED
+
+failures:
+
+---- tests::persisted_float_payload_retries_without_false_identity_conflict stdout ----
+
+thread 'tests::persisted_float_payload_retries_without_false_identity_conflict' (207) panicked at event-bus/src/lib.rs:1212:43:
+called `Result::unwrap()` on an `Err` value: EventPublishError { detail: "conflicting critical event_id in durable outbox" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::persisted_float_payload_retries_without_false_identity_conflict
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p event-bus --lib`

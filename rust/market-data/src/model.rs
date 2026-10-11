@@ -66,6 +66,8 @@ pub struct InstrumentMetadata {
     /// Spot orders are checked against this quote-currency minimum. Bybit
     /// deprecates spot minOrderQty in favor of minOrderAmt.
     pub min_order_amt: Option<f64>,
+    #[serde(default)]
+    pub quote_precision: Option<f64>,
     pub max_market_order_qty: Option<f64>,
     pub timestamp: u64,
 }
@@ -168,6 +170,7 @@ pub(crate) struct PriceFilter {
 pub(crate) struct LotSizeFilter {
     pub qty_step: Option<String>,
     pub base_precision: Option<String>,
+    pub quote_precision: Option<String>,
     pub min_order_amt: Option<String>,
     pub max_market_order_qty: Option<String>,
     pub min_order_qty: Option<String>,

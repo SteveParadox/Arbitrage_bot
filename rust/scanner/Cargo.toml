@@ -5,6 +5,7 @@ edition.workspace = true
 autobins = false
 
 [dependencies]
+runtime-clock = { path = "../runtime-clock" }
 anyhow.workspace = true
 event-bus = { path = "../event-bus" }
 orderbook = { path = "../orderbook" }

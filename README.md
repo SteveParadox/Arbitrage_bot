@@ -43,6 +43,12 @@ The Phase 1-8 technical audit is available in [docs/AUDIT_REPORT_2026-09-30.md](
 - [Contributing](#contributing)
 - [Disclaimer](#disclaimer)
 
+## Autonomous paper execution
+
+The managed Rust engine now connects observation to the existing risk engine and three-leg coordinator through a paper-only venue. PostgreSQL atomically reserves virtual capital, journals actual simulated fills, settles/reconciles balances, and records closed-cycle P&L. Restart recovery preserves unresolved assets and disables new exposure. FastAPI and the dashboard expose the separate paper lifecycle.
+
+Defaults remain observation-only, paper disabled, live disabled and autostart disabled. Paper requires explicit deployment flags **and** an authenticated account start. No exchange credentials or real orders are used. Read [autonomous paper startup and accounting](docs/AUTONOMOUS_PAPER.md) and [actual validation evidence and remaining gates](docs/AUTONOMOUS_PAPER_VALIDATION.md). Historical Python paper replay remains a separate research tool.
+
 ## What the project does
 
 Triangular arbitrage evaluates a closed conversion cycle across three spot markets. A simple route is:

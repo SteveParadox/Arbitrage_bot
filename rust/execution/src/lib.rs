@@ -38,6 +38,12 @@ impl PreparedExecution {
         self.mode
     }
 
+    pub fn revalidate(&self, risk: &mut RiskEngine, now: u64) -> Result<(), RiskError> {
+        risk.validate_approval(&self.approval, &self.trade_id, now)
+    }
+    pub fn is_risk_reducing(&self) -> bool {
+        self.approval.kind() == risk::RiskApprovalKind::EmergencyUnwind
+    }
     pub fn risk_approved_at_ms(&self) -> u64 {
         self.risk_approved_at_ms
     }

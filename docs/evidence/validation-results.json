@@ -1,0 +1,41 @@
+{
+  "recorded_at": "2026-10-11T06:36:28.359532+00:00",
+  "code_commit": "63ad9a5",
+  "base_commit": "5528b27d23f82c9b9e4137d88ac772149b5cbb36",
+  "deployed_binary_sha256": "0f7f5b58134f9156932e7f8d8d58452a9ac9dcd4272aa86bdbbef82666bd0693",
+  "rust": {
+    "passed": 101,
+    "failed": 0,
+    "ignored_in_workspace_run": 3,
+    "format": "passed",
+    "clippy_all_features_warnings_denied": "passed",
+    "build": "passed"
+  },
+  "python": {
+    "passed": 250,
+    "failed": 0,
+    "skipped": 0,
+    "paper_service_integration_cases": 31,
+    "ruff": "passed",
+    "warning": "Starlette TestClient httpx deprecation"
+  },
+  "frontend": {
+    "passed": 17,
+    "failed": 0,
+    "skipped": 0,
+    "lint": "passed",
+    "production_build": "passed"
+  },
+  "redis_explicit_ignored_tests": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0
+  },
+  "migration_upgrade_rollback_reupgrade": "passed",
+  "docker": "blocked: daemon socket operation not permitted; image build unavailable",
+  "public_bybit_feed": "not verified: attempted mainnet/testnet instrument fetches failed",
+  "authenticated_exchange_orders": "never attempted",
+  "soak_source": "synthetic executable-depth fixtures",
+  "multi_hour_soak": "not performed",
+  "github_actions": "not used as validation evidence"
+}

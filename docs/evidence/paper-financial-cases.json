@@ -1,0 +1,1974 @@
+{
+  "simulated": true,
+  "source": "actual deterministic integration records in isolated PostgreSQL",
+  "cases": {
+    "profitable": {
+      "cycle": {
+        "id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+        "account_id": "test-fb7f51ebe864",
+        "candidate_id": "32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "COMPLETED",
+        "holdings": {
+          "BTC": "0.00000",
+          "ETH": "0.000000",
+          "USDT": "119.640350000"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=9ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 1,
+                  "timestamp": 1791700275632,
+                  "update_id": 1,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 2,
+                  "timestamp": 1791700275632,
+                  "update_id": 2,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 4,
+                  "timestamp": 1791700275632,
+                  "update_id": 4,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791700275633,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 1,
+                "timestamp": 1791700275632,
+                "update_id": 1
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 2,
+                "timestamp": 1791700275632,
+                "update_id": 2
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 4,
+                "timestamp": 1791700275632,
+                "update_id": 4
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 4,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791700275632,
+            "trigger_update_id": 4,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "357d84f4402739047ca11523bc6a4d9d69195ed8adb00b80cc4aa1580ccd2309",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791700275632,
+            "oldest_book_timestamp": 1791700275632,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "19.640350000",
+        "cash_delta": "19.640350000",
+        "failure_reason": null,
+        "created_at": "2026-10-11 10:01:15.641890+03:30",
+        "completed_at": "2026-10-11 10:01:15.830346+03:30"
+      },
+      "orders": [
+        {
+          "id": "arb-9ffca99c27dfbc7a625d-l10",
+          "cycle_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791700275632:1:1",
+              "timestamp": 1791700275632
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791700275632:1:1",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791700275708,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:15.651740+03:30",
+          "completed_at": "2026-10-11 10:01:15.708410+03:30"
+        },
+        {
+          "id": "arb-9ffca99c27dfbc7a625d-l20",
+          "cycle_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+          "intent": {
+            "to": "ETH",
+            "from": "BTC",
+            "side": "Buy",
+            "symbol": "ETHBTC",
+            "cycle_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+            "quantity": "19.980",
+            "simulated": true,
+            "leg_number": 2,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "0.05",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.049",
+                  "100"
+                ]
+              ],
+              "version": "ETHBTC:1791700275632:2:2",
+              "timestamp": 1791700275632
+            }
+          },
+          "result": {
+            "fee": "0.019980",
+            "price": "0.05",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.980",
+            "remaining": "0.000",
+            "requested": "19.980",
+            "quote_value": "0.99900",
+            "book_version": "ETHBTC:1791700275632:2:2",
+            "fee_currency": "ETH",
+            "executed_at_ms": 1791700275767,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "0.05"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:15.713980+03:30",
+          "completed_at": "2026-10-11 10:01:15.768060+03:30"
+        },
+        {
+          "id": "arb-9ffca99c27dfbc7a625d-l30",
+          "cycle_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+          "intent": {
+            "to": "USDT",
+            "from": "ETH",
+            "side": "Sell",
+            "symbol": "ETHUSDT",
+            "cycle_id": "test-fb7f51ebe864:32c509d2e4f665b4a8a1d9f650b38ff6a20f2cc9bb6b1ad607cc458a42525234",
+            "quantity": "19.960020",
+            "simulated": true,
+            "leg_number": 3,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "6.1",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "6",
+                  "100"
+                ]
+              ],
+              "version": "ETHUSDT:1791700275632:4:4",
+              "timestamp": 1791700275632
+            }
+          },
+          "result": {
+            "fee": "0.119770000",
+            "price": "6",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.960020",
+            "remaining": "0.000000",
+            "requested": "19.960020",
+            "quote_value": "119.760120",
+            "book_version": "ETHUSDT:1791700275632:4:4",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791700275826,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "6"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:15.771788+03:30",
+          "completed_at": "2026-10-11 10:01:15.826187+03:30"
+        }
+      ],
+      "balances": [
+        {
+          "account_id": "test-fb7f51ebe864",
+          "asset": "BTC",
+          "available": "0.00000",
+          "reserved": "0",
+          "version": 0,
+          "reconciled_at": "2026-10-11 10:01:15.830346+03:30"
+        },
+        {
+          "account_id": "test-fb7f51ebe864",
+          "asset": "ETH",
+          "available": "0.000000",
+          "reserved": "0",
+          "version": 0,
+          "reconciled_at": "2026-10-11 10:01:15.830346+03:30"
+        },
+        {
+          "account_id": "test-fb7f51ebe864",
+          "asset": "USDT",
+          "available": "519.640350000",
+          "reserved": "0",
+          "version": 3,
+          "reconciled_at": "2026-10-11 10:01:15.830346+03:30"
+        }
+      ],
+      "reconciliation": [
+        {
+          "asset": "USDT",
+          "available": "519.640350000",
+          "ledger_available": "519.640350000",
+          "reserved": "0",
+          "expected_reserved": "0"
+        },
+        {
+          "asset": "BTC",
+          "available": "0.00000",
+          "ledger_available": "0",
+          "reserved": "0",
+          "expected_reserved": "0"
+        },
+        {
+          "asset": "ETH",
+          "available": "0.000000",
+          "ledger_available": "0",
+          "reserved": "0",
+          "expected_reserved": "0"
+        }
+      ],
+      "balanced": true
+    },
+    "partial_unwind": {
+      "cycle": {
+        "id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+        "account_id": "test-f7853ab211dc",
+        "candidate_id": "06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+        "evidence_key": "c23fb9bf18a689fc780cc771d6c1e4e1105c39c1b93496dd8e5212582b985fae",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "RECOVERED",
+        "holdings": {
+          "BTC": "0.000",
+          "ETH": "0.000",
+          "USDT": "109.231650"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=9ms, limit=2000ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 1,
+                  "timestamp": 1791700279826,
+                  "update_id": 1,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 2,
+                  "timestamp": 1791700279826,
+                  "update_id": 2,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 4,
+                  "timestamp": 1791700279826,
+                  "update_id": 4,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791700279827,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 1,
+                "timestamp": 1791700279826,
+                "update_id": 1
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 2,
+                "timestamp": 1791700279826,
+                "update_id": 2
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 4,
+                "timestamp": 1791700279826,
+                "update_id": 4
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 4,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791700279826,
+            "trigger_update_id": 4,
+            "configuration_hash": "830ae27d7f8736d0423698c5c01ec703e9cab5adc2270b68fa2484cd86950d3b",
+            "market_fingerprint": "101709b60ea25d1afe4dd1be6095fbb8203f4727260d41da62f2e23c805c7299",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791700279826,
+            "oldest_book_timestamp": 1791700279826,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+          "evidence_key": "c23fb9bf18a689fc780cc771d6c1e4e1105c39c1b93496dd8e5212582b985fae",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "9.231650",
+        "cash_delta": "9.231650",
+        "failure_reason": "leg 2 partially filled or ended without full fill",
+        "created_at": "2026-10-11 10:01:19.835948+03:30",
+        "completed_at": "2026-10-11 10:01:20.684333+03:30"
+      },
+      "orders": [
+        {
+          "id": "arb-629e4a616e483f706390-l10",
+          "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791700279826:1:1",
+              "timestamp": 1791700279826
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791700279826:1:1",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791700280054,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:19.850211+03:30",
+          "completed_at": "2026-10-11 10:01:20.054566+03:30"
+        },
+        {
+          "id": "arb-629e4a616e483f706390-l20",
+          "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+          "intent": {
+            "to": "ETH",
+            "from": "BTC",
+            "side": "Buy",
+            "symbol": "ETHBTC",
+            "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+            "quantity": "19.980",
+            "simulated": true,
+            "leg_number": 2,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "0.05",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.049",
+                  "100"
+                ]
+              ],
+              "version": "ETHBTC:1791700279826:2:2",
+              "timestamp": 1791700279826
+            }
+          },
+          "result": {
+            "fee": "0.010",
+            "price": "0.05",
+            "reason": "IOC_UNFILLED_REMAINDER",
+            "status": "PartiallyFilledCanceled",
+            "quantity": "10",
+            "remaining": "9.980",
+            "requested": "19.980",
+            "quote_value": "0.50",
+            "book_version": "ETHBTC:1791700280087:30:30",
+            "fee_currency": "ETH",
+            "executed_at_ms": 1791700280264,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "0.05"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:20.060867+03:30",
+          "completed_at": "2026-10-11 10:01:20.264715+03:30"
+        },
+        {
+          "id": "arb-629e4a616e483f706390-u11",
+          "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+          "intent": {
+            "to": "USDT",
+            "from": "ETH",
+            "side": "Sell",
+            "symbol": "ETHUSDT",
+            "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+            "quantity": "9.990",
+            "simulated": true,
+            "leg_number": null,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "6.1",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "6",
+                  "100"
+                ]
+              ],
+              "version": "ETHUSDT:1791700279826:4:4",
+              "timestamp": 1791700279826
+            }
+          },
+          "result": {
+            "fee": "0.059940",
+            "price": "6",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "9.990",
+            "remaining": "0.000",
+            "requested": "9.990",
+            "quote_value": "59.940",
+            "book_version": "ETHUSDT:1791700279826:4:4",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791700280471,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "6"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:20.268464+03:30",
+          "completed_at": "2026-10-11 10:01:20.471995+03:30"
+        },
+        {
+          "id": "arb-629e4a616e483f706390-u12",
+          "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+          "intent": {
+            "to": "USDT",
+            "from": "BTC",
+            "side": "Sell",
+            "symbol": "BTCUSDT",
+            "cycle_id": "test-f7853ab211dc:06ffbe25daf0ffbf1fee996d7207df010f9cd7be98de44e851dd78256cb87222",
+            "quantity": "0.499",
+            "simulated": true,
+            "leg_number": null,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791700279826:1:1",
+              "timestamp": 1791700279826
+            }
+          },
+          "result": {
+            "fee": "0.049410",
+            "price": "99",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "0.499",
+            "remaining": "0.000",
+            "requested": "0.499",
+            "quote_value": "49.401",
+            "book_version": "BTCUSDT:1791700279826:1:1",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791700280679,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "99"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:20.475164+03:30",
+          "completed_at": "2026-10-11 10:01:20.679295+03:30"
+        }
+      ],
+      "balances": [
+        {
+          "account_id": "test-f7853ab211dc",
+          "asset": "BTC",
+          "available": "0.000",
+          "reserved": "0",
+          "version": 0,
+          "reconciled_at": "2026-10-11 10:01:20.684333+03:30"
+        },
+        {
+          "account_id": "test-f7853ab211dc",
+          "asset": "ETH",
+          "available": "0.000",
+          "reserved": "0",
+          "version": 0,
+          "reconciled_at": "2026-10-11 10:01:20.684333+03:30"
+        },
+        {
+          "account_id": "test-f7853ab211dc",
+          "asset": "USDT",
+          "available": "509.231650",
+          "reserved": "0",
+          "version": 3,
+          "reconciled_at": "2026-10-11 10:01:20.684333+03:30"
+        }
+      ],
+      "reconciliation": [
+        {
+          "asset": "BTC",
+          "available": "0.000",
+          "ledger_available": "0",
+          "reserved": "0",
+          "expected_reserved": "0"
+        },
+        {
+          "asset": "ETH",
+          "available": "0.000",
+          "ledger_available": "0",
+          "reserved": "0",
+          "expected_reserved": "0"
+        },
+        {
+          "asset": "USDT",
+          "available": "509.231650",
+          "ledger_available": "509.231650",
+          "reserved": "0",
+          "expected_reserved": "0"
+        }
+      ],
+      "balanced": true
+    },
+    "losing_unwind": {
+      "cycle": {
+        "id": "kill-c8d4e8991b77:86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+        "account_id": "kill-c8d4e8991b77",
+        "candidate_id": "86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "RECOVERED",
+        "holdings": {
+          "BTC": "0.000",
+          "USDT": "98.802090"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=8ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "kill-c8d4e8991b77:86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 1,
+                  "timestamp": 1791700304867,
+                  "update_id": 1,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 2,
+                  "timestamp": 1791700304867,
+                  "update_id": 2,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 4,
+                  "timestamp": 1791700304867,
+                  "update_id": 4,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791700304868,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 1,
+                "timestamp": 1791700304867,
+                "update_id": 1
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 2,
+                "timestamp": 1791700304867,
+                "update_id": 2
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 4,
+                "timestamp": 1791700304867,
+                "update_id": 4
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 4,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791700304867,
+            "trigger_update_id": 4,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "06d7a972c6e60c26b9912d3fc93b646936262bdcbc0c59ce458feaee25bd6641",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791700304867,
+            "oldest_book_timestamp": 1791700304867,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "-1.197910",
+        "cash_delta": "-1.197910",
+        "failure_reason": "risk reauthorization failed: risk authorization failed: GLOBAL_STOP_OR_KILL_SWITCH",
+        "created_at": "2026-10-11 10:01:44.876503+03:30",
+        "completed_at": "2026-10-11 10:01:45.010963+03:30"
+      },
+      "orders": [
+        {
+          "id": "arb-e5b7aad685a64b7705b0-l10",
+          "cycle_id": "kill-c8d4e8991b77:86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "kill-c8d4e8991b77:86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791700304867:1:1",
+              "timestamp": 1791700304867
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791700304867:1:1",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791700304947,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:44.890531+03:30",
+          "completed_at": "2026-10-11 10:01:44.947596+03:30"
+        },
+        {
+          "id": "arb-e5b7aad685a64b7705b0-u11",
+          "cycle_id": "kill-c8d4e8991b77:86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+          "intent": {
+            "to": "USDT",
+            "from": "BTC",
+            "side": "Sell",
+            "symbol": "BTCUSDT",
+            "cycle_id": "kill-c8d4e8991b77:86b3d36cbb0670ed6407542fe69bb45ecfbf1f7eab0d1460fcc20586a4a8e83b",
+            "quantity": "0.999",
+            "simulated": true,
+            "leg_number": null,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791700304867:1:1",
+              "timestamp": 1791700304867
+            }
+          },
+          "result": {
+            "fee": "0.098910",
+            "price": "99",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "0.999",
+            "remaining": "0.000",
+            "requested": "0.999",
+            "quote_value": "98.901",
+            "book_version": "BTCUSDT:1791700304867:1:1",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791700305006,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "99"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:44.951641+03:30",
+          "completed_at": "2026-10-11 10:01:45.006549+03:30"
+        }
+      ],
+      "balances": [
+        {
+          "account_id": "kill-c8d4e8991b77",
+          "asset": "BTC",
+          "available": "0.000",
+          "reserved": "0",
+          "version": 0,
+          "reconciled_at": "2026-10-11 10:01:45.010963+03:30"
+        },
+        {
+          "account_id": "kill-c8d4e8991b77",
+          "asset": "USDT",
+          "available": "498.802090",
+          "reserved": "0",
+          "version": 3,
+          "reconciled_at": "2026-10-11 10:01:45.010963+03:30"
+        }
+      ],
+      "reconciliation": [
+        {
+          "asset": "USDT",
+          "available": "498.802090",
+          "ledger_available": "498.802090",
+          "reserved": "0",
+          "expected_reserved": "0"
+        },
+        {
+          "asset": "BTC",
+          "available": "0.000",
+          "ledger_available": "0",
+          "reserved": "0",
+          "expected_reserved": "0"
+        }
+      ],
+      "balanced": true
+    },
+    "crash_residual": {
+      "cycle": {
+        "id": "test-52e31fb0b447:224c25ea0d50596f61c0687b0989210532575b4a7fc3ffb502872b87d15f451c",
+        "account_id": "test-52e31fb0b447",
+        "candidate_id": "224c25ea0d50596f61c0687b0989210532575b4a7fc3ffb502872b87d15f451c",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "RECOVERY_REQUIRED",
+        "holdings": {
+          "BTC": "0.999",
+          "USDT": "0"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=8ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "test-52e31fb0b447:224c25ea0d50596f61c0687b0989210532575b4a7fc3ffb502872b87d15f451c"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 1,
+                  "timestamp": 1791700282040,
+                  "update_id": 1,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 2,
+                  "timestamp": 1791700282040,
+                  "update_id": 2,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 4,
+                  "timestamp": 1791700282040,
+                  "update_id": 4,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791700282041,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 1,
+                "timestamp": 1791700282040,
+                "update_id": 1
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 2,
+                "timestamp": 1791700282040,
+                "update_id": 2
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 4,
+                "timestamp": 1791700282040,
+                "update_id": 4
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 4,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791700282040,
+            "trigger_update_id": 4,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "3887219e8cbbbd7c10b6ebb23299717bc0e35ba03f0d272761f47ab6791f0ccf",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791700282040,
+            "oldest_book_timestamp": 1791700282040,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "224c25ea0d50596f61c0687b0989210532575b4a7fc3ffb502872b87d15f451c",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": null,
+        "cash_delta": "-100",
+        "failure_reason": "restart: unresolved inventory preserved; operator review required",
+        "created_at": "2026-10-11 10:01:22.049086+03:30",
+        "completed_at": "2026-10-11 10:01:22.200746+03:30"
+      },
+      "orders": [
+        {
+          "id": "arb-e16e6583308319206ca7-l10",
+          "cycle_id": "test-52e31fb0b447:224c25ea0d50596f61c0687b0989210532575b4a7fc3ffb502872b87d15f451c",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "test-52e31fb0b447:224c25ea0d50596f61c0687b0989210532575b4a7fc3ffb502872b87d15f451c",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791700282040:1:1",
+              "timestamp": 1791700282040
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791700282040:1:1",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791700282114,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11 10:01:22.059671+03:30",
+          "completed_at": "2026-10-11 10:01:22.114721+03:30"
+        }
+      ],
+      "balances": [
+        {
+          "account_id": "test-52e31fb0b447",
+          "asset": "BTC",
+          "available": "0.999",
+          "reserved": "0",
+          "version": 0,
+          "reconciled_at": "2026-10-11 10:01:22.200746+03:30"
+        },
+        {
+          "account_id": "test-52e31fb0b447",
+          "asset": "USDT",
+          "available": "400",
+          "reserved": "0",
+          "version": 3,
+          "reconciled_at": "2026-10-11 10:01:22.200746+03:30"
+        }
+      ],
+      "reconciliation": [
+        {
+          "asset": "USDT",
+          "available": "400",
+          "ledger_available": "400",
+          "reserved": "0",
+          "expected_reserved": "0"
+        },
+        {
+          "asset": "BTC",
+          "available": "0.999",
+          "ledger_available": "0.999",
+          "reserved": "0",
+          "expected_reserved": "0"
+        }
+      ],
+      "balanced": true
+    }
+  }
+}

@@ -1,0 +1,8 @@
+services:
+  catalog:
+    command: ["python", "/app/scripts/make_paper_replay.py", "/catalog", "--cycles", "300"]
+  engine-control:
+    environment:
+      ARB_ENV: development
+      ARB_OBSERVER_REPLAY_FILE: /catalog/market.jsonl
+      ARB_SCANNER_CONFIG: /catalog/scanner.json

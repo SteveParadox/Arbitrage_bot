@@ -1,6 +1,5 @@
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use orderbook::{BookUpdate, ExecutionEstimate, OrderBookEngine, OrderBookError};
 use serde::{Deserialize, Serialize};
@@ -550,10 +549,7 @@ fn config_hash(
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    runtime_clock::now_ms()
 }
 
 #[cfg(test)]

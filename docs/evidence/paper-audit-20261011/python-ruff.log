@@ -1,0 +1,2 @@
+Command: python3 -m ruff check python
+All checks passed!

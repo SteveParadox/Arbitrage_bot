@@ -1,3 +1,5 @@
+> For managed autonomous execution, virtual capital and durable recovery, see [AUTONOMOUS_PAPER.md](AUTONOMOUS_PAPER.md). This document describes the existing historical research simulator.
+
 # Phase 8: Paper Trading Simulator
 
 Phase 8 replays accepted arbitrage opportunities against the **future order-book states that

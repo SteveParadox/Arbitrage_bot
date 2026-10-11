@@ -4,7 +4,6 @@ use std::{
     fs,
     io::{BufRead, BufReader},
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -25,11 +24,33 @@ use sha2::{Digest, Sha256};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::warn;
 
+#[path = "virtual_replay.rs"]
+mod virtual_replay;
+
 pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublisher) -> Result<()> {
-    validate_read_only_mode(
-        std::env::var("ARB_TRADING_MODE").ok().as_deref(),
-        std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
-    )?;
+    let clock = virtual_replay::configured_clock()?;
+    clock
+        .scope(run_inner(triangle_path, repo_root, events))
+        .await
+}
+
+async fn run_inner(
+    triangle_path: PathBuf,
+    repo_root: PathBuf,
+    events: EventPublisher,
+) -> Result<()> {
+    let paper_mode = std::env::var("ARB_TRADING_MODE").as_deref() == Ok("paper");
+    if !paper_mode {
+        validate_read_only_mode(
+            std::env::var("ARB_TRADING_MODE").ok().as_deref(),
+            std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
+        )?;
+    }
+    let mut paper = if paper_mode {
+        Some(super::paper_runtime::Runtime::start(&repo_root, events.clone()).await?)
+    } else {
+        None
+    };
     let lock_path = configured_path(
         &repo_root,
         "ARB_OBSERVER_LOCK",
@@ -45,6 +66,20 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
     lock.try_lock_exclusive()
         .context("another managed observer is running")?;
     let routes = load_triangle_config(&triangle_path)?;
+    if paper_mode {
+        let generated = chrono::DateTime::parse_from_rfc3339(
+            routes
+                .generated_at
+                .as_deref()
+                .context("paper catalog requires generation timestamp")?,
+        )?;
+        let age = chrono::Utc::now()
+            .signed_duration_since(generated)
+            .num_seconds();
+        if !(0..=86400).contains(&age) {
+            bail!("paper catalog expired or future-dated; regenerate before startup");
+        }
+    }
     let required = routes.required_symbols();
     if required.is_empty() {
         bail!("observation autostart requires at least one configured triangle");
@@ -59,6 +94,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             .with_context(|| format!("reading {}", scanner_path.display()))?,
     )?;
     settings.validate().map_err(|error| anyhow!(error))?;
+    if let Some(p) = &paper {
+        p.books.set_skew_limit(settings.max_book_skew_ms).await?;
+    }
     let profitability_path = configured_path(
         &repo_root,
         "ARB_PROFITABILITY_CONFIG",
@@ -69,39 +107,64 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
         .map_err(|error| anyhow!(error))?;
 
     let (sender, mut receiver) = mpsc::channel(1024);
+    let (ack_sender, ack_receiver) = mpsc::unbounded_channel();
+    let clock = runtime_clock::Clock::current();
     let (recovery_sender, recovery) = mpsc::channel(1);
     let replay_mode = std::env::var("ARB_OBSERVER_REPLAY_FILE").is_ok();
-    let connector_task: JoinHandle<Result<()>> =
-        if let Ok(replay) = std::env::var("ARB_OBSERVER_REPLAY_FILE") {
-            if !replay_allowed(
-                std::env::var("ARB_ENV").ok().as_deref(),
-                std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
-            ) {
-                bail!(
+    let connector_task: JoinHandle<Result<()>> = if let Ok(replay) =
+        std::env::var("ARB_OBSERVER_REPLAY_FILE")
+    {
+        if !replay_allowed(
+            std::env::var("ARB_ENV").ok().as_deref(),
+            std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
+        ) {
+            bail!(
                 "observer replay requires ARB_ENV=development and ARB_LIVE_TRADING_ENABLED=false"
             );
-            }
-            tokio::spawn(replay_events(PathBuf::from(replay), sender))
+        }
+        if clock.is_virtual() {
+            let runtime = paper
+                .as_ref()
+                .context("virtual replay requires paper runtime")?;
+            let future = virtual_replay::run(
+                PathBuf::from(replay),
+                sender,
+                ack_receiver,
+                runtime.ledger.clone(),
+                runtime.planner.clone(),
+                events.clone(),
+                clock.clone(),
+            );
+            tokio::spawn(async move {
+                let result = clock.scope(future).await;
+                if let Err(error) = &result {
+                    tracing::error!(reason=%format!("{error:#}"), "virtual replay driver failed");
+                }
+                result
+            })
         } else {
-            let mut feed = Config::from_env()?;
-            if feed.category != Category::Spot || feed.testnet != routes.source.testnet {
-                bail!("market feed must be spot and match the triangle configuration environment");
-            }
-            if feed.orderbook_depth < 50 {
-                bail!("observer requires book depth >= 50");
-            }
-            feed.symbols = required.iter().cloned().collect();
-            feed.subscribe_trades = false;
-            feed.subscribe_tickers = false;
-            // The scanner's time bound governs the connection heartbeat as well.
-            feed.stale_after = feed
-                .stale_after
-                .min(std::time::Duration::from_millis(settings.max_book_age_ms));
-            tokio::spawn(connector::run_with_recovery(feed, sender, recovery))
-        };
+            tokio::spawn(replay_events(PathBuf::from(replay), sender))
+        }
+    } else {
+        let mut feed = Config::from_env()?;
+        if feed.category != Category::Spot || feed.testnet != routes.source.testnet {
+            bail!("market feed must be spot and match the triangle configuration environment");
+        }
+        if feed.orderbook_depth < 50 {
+            bail!("observer requires book depth >= 50");
+        }
+        feed.symbols = required.iter().cloned().collect();
+        feed.subscribe_trades = false;
+        feed.subscribe_tickers = false;
+        // The scanner's time bound governs the connection heartbeat as well.
+        feed.stale_after = feed
+            .stale_after
+            .min(std::time::Duration::from_millis(settings.max_book_age_ms));
+        tokio::spawn(connector::run_with_recovery(feed, sender, recovery))
+    };
     let _guard = ConnectorGuard(Some(connector_task));
     let mut lifecycle = Lifecycle::default();
-    let mut receipts: HashMap<String, std::time::Instant> = HashMap::new();
+    let mut receipts: HashMap<String, u64> = HashMap::new();
     let mut feed_health = Value::Null;
     let mut state = "connecting";
     let mut reason = "starting public observation".to_string();
@@ -111,9 +174,11 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             signal = tokio::signal::ctrl_c() => {
                 signal?;
                 publish_health(&events, "offline", "observer shutdown", lifecycle.generation);
+                if let Some(runtime) = paper.take() { runtime.shutdown().await?; }
                 return Ok(());
             }
-            _ = health_tick.tick() => {
+            _ = health_tick.tick(), if !runtime_clock::Clock::current().is_virtual() => {
+                if paper.as_ref().is_some_and(|p|p.is_finished()) { bail!("paper worker ended; managed restart required"); }
                 let now = now_ms();
                 if lifecycle.connected && !lifecycle.recovering && lifecycle.metadata.values().any(|m| !metadata_fresh(m.timestamp, now)) {
                     lifecycle.invalidate(); scanner.reset_books(); receipts.clear(); feed_health = Value::Null;
@@ -123,6 +188,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 let ready = observer_ready(&lifecycle, &routes, &required, &scanner,
                     &receipts, &feed_health, now, settings.max_book_age_ms);
                 if state == "scanning" && !ready { state = "stale"; reason = "readiness expired".into(); }
+                if let Some(p) = &paper { p.books.ready(ready).await; }
                 publish_health(&events, state, &reason, lifecycle.generation);
                 continue;
             }
@@ -134,12 +200,20 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 }
             }
         };
+        let _ack = ReplayAck(
+            runtime_clock::Clock::current()
+                .is_virtual()
+                .then(|| ack_sender.clone()),
+        );
         let MarketDataEvent::Session { generation, event } = event else {
             // Ungenerated events cannot reopen a managed observation gate.
             continue;
         };
         if let MarketDataEvent::Status(status) = event.as_ref() {
             if status.state == "connecting" && generation > lifecycle.generation {
+                if let Some(p) = &paper {
+                    p.books.reset().await;
+                }
                 lifecycle.begin(generation);
                 scanner.reset_books();
                 receipts.clear();
@@ -155,6 +229,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             MarketDataEvent::Instrument(instrument) => {
                 if lifecycle.recovering {
                     continue;
+                }
+                if let Some(p) = &paper {
+                    p.books.instrument(&instrument).await?;
                 }
                 if let Err(error) = validate_instrument(&routes, &instrument) {
                     lifecycle.metadata.remove(&instrument.symbol);
@@ -177,6 +254,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                         state = "synchronizing";
                     }
                     "reconnecting" | "metadata_retry" | "disconnected" => {
+                        if let Some(p) = &paper {
+                            p.books.reset().await;
+                        }
                         lifecycle.invalidate();
                         scanner.reset_books();
                         receipts.clear();
@@ -220,6 +300,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     "required observation dependencies incomplete or stale"
                 }
                 .into();
+                if let Some(p) = &paper {
+                    p.books.ready(ready).await;
+                }
                 events.publish("market.health", feed_health.clone());
             }
             MarketDataEvent::OrderBook {
@@ -238,7 +321,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     continue;
                 }
                 let receipt_symbol = symbol.clone();
-                let records = match scanner.on_book_update(BookUpdate {
+                let update = BookUpdate {
                     symbol,
                     bids,
                     asks,
@@ -246,9 +329,13 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     update_id,
                     sequence,
                     is_snapshot,
-                }) {
+                };
+                let records = match scanner.on_book_update(update.clone()) {
                     Ok(records) => records,
                     Err(error) => {
+                        if let Some(p) = &paper {
+                            p.books.reset().await;
+                        }
                         lifecycle.invalidate();
                         scanner.reset_books();
                         receipts.clear();
@@ -263,7 +350,12 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                         continue;
                     }
                 };
-                receipts.insert(receipt_symbol, std::time::Instant::now());
+                // Let the managed scanner perform its existing coordinated
+                // desynchronization recovery before updating execution books.
+                if let Some(p) = &paper {
+                    p.books.update(update).await?;
+                }
+                receipts.insert(receipt_symbol, now_ms());
                 if !observer_ready(
                     &lifecycle,
                     &routes,
@@ -284,8 +376,28 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     let (candidate_id, kind, payload) =
                         candidate_event(&record, &lifecycle.metadata)?;
                     events
-                        .publish_critical_at(candidate_id, kind, record.trigger_timestamp, payload)
+                        .publish_critical_at(
+                            candidate_id.clone(),
+                            kind,
+                            record.trigger_timestamp,
+                            payload,
+                        )
                         .map_err(|error| anyhow!("candidate journal unavailable: {error}"))?;
+                    if let Some(p) = &paper {
+                        p.books.ready(true).await;
+                        let route = routes
+                            .routes
+                            .iter()
+                            .find(|r| r.id == record.route_id)
+                            .context("candidate route absent")?
+                            .clone();
+                        if let Err(error) = p.dispatch(candidate_id.clone(), record, route) {
+                            events.publish_critical(
+                                "paper.dispatch_rejected",
+                                json!({"candidate_id":candidate_id,"reason":error.to_string()}),
+                            )?;
+                        }
+                    }
                 }
             }
             _ => {}
@@ -328,7 +440,7 @@ fn observer_ready(
     routes: &TriangleConfig,
     required: &BTreeSet<String>,
     scanner: &ArbitrageScanner,
-    receipts: &HashMap<String, std::time::Instant>,
+    receipts: &HashMap<String, u64>,
     feed: &Value,
     now: u64,
     max_age: u64,
@@ -340,7 +452,7 @@ fn observer_ready(
         && required.iter().all(|symbol| {
             receipts
                 .get(symbol)
-                .is_some_and(|at| at.elapsed().as_millis() <= max_age as u128)
+                .is_some_and(|at| now.checked_sub(*at).is_some_and(|age| age <= max_age))
                 && lifecycle.metadata.get(symbol).is_some_and(|m| {
                     validate_instrument(routes, m).is_ok() && metadata_fresh(m.timestamp, now)
                 })
@@ -372,7 +484,48 @@ async fn replay_events(path: PathBuf, sender: mpsc::Sender<MarketDataEvent>) -> 
         if line.trim().is_empty() {
             continue;
         }
-        let event: MarketDataEvent = serde_json::from_str(&line)
+        let mut raw: Value = serde_json::from_str(&line)?;
+        if let Some(leg) = raw["wait_for_paper_leg"].as_u64() {
+            // Replays already require development + live=false. A barrier
+            // additionally requires explicitly authorized paper deployment.
+            paper::validate_mode(
+                &std::env::var("ARB_TRADING_MODE").unwrap_or_default(),
+                std::env::var("ARB_PAPER_TRADING_ENABLED").as_deref() == Ok("true"),
+                std::env::var("ARB_LIVE_TRADING_ENABLED").as_deref() != Ok("false"),
+            )?;
+            if !(1..=3).contains(&leg) {
+                bail!("invalid paper replay leg barrier");
+            }
+            let ledger = paper::Ledger::connect(
+                &std::env::var("ARB_DATABASE_URL").context("paper replay requires database")?,
+                std::env::var("ARB_PAPER_ACCOUNT").context("paper replay requires account")?,
+            )
+            .await?;
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                while !ledger.pending_leg_exists(leg as u32).await? {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                Ok::<(), anyhow::Error>(())
+            })
+            .await
+            .context("paper replay order barrier timed out")??;
+        }
+        if let Some(delay) = raw["delay_ms"].as_u64() {
+            if delay > 60_000 {
+                bail!("replay delay exceeds one minute");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+        }
+        if raw["replay_clock"] == true {
+            let now = now_ms();
+            raw["event"]["timestamp"] = json!(now);
+            if let Some(symbols) = raw["event"]["symbols"].as_object_mut() {
+                for value in symbols.values_mut() {
+                    value["exchange_timestamp_ms"] = json!(now);
+                }
+            }
+        }
+        let event: MarketDataEvent = serde_json::from_value(raw)
             .with_context(|| format!("invalid replay event at line {}", index + 1))?;
         sender
             .send(event)
@@ -384,6 +537,15 @@ async fn replay_events(path: PathBuf, sender: mpsc::Sender<MarketDataEvent>) -> 
     Ok(())
 }
 
+struct ReplayAck(Option<mpsc::UnboundedSender<()>>);
+impl Drop for ReplayAck {
+    fn drop(&mut self) {
+        if let Some(sender) = &self.0 {
+            let _ = sender.send(());
+        }
+    }
+}
+
 struct ConnectorGuard(Option<JoinHandle<Result<()>>>);
 impl Drop for ConnectorGuard {
     fn drop(&mut self) {
@@ -393,7 +555,7 @@ impl Drop for ConnectorGuard {
     }
 }
 
-fn configured_path(root: &std::path::Path, name: &str, default: &str) -> PathBuf {
+pub(crate) fn configured_path(root: &std::path::Path, name: &str, default: &str) -> PathBuf {
     let path = PathBuf::from(std::env::var(name).unwrap_or_else(|_| default.into()));
     if path.is_absolute() {
         path
@@ -491,7 +653,7 @@ fn candidate_event(
             Some((
                 symbol.to_string(),
                 json!({"status":m.status,"base_coin":m.base_coin,"quote_coin":m.quote_coin,
-            "tick_size":m.tick_size,"qty_step":m.qty_step,"min_order_amt":m.min_order_amt,
+            "tick_size":m.tick_size,"qty_step":m.qty_step,"quote_precision":m.quote_precision,"min_order_amt":m.min_order_amt,
             "max_market_order_qty":m.max_market_order_qty}),
             ))
         })
@@ -533,10 +695,7 @@ fn candidate_event(
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    runtime_clock::now_ms()
 }
 
 #[cfg(test)]
@@ -610,6 +769,7 @@ mod tests {
             qty_step: Some(0.001),
             min_order_qty: None,
             min_order_amt: Some(5.),
+            quote_precision: Some(0.01),
             max_market_order_qty: Some(100.),
             timestamp: 1000,
         };

@@ -62,6 +62,9 @@ pub enum RiskCheck {
     SymbolPrecision,
     MaximumExposure,
     MaximumDailyLoss,
+    MaximumAssetExposure,
+    MaximumDrawdown,
+    ConsecutiveLosses,
     ApiHealth,
     ExchangeHealth,
 }
@@ -190,4 +193,11 @@ pub struct RiskStatus {
 pub(crate) struct PersistentRiskState {
     pub circuit_breaker: Option<CircuitBreakerState>,
     pub execution_failures_ms: Vec<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PortfolioStats {
+    pub projected_asset_exposure: Decimal,
+    pub drawdown: Decimal,
+    pub consecutive_losses: usize,
 }

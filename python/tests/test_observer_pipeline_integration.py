@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -40,6 +41,12 @@ def wait_until(check, timeout=15):
 
 def test_managed_replay_restart_recovery_and_http_agree(tmp_path):
     root = Path(__file__).resolve().parents[2]
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        api_port = listener.getsockname()[1]
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        engine_port = listener.getsockname()[1]
     subprocess.run([sys.executable, str(root / "scripts/make_observer_replay.py"), str(tmp_path)],
                    cwd=root, check=True, capture_output=True)
     config = json.loads((root / "shared/config/scanner.json").read_text())
@@ -68,7 +75,8 @@ def test_managed_replay_restart_recovery_and_http_agree(tmp_path):
         ARB_GRPC_IDEMPOTENCY_STORE=str(tmp_path / "commands"),
         ARB_CONTROL_STATE_FILE=str(tmp_path / "control.json"),
         ARB_RUNTIME_LIMITS_FILE=str(tmp_path / "limits.json"),
-        ARB_ENGINE_GRPC_ADDR="127.0.0.1:55052", ARB_ENGINE_GRPC_TARGET="127.0.0.1:55052",
+        ARB_ENGINE_GRPC_ADDR=f"127.0.0.1:{engine_port}",
+        ARB_ENGINE_GRPC_TARGET=f"127.0.0.1:{engine_port}",
         ARB_ENGINE_GRPC_TOKEN="observer-test-internal-token-0123456789",
         ARB_CONTROL_API_TOKEN="observer-test-operator-token-0123456789",
         ARB_MARKET_REQUIRED_SYMBOLS="BTCUSDT,ETHBTC,ETHUSDT")
@@ -94,11 +102,11 @@ def test_managed_replay_restart_recovery_and_http_agree(tmp_path):
             )).all()
 
     def health():
-        return httpx.get("http://127.0.0.1:58080/health", timeout=2, trust_env=False).json()
+        return httpx.get(f"http://127.0.0.1:{api_port}/health", timeout=2, trust_env=False).json()
 
     try:
         api = start([sys.executable, "-m", "uvicorn", "api.main:app", "--host", "127.0.0.1",
-                     "--port", "58080"], "api", {"ARB_DATABASE_URL": "postgresql+psycopg://audit@127.0.0.1:55439/unavailable"})
+                     "--port", str(api_port)], "api", {"ARB_DATABASE_URL": "postgresql+psycopg://audit@127.0.0.1:55439/unavailable"})
         wait_until(lambda: health().get("database_status") == "offline")
         engine = start([os.environ["ARB_ENGINE_BINARY"]], "engine")
         def pending_candidates():
@@ -111,7 +119,7 @@ def test_managed_replay_restart_recovery_and_http_agree(tmp_path):
         assert not candidate_events()  # failed database writes must not acknowledge persistence
         api.terminate()
         api.wait(timeout=10)
-        api = start([sys.executable,"-m","uvicorn","api.main:app","--host","127.0.0.1","--port","58080"],"api")
+        api = start([sys.executable,"-m","uvicorn","api.main:app","--host","127.0.0.1","--port",str(api_port)],"api")
         # Real XAUTOCLAIM recovers the failed consumer's unacknowledged records after its lease.
         records = wait_until(lambda: candidate_events() if len(candidate_events()) == 2 else None, timeout=45)
         assert sorted(record.event_type for record in records) == ["opportunity.detected", "opportunity.rejected"]
@@ -128,7 +136,7 @@ def test_managed_replay_restart_recovery_and_http_agree(tmp_path):
         assert value["trading"]["deployment_enabled"] is False
         assert value["trading"]["effective_enabled"] is False
         assert value["observer"]["execution_enabled"] is False
-        opportunities = httpx.get("http://127.0.0.1:58080/opportunities", trust_env=False).json()
+        opportunities = httpx.get(f"http://127.0.0.1:{api_port}/opportunities", trust_env=False).json()
         assert opportunities
         # Shutdown and restart the actual process using the same immutable fixture/outbox.
         engine.send_signal(signal.SIGINT)
@@ -153,7 +161,7 @@ def test_managed_replay_restart_recovery_and_http_agree(tmp_path):
         api.terminate()
         api.wait(timeout=10)
         client.xadd(stream, dict(fields, payload=json.dumps(record.payload)))
-        api = start([sys.executable,"-m","uvicorn","api.main:app","--host","127.0.0.1","--port","58080"],"api")
+        api = start([sys.executable,"-m","uvicorn","api.main:app","--host","127.0.0.1","--port",str(api_port)],"api")
         wait_until(lambda: health()["event_consumer"]["database_duplicate_events_total"] >= 1)
         assert len(candidate_events()) == 2
         print("managed replay: accepted=1 rejected=1; database outage/pending recovery, generation recovery, engine/consumer restart, Redis redelivery, conflict DLQ, HTTP health and ledger agree")

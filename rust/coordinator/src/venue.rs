@@ -7,6 +7,9 @@ use risk::RiskEngine;
 
 #[async_trait]
 pub trait CoordinatorVenue: Send + Sync {
+    fn is_paper(&self) -> bool {
+        false
+    }
     async fn execute(
         &self,
         risk_engine: &mut RiskEngine,

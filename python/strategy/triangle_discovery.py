@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import tempfile
 import json
 import os
 from dataclasses import dataclass
@@ -279,11 +281,28 @@ def build_config(
 
 
 def write_config(config: dict[str, Any], output: Path) -> None:
+    if not config.get("routes") or config["route_count"] != len(config["routes"]):
+        raise ValueError("refusing empty or inconsistent triangle catalog")
+    identities = [r["id"] for r in config["routes"]]
+    if len(set(identities)) != len(identities):
+        raise ValueError("duplicate route identities")
+    config = dict(config)
+    config["configuration_sha256"] = hashlib.sha256(
+        json.dumps(config, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(config, indent=2, sort_keys=False) + "\n",
-        encoding="utf-8",
-    )
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=output.parent, delete=False,
+                                         encoding="utf-8") as handle:
+            path = Path(handle.name)
+            json.dump(config, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(path, output)
+    finally:
+        if path is not None:
+            path.unlink(missing_ok=True)
 
 
 def load_instruments_file(path: Path) -> list[Instrument]:

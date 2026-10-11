@@ -40,6 +40,17 @@ where
         config.validate()?;
         let events = EventPublisher::try_from_env("coordinator")
             .map_err(|error| CoordinatorError::InvalidConfig(error.to_string()))?;
+        Self::with_events(config, venue, planner, authorizer, events)
+    }
+
+    pub fn with_events(
+        config: CoordinatorConfig,
+        venue: V,
+        planner: P,
+        authorizer: A,
+        events: EventPublisher,
+    ) -> Result<Self, CoordinatorError> {
+        config.validate()?;
         Ok(Self {
             config,
             venue,
@@ -96,6 +107,7 @@ where
             .ensure_critical_ready()
             .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
         let started = Instant::now();
+        let logical_started = current_time_ms();
         let result = self
             .execute_route_inner(
                 risk_engine,
@@ -105,7 +117,11 @@ where
                 opportunity_window_id,
             )
             .await;
-        let execution_time_ms = started.elapsed().as_millis() as u64;
+        let execution_time_ms = if runtime_clock::Clock::current().is_virtual() {
+            current_time_ms().saturating_sub(logical_started)
+        } else {
+            started.elapsed().as_millis() as u64
+        };
         let event_result = self.publish_trade_event(
             trade_id,
             route,
@@ -131,7 +147,11 @@ where
         validate_route(route, trade_id, starting_amount)?;
         self.events
             .publish_critical(
-                "trade.attempted",
+                if self.venue.is_paper() {
+                    "paper.trade.attempted"
+                } else {
+                    "trade.attempted"
+                },
                 json!({
                     "trade_id": trade_id,
                     "route_id": route.id.clone(),
@@ -678,7 +698,11 @@ where
                 ) =>
             {
                 self.events.publish_critical(
-                    "trade.executed",
+                    if self.venue.is_paper() {
+                        "paper.trade.executed"
+                    } else {
+                        "trade.executed"
+                    },
                     json!({
                         "trade_id": report.trade_id.clone(),
                         "route_id": report.route_id.clone(),
@@ -699,7 +723,11 @@ where
                 )
             }
             Ok(report) => self.events.publish_critical(
-                "trade.failed",
+                if self.venue.is_paper() {
+                    "paper.trade.failed"
+                } else {
+                    "trade.failed"
+                },
                 json!({
                     "trade_id": report.trade_id.clone(),
                     "route_id": report.route_id.clone(),
@@ -720,7 +748,11 @@ where
                 }),
             ),
             Err(error) => self.events.publish_critical(
-                "trade.failed",
+                if self.venue.is_paper() {
+                    "paper.trade.failed"
+                } else {
+                    "trade.failed"
+                },
                 json!({
                     "trade_id": trade_id,
                     "route_id": route.id.clone(),

@@ -1,0 +1,609 @@
+[
+  {
+    "source": "soak-60s.json",
+    "account": "soak-31ef2483c73f",
+    "reference": {
+      "balanced": true,
+      "cycles": {
+        "soak-31ef2483c73f:06a5c520bcf93f484a1b25528890ec9bed5b5f4b95aca7592e09ec2d86d985cd": {
+          "holdings": {
+            "USDT": "5998967/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "998967/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:196aced84b45e20b1611e3ddfa600852da6182991bb988e93bd9b902065318e8": {
+          "holdings": {
+            "USDT": "1499991/12500",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "249991/12500",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:cf99e1d1eae8782ae429abbc1a60f8b01761a6de258c59341af9f8d0eb3dc0ec": {
+          "holdings": {
+            "USDT": "6000961/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1000961/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:29f8d28dc5bdba5b8b977503f74584a40353449b6f7283479f4e45293d4f818f": {
+          "holdings": {
+            "USDT": "3000979/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "500979/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:7b74f2b2cb9f91a86feb30ee75d68940ee1b5c05b3b8950a1a4f1231e6e532ac": {
+          "holdings": {
+            "USDT": "1200591/10000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "200591/10000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:a8b5cee298e3dc483468a6067bdfc7b63b076e52f4c01c7949b289b163f3d1de": {
+          "holdings": {
+            "USDT": "375247/3125",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "62747/3125",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:3c69090a69d2e6418395187953c4bc5595d8be2fc1e1af77466cd0e24d0f2906": {
+          "holdings": {
+            "USDT": "6004949/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1004949/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:4f2a9f08d68609e2a9b5521dfa7d39416dc91198f8b425039405c5ac9968b1c4": {
+          "holdings": {
+            "USDT": "3002973/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "502973/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:4640f4a5cec90a0a17c000147e444e56706e67098d221356ba63e6da7e983efc": {
+          "holdings": {
+            "USDT": "6006943/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1006943/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:5f7291a558f34ef7922e113442440bf4cf2b1527e7ec3c83068001ae974286c1": {
+          "holdings": {
+            "USDT": "300397/2500",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "50397/2500",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:99701c6409659f7df80cf022361a53963d099f90cfcf5db196a1f0f5a5a4a184": {
+          "holdings": {
+            "USDT": "6008937/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1008937/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:1c058bef1315caba12a18eb467d2775b7523d4857c33cf867377336366e6c98c": {
+          "holdings": {
+            "USDT": "6010931/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1010931/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:c77db8425c2e2b14f1beadb162e307430b9c024ac97a215f2a33d774d75c01e3": {
+          "holdings": {
+            "USDT": "2392807/20000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "392807/20000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:3700dc8004abbd02fb04082791a046f6eb970fdc469d7cd5003788bb40449dfb": {
+          "holdings": {
+            "USDT": "11966029/100000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1966029/100000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:59070233206388bf70572ca9bbdd7f9bbcd4d10d9dd25be39ad1463f0d8f0317": {
+          "holdings": {
+            "USDT": "751491/6250",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "126491/6250",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:b173c218afd76468c64a1d5dc3841be81693ba57566bf1bff4f9623c7ef85c15": {
+          "holdings": {
+            "USDT": "11968023/100000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1968023/100000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:896f053652720153963313176c8b47965c659ef44303ee5c9ba146d409624cdb": {
+          "holdings": {
+            "USDT": "2993003/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "493003/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:4cdf60952a735cc8c381782338f75020073be19bc058145f575a82ed851e17fc": {
+          "holdings": {
+            "USDT": "5987003/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "987003/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:3e2c12bab31157a1fe7be145806e6b0751fbcbf3f849704b44560bc3276749fc": {
+          "holdings": {
+            "USDT": "5988997/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "988997/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:c0aa27d4638f4eedd46f47aa5dddacb5dc32ed35501a013a7fcd259312e1f2e1": {
+          "holdings": {
+            "USDT": "240517/2000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "40517/2000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:d0c79b145316c481b804db5f57cf9aef99c44eee911819aa570c595e7f9bb727": {
+          "holdings": {
+            "USDT": "2994997/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "494997/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:683682da7ba65c4dc4415613f0b0f0d07d839a8c6edeb6f3dace657fffdb5811": {
+          "holdings": {
+            "USDT": "3006961/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "506961/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:956cc259f8fdd0d7bebb372eb09a5c0852e7c7d151a523095c12c704fa731e68": {
+          "holdings": {
+            "USDT": "1497997/12500",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "247997/12500",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:d80af66d66470751afeae90d0917322a7622ffbc649a88d11d5c959d08946f68": {
+          "holdings": {
+            "USDT": "5994979/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "994979/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:42744beaa3a6d05b86ba7534d0b1d3c101fe8fb19aea97fe98cc2ea2f3d91c7b": {
+          "holdings": {
+            "USDT": "1503979/12500",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "253979/12500",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:7363e455fa4b004a88ce730e61f75846f0bc52081033cc5f0aa68478eefbf183": {
+          "holdings": {
+            "USDT": "1198597/10000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "198597/10000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:2817aa278934f8316117635233e10449fc2cb62171bb9c443169ca9a7838de59": {
+          "holdings": {
+            "USDT": "749497/6250",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "124497/6250",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:6787b48073ec88e32947b411293b8c5bed06a9fb9e671a7ca7f5b74b60c39295": {
+          "holdings": {
+            "USDT": "5996973/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "996973/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:c75c4a130d7346ff86eb34069542d353b79378ccc93d160351577113e66bc361": {
+          "holdings": {
+            "USDT": "6016913/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1016913/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:5d7e87dcecbd00eaa179dd06a81028c20a45f8529da728c3545d5fbc578950d8": {
+          "holdings": {
+            "USDT": "6018907/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1018907/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:bce72cd4cea8ef80de9f83e7e1571f8d48d94fc30137a44741ead098a327bffd": {
+          "holdings": {
+            "USDT": "376244/3125",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "63744/3125",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:b2887f9452c50037a7afef73affa36fdda4b20568467e55256a0bb6b12dd365f": {
+          "holdings": {
+            "USDT": "6020901/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1020901/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:4cede58732c5fa58934fcf9cde272d03565c3ae7f95f1dc4dfa707bee25df0ca": {
+          "holdings": {
+            "USDT": "3010949/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "510949/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:0e2d1a139e87e7b206d253b2523bea61b6fc78540b848d80650d5568086304e4": {
+          "holdings": {
+            "USDT": "1505973/12500",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "255973/12500",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:68c7fb98302fa11ec3d8c532a127a2d25dd160b74e82dd256c864906f8e6f9ae": {
+          "holdings": {
+            "USDT": "6024889/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1024889/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:4149731179cb78bf3fc6207bc5ce2d7987034284db3507bc798e147b24c2f467": {
+          "holdings": {
+            "USDT": "6026883/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1026883/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:745bc884cdc0e12d871e4e9ac6cef6aa9d3bd0888c2a790564855fad78497718": {
+          "holdings": {
+            "USDT": "150697/1250",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "25697/1250",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:7074fb0d8fd98729f793e08f08f578d34ad618dd1774390c6237077701ca3909": {
+          "holdings": {
+            "USDT": "6028877/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1028877/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:57a2e6be6368cfb82adf27edfdfe5022f5467b09c93ff164720b4adfc9fc5fad": {
+          "holdings": {
+            "USDT": "3014937/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "514937/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:6d9c5788ecb76d62492ce43f479270b5f7e09a8af3eba750503e94f51b01d23d": {
+          "holdings": {
+            "USDT": "1507967/12500",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "257967/12500",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:7a51c45101a32dfd7771e8700b1a8806242fa8d51f2b9b80583720c361a54af2": {
+          "holdings": {
+            "USDT": "3016931/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "516931/25000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:e7401394aa5a9f95bf8df8c3b3caab5d683730afbb9935fa17305ec2f30efa89": {
+          "holdings": {
+            "USDT": "6034859/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1034859/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:870ed9ff7d3caf7ad2a0a0979538fac993dd678308d2a4030ffca8fa113ae833": {
+          "holdings": {
+            "USDT": "377241/3125",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "64741/3125",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:3244434d1ecd428ecbf010f8d6ca859c93bc07c3c20a35e5420eba3b3fa532e0": {
+          "holdings": {
+            "USDT": "120757/1000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "20757/1000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:8c4003498235e2bf8c996d5979a9244d10ca349fa556fe26fb09b04310d81fa3": {
+          "holdings": {
+            "USDT": "6038847/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1038847/50000",
+          "residual_inventory": false
+        },
+        "soak-31ef2483c73f:c013a806742cc33e23d8c2feef9f6eaeb1e6b56d162e36effb41327f3b936107": {
+          "holdings": {
+            "USDT": "6040841/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1040841/50000",
+          "residual_inventory": false
+        }
+      }
+    }
+  },
+  {
+    "source": "latencies.json",
+    "account": "soak-5ce99dcfd4cd",
+    "reference": {
+      "balanced": true,
+      "cycles": {
+        "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892": {
+          "holdings": {
+            "USDT": "2392807/20000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "392807/20000",
+          "residual_inventory": false
+        },
+        "soak-5ce99dcfd4cd:f24ac4d5c5954ac16d762b46f01c9673ec95847c8738e8328d07dd8183270584": {
+          "holdings": {
+            "USDT": "11968023/100000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1968023/100000",
+          "residual_inventory": false
+        },
+        "soak-5ce99dcfd4cd:c1e6904f9328534db7358c6264085a098e0e930e1ef5cf21378af80fb8ad727a": {
+          "holdings": {
+            "USDT": "2993003/25000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "493003/25000",
+          "residual_inventory": false
+        },
+        "soak-5ce99dcfd4cd:50b71cb7a373456ee05cf6823c8558b6680c33a6037d0c93cf5cccf0021fcb27": {
+          "holdings": {
+            "USDT": "5985009/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "985009/50000",
+          "residual_inventory": false
+        }
+      }
+    }
+  },
+  {
+    "source": "latencies.json",
+    "account": "soak-459d55756302",
+    "reference": {
+      "balanced": true,
+      "cycles": {
+        "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622": {
+          "holdings": {
+            "USDT": "2392807/20000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "392807/20000",
+          "residual_inventory": false
+        },
+        "soak-459d55756302:619ba3234b184f24130397801a552f9ba0ea3b1605e84ff0d0322b38f994334c": {
+          "holdings": {
+            "USDT": "11966029/100000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1966029/100000",
+          "residual_inventory": false
+        },
+        "soak-459d55756302:906a3f3c0b02a18faad023e7c87bbdd1a67a1ae53fb8d2474052ebd9ac76334b": {
+          "holdings": {
+            "USDT": "5985009/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "985009/50000",
+          "residual_inventory": false
+        }
+      }
+    }
+  },
+  {
+    "source": "latencies.json",
+    "account": "soak-a3b526592101",
+    "reference": {
+      "balanced": true,
+      "cycles": {
+        "soak-a3b526592101:ecb947381e13fa1d4d5daa8bc0adaaa589b399d0c66e03b9b6053906114c5715": {
+          "holdings": {
+            "USDT": "5985009/50000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "985009/50000",
+          "residual_inventory": false
+        },
+        "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c": {
+          "holdings": {
+            "USDT": "2392807/20000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "392807/20000",
+          "residual_inventory": false
+        },
+        "soak-a3b526592101:0c37575cecce5f8ec4b7fe973e99d4bf254aa8d1eccddf7c752ffaaaac021002": {
+          "holdings": {
+            "USDT": "11966029/100000",
+            "BTC": "0",
+            "ETH": "0"
+          },
+          "realized_pnl": "1966029/100000",
+          "residual_inventory": false
+        }
+      }
+    }
+  },
+  {
+    "source": "latencies.json",
+    "account": "soak-0a8fd0a79755",
+    "reference": {
+      "balanced": true,
+      "cycles": {
+        "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e": {
+          "holdings": {
+            "USDT": "0",
+            "BTC": "0",
+            "ETH": "998001/50000"
+          },
+          "realized_pnl": null,
+          "residual_inventory": true
+        }
+      }
+    }
+  },
+  {
+    "source": "latencies.json",
+    "account": "soak-38ebe4e4e173",
+    "reference": {
+      "balanced": true,
+      "cycles": {
+        "soak-38ebe4e4e173:940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b": {
+          "holdings": {
+            "USDT": "100",
+            "BTC": "0"
+          },
+          "realized_pnl": "0",
+          "residual_inventory": false
+        },
+        "soak-38ebe4e4e173:457e9190299951fa7075331ef869d4568e225119912751790107ea4eda2497b2": {
+          "holdings": {
+            "USDT": "100",
+            "BTC": "0"
+          },
+          "realized_pnl": "0",
+          "residual_inventory": false
+        },
+        "soak-38ebe4e4e173:43c2b09d03ac00cd2d411f6c0ffef4d7401bb8a3faf84d3c3d90f697d3731a75": {
+          "holdings": {
+            "USDT": "100",
+            "BTC": "0"
+          },
+          "realized_pnl": "0",
+          "residual_inventory": false
+        },
+        "soak-38ebe4e4e173:d3718444700b4d4ebb1c9318e7c8f6f09d34e95fc64578b072c24f5fe81950f9": {
+          "holdings": {
+            "USDT": "100",
+            "BTC": "0"
+          },
+          "realized_pnl": "0",
+          "residual_inventory": false
+        },
+        "soak-38ebe4e4e173:84f39b488c27a0c040707f5678195048a0790008d17582cc1f66264ef76a9802": {
+          "holdings": {
+            "USDT": "100",
+            "BTC": "0"
+          },
+          "realized_pnl": "0",
+          "residual_inventory": false
+        }
+      }
+    }
+  }
+]

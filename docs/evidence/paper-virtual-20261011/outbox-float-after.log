@@ -1,0 +1,9 @@
+   Compiling serde_json v1.0.154
+   Compiling event-bus v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/event-bus)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.03s
+     Running unittests src/lib.rs (rust/target/debug/deps/event_bus-c22195b36a384945)
+
+running 1 test
+test tests::persisted_float_payload_retries_without_false_identity_conflict ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
