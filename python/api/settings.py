@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     arb_api_host: str = "0.0.0.0"
     arb_api_port: int = 8000
     arb_live_trading_enabled: bool = False
+    arb_trading_mode: str = "observe"
+    arb_paper_trading_enabled: bool = False
     arb_cors_origins: str = "http://localhost:5173"
     arb_control_api_token: str = ""
     arb_risk_config: str = "shared/config/risk.json"
