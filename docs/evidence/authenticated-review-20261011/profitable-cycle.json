@@ -1,0 +1,304 @@
+{
+  "cycles": [
+    [
+      "67c53af64c17a09e0b6298578f6af9cced6ae8783b96511b82861ef0904e05c0",
+      {
+        "BTC": "0.00000000",
+        "ETH": "0.00000",
+        "USDT": "119.91419651"
+      },
+      "100",
+      "19.91419651",
+      true
+    ]
+  ],
+  "orders": [
+    [
+      {
+        "to": "BTC",
+        "from": "USDT",
+        "mode": "Testnet",
+        "side": "Buy",
+        "symbol": "BTCUSDT",
+        "quantity": "0.99800299000000000000000000",
+        "order_type": "Limit",
+        "fee_ceiling": "0.001",
+        "limit_price": "100.1000",
+        "input_budget": "100",
+        "maximum_spend": "99.99999939829900000000000000",
+        "risk_reducing": false,
+        "risk_approved_at_ms": 1791757783276,
+        "verified_taker_fee_rate": "0.001"
+      },
+      {
+        "fees": {
+          "USDT": "0.001"
+        },
+        "side": "Buy",
+        "fills": [
+          {
+            "fee": "0.001",
+            "price": "100",
+            "value": "99.80029900",
+            "is_maker": false,
+            "order_id": "mock-arb-a3b577e2814f26ce33f7-l10",
+            "quantity": "0.99800299",
+            "execution_id": "fill-arb-a3b577e2814f26ce33f7-l10",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791757783373
+          }
+        ],
+        "status": "Filled",
+        "symbol": "BTCUSDT",
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-l10",
+        "terminal": true,
+        "fully_filled": true,
+        "order_link_id": "arb-a3b577e2814f26ce33f7-l10",
+        "reject_reason": null,
+        "updated_at_ms": 1791757783373,
+        "filled_quantity": "0.99800299",
+        "fills_confirmed": true,
+        "average_fill_price": "100",
+        "remaining_quantity": "0.00000000",
+        "requested_quantity": "0.99800299"
+      }
+    ],
+    [
+      {
+        "to": "ETH",
+        "from": "BTC",
+        "mode": "Testnet",
+        "side": "Buy",
+        "symbol": "ETHBTC",
+        "quantity": "19.920190000000000000000000000",
+        "order_type": "Limit",
+        "fee_ceiling": "0.001",
+        "limit_price": "0.050050",
+        "input_budget": "0.99800299",
+        "maximum_spend": "0.9980025150095000000000000000",
+        "risk_reducing": false,
+        "risk_approved_at_ms": 1791757783389,
+        "verified_taker_fee_rate": "0.001"
+      },
+      {
+        "fees": {
+          "USDT": "0.001"
+        },
+        "side": "Buy",
+        "fills": [
+          {
+            "fee": "0.001",
+            "price": "0.05",
+            "value": "0.9960095",
+            "is_maker": false,
+            "order_id": "mock-arb-a3b577e2814f26ce33f7-l20",
+            "quantity": "19.92019",
+            "execution_id": "fill-arb-a3b577e2814f26ce33f7-l20",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791757783484
+          }
+        ],
+        "status": "Filled",
+        "symbol": "ETHBTC",
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-l20",
+        "terminal": true,
+        "fully_filled": true,
+        "order_link_id": "arb-a3b577e2814f26ce33f7-l20",
+        "reject_reason": null,
+        "updated_at_ms": 1791757783484,
+        "filled_quantity": "19.92019",
+        "fills_confirmed": true,
+        "average_fill_price": "0.05",
+        "remaining_quantity": "0.00000",
+        "requested_quantity": "19.92019"
+      }
+    ],
+    [
+      {
+        "to": "USDT",
+        "from": "ETH",
+        "mode": "Testnet",
+        "side": "Sell",
+        "symbol": "ETHUSDT",
+        "quantity": "19.92019",
+        "order_type": "Limit",
+        "fee_ceiling": "0.001",
+        "limit_price": "5.9940",
+        "input_budget": "19.92019",
+        "maximum_spend": "19.92019",
+        "risk_reducing": true,
+        "risk_approved_at_ms": 1791757783495,
+        "verified_taker_fee_rate": "0.001"
+      },
+      {
+        "fees": {
+          "USDT": "0.001"
+        },
+        "side": "Sell",
+        "fills": [
+          {
+            "fee": "0.001",
+            "price": "6",
+            "value": "119.52114",
+            "is_maker": false,
+            "order_id": "mock-arb-a3b577e2814f26ce33f7-l30",
+            "quantity": "19.92019",
+            "execution_id": "fill-arb-a3b577e2814f26ce33f7-l30",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791757783590
+          }
+        ],
+        "status": "Filled",
+        "symbol": "ETHUSDT",
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-l30",
+        "terminal": true,
+        "fully_filled": true,
+        "order_link_id": "arb-a3b577e2814f26ce33f7-l30",
+        "reject_reason": null,
+        "updated_at_ms": 1791757783590,
+        "filled_quantity": "19.92019",
+        "fills_confirmed": true,
+        "average_fill_price": "6",
+        "remaining_quantity": "0.00000",
+        "requested_quantity": "19.92019"
+      }
+    ],
+    [
+      {
+        "to": "USDT",
+        "from": "BTC",
+        "mode": "Testnet",
+        "side": "Sell",
+        "symbol": "BTCUSDT",
+        "quantity": "0.00199349",
+        "order_type": "Limit",
+        "fee_ceiling": "0.001",
+        "limit_price": "98.5050",
+        "input_budget": "0.00199349",
+        "maximum_spend": "0.00199349",
+        "risk_reducing": true,
+        "risk_approved_at_ms": 1791757783607,
+        "verified_taker_fee_rate": "0.001"
+      },
+      {
+        "fees": {
+          "USDT": "0.001"
+        },
+        "side": "Sell",
+        "fills": [
+          {
+            "fee": "0.001",
+            "price": "99",
+            "value": "0.19735551",
+            "is_maker": false,
+            "order_id": "mock-arb-a3b577e2814f26ce33f7-u11",
+            "quantity": "0.00199349",
+            "execution_id": "fill-arb-a3b577e2814f26ce33f7-u11",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791757783702
+          }
+        ],
+        "status": "Filled",
+        "symbol": "BTCUSDT",
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-u11",
+        "terminal": true,
+        "fully_filled": true,
+        "order_link_id": "arb-a3b577e2814f26ce33f7-u11",
+        "reject_reason": null,
+        "updated_at_ms": 1791757783702,
+        "filled_quantity": "0.00199349",
+        "fills_confirmed": true,
+        "average_fill_price": "99",
+        "remaining_quantity": "0.00000000",
+        "requested_quantity": "0.00199349"
+      }
+    ]
+  ],
+  "fills": [
+    {
+      "account_id": "profit-0b52124f6a",
+      "execution_id": "fill-arb-a3b577e2814f26ce33f7-u11",
+      "link_id": "arb-a3b577e2814f26ce33f7-u11",
+      "cycle_id": "67c53af64c17a09e0b6298578f6af9cced6ae8783b96511b82861ef0904e05c0",
+      "evidence": {
+        "fee": "0.001",
+        "price": "99",
+        "value": "0.19735551",
+        "is_maker": false,
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-u11",
+        "quantity": "0.00199349",
+        "execution_id": "fill-arb-a3b577e2814f26ce33f7-u11",
+        "fee_currency": "USDT",
+        "executed_at_ms": 1791757783702
+      },
+      "created_at": "2026-10-11T15:29:43.707931-07:00"
+    },
+    {
+      "account_id": "profit-0b52124f6a",
+      "execution_id": "fill-arb-a3b577e2814f26ce33f7-l30",
+      "link_id": "arb-a3b577e2814f26ce33f7-l30",
+      "cycle_id": "67c53af64c17a09e0b6298578f6af9cced6ae8783b96511b82861ef0904e05c0",
+      "evidence": {
+        "fee": "0.001",
+        "price": "6",
+        "value": "119.52114",
+        "is_maker": false,
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-l30",
+        "quantity": "19.92019",
+        "execution_id": "fill-arb-a3b577e2814f26ce33f7-l30",
+        "fee_currency": "USDT",
+        "executed_at_ms": 1791757783590
+      },
+      "created_at": "2026-10-11T15:29:43.596453-07:00"
+    },
+    {
+      "account_id": "profit-0b52124f6a",
+      "execution_id": "fill-arb-a3b577e2814f26ce33f7-l20",
+      "link_id": "arb-a3b577e2814f26ce33f7-l20",
+      "cycle_id": "67c53af64c17a09e0b6298578f6af9cced6ae8783b96511b82861ef0904e05c0",
+      "evidence": {
+        "fee": "0.001",
+        "price": "0.05",
+        "value": "0.9960095",
+        "is_maker": false,
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-l20",
+        "quantity": "19.92019",
+        "execution_id": "fill-arb-a3b577e2814f26ce33f7-l20",
+        "fee_currency": "USDT",
+        "executed_at_ms": 1791757783484
+      },
+      "created_at": "2026-10-11T15:29:43.490903-07:00"
+    },
+    {
+      "account_id": "profit-0b52124f6a",
+      "execution_id": "fill-arb-a3b577e2814f26ce33f7-l10",
+      "link_id": "arb-a3b577e2814f26ce33f7-l10",
+      "cycle_id": "67c53af64c17a09e0b6298578f6af9cced6ae8783b96511b82861ef0904e05c0",
+      "evidence": {
+        "fee": "0.001",
+        "price": "100",
+        "value": "99.80029900",
+        "is_maker": false,
+        "order_id": "mock-arb-a3b577e2814f26ce33f7-l10",
+        "quantity": "0.99800299",
+        "execution_id": "fill-arb-a3b577e2814f26ce33f7-l10",
+        "fee_currency": "USDT",
+        "executed_at_ms": 1791757783373
+      },
+      "created_at": "2026-10-11T15:29:43.382393-07:00"
+    }
+  ],
+  "opening": {
+    "USDT": "1000",
+    "BTC": "0",
+    "ETH": "0",
+    "MNT": "1"
+  },
+  "ending": {
+    "USDT": "1019.91419651",
+    "BTC": "0E-8",
+    "ETH": "0.00000",
+    "MNT": "1"
+  },
+  "independent_rational_reconciliation": true
+}

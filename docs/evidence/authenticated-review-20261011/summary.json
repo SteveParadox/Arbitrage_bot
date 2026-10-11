@@ -1,0 +1,63 @@
+{
+  "tested_source_sha": "87b2f6634e0419da4c40a6d724aa1549969f4b29",
+  "tested_source_tree": "f650c807dbfea71b6edd07ce9ab78e46200037d7",
+  "python": {
+    "passed": 375,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 1,
+    "seconds": 306.79
+  },
+  "rust_default": {
+    "passed": 115,
+    "failed": 0,
+    "ignored": 3
+  },
+  "redis_ignored_executed": {
+    "passed": 3,
+    "failed": 0
+  },
+  "frontend": {
+    "passed": 26,
+    "failed": 0
+  },
+  "authenticated_integrations": {
+    "passed": 44,
+    "failed": 0,
+    "subset_of_python": true
+  },
+  "security": {
+    "passed": 36,
+    "failed": 0,
+    "subset_of_python": true
+  },
+  "migration_workflow": "passed upgrade/rollback/re-upgrade",
+  "docker": "unverified: executable absent; exit 127",
+  "actual_testnet_or_mainnet_orders": 0,
+  "live_enabled_during_validation": false,
+  "ci_run_id": 38180568476,
+  "ci": "all 6 jobs failure; no steps/logs; sampled Rust/Python steps empty",
+  "paper_short_soak": {
+    "actual_seconds": 60.127985252000144,
+    "latency_ms": 50,
+    "max_rss_kib": 41144,
+    "cpu_seconds": 2.594728,
+    "postgres_probe_ms": 0.39509799989900785,
+    "cycle_states": {
+      "COMPLETED": 50
+    },
+    "independent_final": {
+      "balanced": true,
+      "cycles": 50,
+      "orders": 150
+    },
+    "shutdown": {
+      "runtime_online": false,
+      "authorized": false,
+      "active_cycles": 0,
+      "pending_orders": 0,
+      "reservations": 0,
+      "balanced": true
+    }
+  }
+}

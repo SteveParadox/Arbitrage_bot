@@ -1,0 +1,342 @@
+   Compiling micro-canary v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/micro-canary)
+   Compiling authenticated v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/authenticated)
+   Compiling engine-service v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/engine-service)
+   Compiling paper v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/paper)
+   Compiling shadow v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/shadow)
+   Compiling market-data v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/market-data)
+   Compiling coordinator v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/coordinator)
+   Compiling execution v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/execution)
+   Compiling risk v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/risk)
+   Compiling scanner v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/scanner)
+   Compiling event-bus v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/event-bus)
+   Compiling orderbook v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/orderbook)
+   Compiling runtime-clock v0.1.0 (/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/runtime-clock)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.44s
+     Running unittests src/lib.rs (rust/target/debug/deps/authenticated-d0cadfa21980266f)
+
+running 5 tests
+test venue::limit_tests::rounding_never_loosens_buy_cap_or_sell_floor ... ok
+test venue::limit_tests::worst_case_buy_and_input_fee_fit_exact_reserved_capital ... ok
+test venue::limit_tests::limit_quantity_cap_is_distinct_from_market_cap ... ok
+test tests::every_live_readiness_gate_is_mandatory ... ok
+test venue::limit_tests::invalid_or_below_minimum_limit_fails_closed ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/bin/exchange_reservation_probe.rs (rust/target/debug/deps/exchange_reservation_probe-907055cc590cb5df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/coordinator-d593712da823b3bc)
+
+running 1 test
+test planner::tests::buy_plan_uses_actual_quote_budget_and_rounds_base_quantity_down ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/coordinator.rs (rust/target/debug/deps/coordinator-043a5081c042caf4)
+
+running 3 tests
+test propagates_actual_post_fee_quantity_through_all_three_legs ... ok
+test unresolved_leg_two_halts_without_blind_opposite_order ... ok
+test partial_leg_two_unwinds_both_remaining_intermediate_assets ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (rust/target/debug/deps/engine_service-f6d6808aa7b841aa)
+
+running 13 tests
+test boundary_tests::request_id_validation_rejects_empty_and_oversized_values ... ok
+test exchange_runtime::tests::zero_fill_asset_keys_are_economically_equal ... ok
+test boundary_tests::control_state_distinguishes_missing_from_corrupt ... ok
+test observer::tests::health_requires_confirmed_current_books ... ok
+test idempotency::tests::same_request_id_with_different_payload_conflicts ... ok
+test idempotency::tests::sequential_duplicate_returns_completed_record ... ok
+test observer::tests::replay_rejects_missing_or_enabled_live_gate ... ok
+test security::tests::production_fails_closed ... ok
+test observer::tests::metadata_expiry_requires_refresh_and_rejects_future_timestamps ... ok
+test observer::tests::managed_mode_rejects_execution_or_implicit_live_permission ... ok
+test observer::tests::reconnect_invalidates_metadata_before_connected_event ... ok
+test idempotency::tests::in_progress_survives_store_restart_and_is_not_pruned ... ok
+test idempotency::tests::concurrent_claim_has_one_winner ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/event_bus-4a7c81f61a4366c0)
+
+running 11 tests
+test tests::redis_backlog_never_trims_pending_critical_events ... ignored, requires Redis integration service
+test tests::redis_pause_preserves_critical_event_and_recovers ... ignored, requires Redis integration service
+test tests::restart_recovery_delivers_same_event_ids_to_redis_when_enabled ... ignored, requires Redis integration service
+test tests::retry_delay_is_bounded_and_deterministic ... ok
+test tests::disconnected_queue_never_drops_critical_event ... ok
+test tests::deterministic_events_deduplicate_pending_delivered_and_restart ... ok
+test tests::queue_full_never_drops_critical_event ... ok
+test tests::persisted_float_payload_retries_without_false_identity_conflict ... ok
+test tests::outbox_write_failure_never_reports_acceptance ... ok
+test tests::concurrent_duplicate_outbox_writers_accept_once_and_fail_on_conflict ... ok
+test tests::high_volume_critical_burst_is_disk_backed_not_memory_bounded ... ok
+
+test result: ok. 8 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/execution-014879a1158aeac5)
+
+running 9 tests
+test auth::tests::hmac_signature_is_deterministic ... ok
+test client::tests::identifies_retryable_bybit_errors_without_retrying_bad_parameters ... ok
+test model::tests::ambiguous_submission_decode_error_is_not_safe_to_unwind ... ok
+test client::tests::serializes_market_order_with_explicit_base_coin_unit ... ok
+test config::tests::mock_transport_and_mainnet_configuration_fail_closed ... ok
+test model::tests::recognizes_terminal_bybit_order_states ... ok
+test client::tests::fill_identity_deduplicates_exact_replays_and_rejects_conflicts ... ok
+test model::tests::validates_small_market_order_with_base_quantity ... ok
+test model::tests::rejects_order_above_execution_cap ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/market_data-681688268cdee6e7)
+
+running 12 tests
+test config::tests::builds_expected_testnet_url ... ok
+test connector::tests::builds_all_topics_per_symbol ... ok
+test connector::tests::can_subscribe_to_orderbooks_only ... ok
+test connector::tests::parses_bybit_levels ... ok
+test connector::tests::rejects_topic_sets_above_connection_character_limit ... ok
+test connector::tests::spot_subscriptions_are_batched_at_ten_arguments ... ok
+test connector::tests::spot_filters_use_base_precision_and_quote_minimum ... ok
+test model::tests::serializes_order_book_event_for_scanner_pipe ... ok
+test health::tests::readiness_requires_ack_coverage_synchronization_and_both_clocks ... ok
+test connector::tests::ticker_activity_cannot_refresh_orderbook_freshness ... ok
+test connector::tests::metadata_snapshot_is_atomic_on_missing_instrument ... ok
+test connector::tests::scanner_recovery_reconnects_and_refreshes_metadata_generation ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/main.rs (rust/target/debug/deps/market_data-cff11b7cb84e2596)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/micro_canary-270a8653af5a728b)
+
+running 1 test
+test config::tests::rejects_full_account_sized_candidate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/micro_canary.rs (rust/target/debug/deps/micro_canary-4ed49a14d22ba3ab)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/orderbook-1265c4300b4aad8d)
+
+running 10 tests
+test tests::delta_requires_snapshot_and_tiny_positive_orders_walk_depth ... ok
+test tests::applies_delta_and_removes_zero_quantity_levels ... ok
+test tests::crossed_book_cannot_produce_execution_estimate ... ok
+test tests::calculates_buy_execution_from_quote_notional ... ok
+test tests::maintains_best_prices_top_levels_and_metadata ... ok
+test tests::rejects_regressing_sequence ... ok
+test tests::calculates_sell_execution_across_bid_depth ... ok
+test tests::reports_partial_fill_when_depth_is_insufficient ... ok
+test tests::fresh_snapshot_can_reset_sequence_and_update_id ... ok
+test tests::update_id_one_replaces_old_depth_even_when_flagged_delta ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/paper-3e61e0f5d02c1349)
+
+running 11 tests
+test matching::tests::depth_buy_and_fee ... ok
+test matching::tests::depth_sell_partial_and_fee ... ok
+test matching::tests::budget_never_overspent ... ok
+test matching::tests::maximum_quantity_and_metadata_age_are_enforced ... ok
+test matching::tests::quote_rounding_never_overspends_buy_budget ... ok
+test matching::tests::stale_minimum_precision_and_slippage ... ok
+test matching::tests::fee_rounding_is_conservative_and_invalid_settings_fail ... ok
+test tests::modes_fail_closed ... ok
+test venue::tests::confirmed_global_stop_remains_a_paper_exposure_gate ... ok
+test venue::tests::unrelated_delta_does_not_replenish_consumed_liquidity ... ok
+test venue::tests::consumption_uses_executed_lots_not_substep_dust ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/reservation_probe.rs (rust/target/debug/deps/reservation_probe-f591e258333ba134)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/risk-b91cd89440413c3e)
+
+running 22 tests
+test control::tests::durable_stop_latch_blocks_activation_including_corrupt_latch ... ok
+test engine::tests::emergency_unwind_rejects_unknown_or_stale_exposure ... ok
+test control::tests::control_locks_release_on_drop ... ok
+test engine::tests::approves_trade_when_every_gate_passes ... ok
+test engine::tests::expired_approval_cannot_cross_execution_gate ... ok
+test engine::tests::malformed_runtime_limits_fail_closed ... ok
+test engine::tests::negative_slippage_and_invalid_liquidity_ratio_are_rejected ... ok
+test engine::tests::portfolio_limits_reject_drawdown_asset_exposure_and_loss_streak ... ok
+test engine::tests::emergency_unwind_can_be_approved_while_kill_switch_is_active ... ok
+test engine::tests::rejects_low_edge_slippage_liquidity_balance_size_and_exposure ... ok
+test engine::tests::manual_kill_switch_blocks_and_survives_new_engine_instance ... ok
+test engine::tests::precision_mismatch_rejects_candidate ... ok
+test engine::tests::newly_engaged_kill_switch_invalidates_existing_approval ... ok
+test engine::tests::preview_rejects_stale_market_without_latching_breaker ... ok
+test engine::tests::old_execution_failure_does_not_count_toward_window ... ok
+test engine::tests::runtime_control_blocks_live_evaluation_but_not_shadow_preview ... ok
+test engine::tests::runtime_limit_overlay_changes_future_risk_decision ... ok
+test engine::tests::daily_loss_and_unhealthy_services_trip_breakers ... ok
+test engine::tests::stale_market_data_trips_latched_breaker ... ok
+test control::tests::strict_control_rejects_malformed_fields_and_expired_activation ... ok
+test engine::tests::stopping_runtime_control_invalidates_existing_normal_approval ... ok
+test engine::tests::three_execution_failures_within_five_minutes_trip_breaker ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/riskctl.rs (rust/target/debug/deps/riskctl-8da005d83b1ee905)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/runtime_clock-53179f4367ace51d)
+
+running 3 tests
+test tests::pending_candidates_do_not_block_active_timer ... ok
+test tests::same_time_market_batch_precedes_admission_and_fill ... ok
+test tests::logical_latency_is_independent_of_wall_and_task_scoped ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/scanner-24f0b039c13a8946)
+
+running 14 tests
+test engine::tests::indexes_only_affected_routes ... ok
+test engine::tests::records_missing_books_until_route_is_fully_initialized ... ok
+test engine::tests::calculates_net_profit_after_cost_model ... ok
+test engine::tests::records_insufficient_depth_without_net_profitability ... ok
+test engine::tests::canonical_config_hash_survives_restart_and_reload ... ok
+test engine::tests::reset_requires_all_three_new_snapshots ... ok
+test profitability::tests::reference_example_is_about_eighteen_basis_points_net ... ok
+test engine::tests::route_reload_resets_books_before_scanning_resumes ... ok
+test tests::rejects_wrong_market_and_forged_route_identity ... ok
+test tests::rejects_incorrect_side_semantics ... ok
+test tests::returns_required_market_symbols ... ok
+test tests::validates_structural_buy_sell_route ... ok
+test engine::tests::stale_or_skewed_books_never_complete ... ok
+test engine::tests::faults_require_new_snapshots_for_every_route_book ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/bin/profitability_fixture.rs (rust/target/debug/deps/profitability_fixture-30e199d416355634)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/scan_live.rs (rust/target/debug/deps/scan_live-4cd263fbce13e85c)
+
+running 1 test
+test tests::stale_unknown_or_unacknowledged_feed_health_never_unlocks_scanner ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/validate_triangles.rs (rust/target/debug/deps/validate_triangles-143b08b73ef20663)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/shadow-c77eb05b94a1ba8b)
+
+running 2 tests
+test account::tests::signature_is_deterministic ... ok
+test engine::tests::delayed_sample_never_uses_book_received_after_target ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/shadow_live.rs (rust/target/debug/deps/shadow_live-dcb6bccbf4f94289)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests authenticated
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests coordinator
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests event_bus
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests execution
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests market_data
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests micro_canary
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests orderbook
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests paper
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests risk
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests runtime_clock
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests scanner
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests shadow
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

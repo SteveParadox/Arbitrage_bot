@@ -1,0 +1,14 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> arbitrage-bot-dashboard@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.3 /workspace/scratch/029697e70c9a/Arbitrage_bot/frontend
+
+
+ Test Files  4 passed (4)
+      Tests  26 passed (26)
+   Start at  15:28:00
+   Duration  1.36s (environment 57%, import 17%, tests 14%, transform 12%)
+

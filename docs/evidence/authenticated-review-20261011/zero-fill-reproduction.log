@@ -1,0 +1,42 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+F                                                                        [100%]
+=================================== FAILURES ===================================
+____________ test_buy_price_movement_cannot_spend_unreserved_wallet ____________
+
+api = (<httpx.Client object at 0x7f73b6bc8860>, PosixPath('/tmp/pytest-of-root/pytest-10/exchange-api0'))
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10/test_buy_price_movement_cannot0')
+
+    def test_buy_price_movement_cannot_spend_unreserved_wallet(api, tmp_path):
+        name=f"adverse_buy-{PREFIX}"
+        uid=str(uuid.uuid4().int % 10**15)
+        client,_=api
+        market_fixture(tmp_path)
+        permit=provision(api,name,uid)
+        with BybitMock(uid,"adverse_buy") as mock:
+            process,log=start(tmp_path,name,mock,permit)
+            try:
+                wait_execution_ready(client,name)
+                response=client.post(f"/execution/{name}/control/start",json={"request_id":"price-bound","reason":"adverse exchange ask fixture","authorization":"authorize_testnet"})
+                assert response.status_code==200,response.text
+                wait(lambda:sql("SELECT state FROM execution_cycles WHERE account_id=%s AND (settled OR state='RECOVERY_REQUIRED')",(name,)))
+                # The account has 1000 USDT, but this cycle owns only 100. A market
+                # order can spend the extra wallet funds before local accounting.
+                spent=sum((Decimal(f["execValue"]) + Decimal(f["execFee"]) for fills in mock.fills.values() for f in fills if f["orderId"].endswith("-l10")), Decimal(0))
+                assert spent<=Decimal("100"),f"reserved 100 USDT; exchange spent {spent}"
+                assert not mock.errors,mock.errors
+                assert len(mock.posts)==1
+                assert mock.posts[0]["orderType"]=="Limit"
+                assert Decimal(mock.posts[0]["price"])==Decimal("100.10")
+                assert mock.wallet==mock.opening
+>               assert sql("SELECT committed,settled,realized_pnl::text FROM execution_cycles WHERE account_id=%s",(name,))==[(False,True,"0")], (sql("SELECT state,reason,holdings FROM execution_cycles WHERE account_id=%s",(name,)), sql("SELECT state,terminal,confirmed,evidence FROM execution_orders WHERE account_id=%s",(name,)))
+E               AssertionError: ([('RECOVERY_REQUIRED', 'coordinator/journal holdings disagree', {'USDT': '100'})], [('CANCELLED', True, True, {'average_fill_price': '101', 'fees': {}, 'filled_quantity': '0', 'fills': [], ...})])
+E               assert [(True, False, None)] == [(False, True, '0')]
+E                 
+E                 At index 0 diff: (True, False, None) != (False, True, '0')
+E                 Use -v to get more diff
+
+tests/test_exchange_runtime.py:619: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_exchange_runtime.py::test_buy_price_movement_cannot_spend_unreserved_wallet
+1 failed in 2.28s

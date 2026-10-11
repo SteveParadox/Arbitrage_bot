@@ -55,6 +55,19 @@ timestamp, using the established control-state tooling. This alone cannot start
 trading. A recorded stop intent must be resolved through the control procedure;
 removing its file is not an authorized clear operation.
 
+Authenticated orders use **Limit + IOC**, with a tick-aligned price fixed from
+the local synchronized book. Buy caps round down and sell floors round up. Buy
+quantity includes a worst-case quote-fee allowance and cannot exceed cycle-owned
+capital; PostgreSQL revalidates that budget inside the order-intent transaction.
+`maxLimitOrderQty` is mandatory exact metadata for this mode. The decimal planner
+also retains its conservative market-quantity cap. Paper matching is unchanged.
+Market slippage anchored to a later exchange book does not provide this local
+capital guarantee, so the managed authenticated venue rejects market requests.
+
+Graceful worker exits revoke the heartbeat and authorization immediately.
+Terminal FAILED/STOPPED states cannot be displayed as online or authorized,
+and a new start requires READY plus current market and wallet evidence.
+
 ## Account, secret and permit setup
 
 Provision a dedicated **unleveraged, exclusive spot account**. Other trading,
