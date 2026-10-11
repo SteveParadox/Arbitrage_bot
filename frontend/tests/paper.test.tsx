@@ -21,6 +21,17 @@ describe("paper dashboard contract", () => {
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PaperPanel } from "../src/PaperPanel";
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it.each([false, undefined, true])("gates paper controls on explicit permission %s", async permission => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ok: true, json: async () =>
+    url.endsWith("status") ? {...status, state: "stopped", authorized: false, can_control: permission} :
+    url.endsWith("performance") ? {mode: "paper", simulated: true, net_realized_pnl: "0"} :
+    url.endsWith("valuation") ? {mode: "paper", simulated: true, estimated_equity: "500"} : []})));
+  render(<PaperPanel />);
+  fireEvent.change(screen.getByLabelText("Paper control token"), {target: {value: "test-token"}});
+  fireEvent.click(screen.getByText("Connect paper account"));
+  await waitFor(() => expect(screen.queryByText("Start paper trading")).toBeTruthy());
+  expect((screen.getByText("Start paper trading") as HTMLButtonElement).disabled).toBe(permission !== true);
+});
 it("renders simulated lifecycle, fees and quarantined residual inventory", async () => {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     const value = url.endsWith("status") ? { ...status, state: "blocked", blocked: true } :

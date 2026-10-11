@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 redis = "0.27"
 serde.workspace = true
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
 

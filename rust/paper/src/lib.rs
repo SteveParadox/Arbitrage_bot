@@ -12,6 +12,7 @@ pub fn crash_checkpoint(name: &str) {
     if std::env::var("ARB_ENV").as_deref() == Ok("development")
         && std::env::var("ARB_LIVE_TRADING_ENABLED").as_deref() == Ok("false")
         && std::env::var("ARB_PAPER_TRADING_ENABLED").as_deref() == Ok("true")
+        && std::env::var("ARB_TRADING_MODE").as_deref() == Ok("paper")
         && std::env::var("ARB_PAPER_CRASH_AT").as_deref() == Ok(name)
     {
         std::process::exit(88);

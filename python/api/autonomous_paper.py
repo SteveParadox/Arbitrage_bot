@@ -7,17 +7,17 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from analytics.db import get_db
-from api.control import require_control_auth
+from api.security import require_paper_auth
 from api.settings import settings
 
 router = APIRouter(prefix="/paper", tags=["autonomous-paper"],
-                   dependencies=[Depends(require_control_auth)])
+                   dependencies=[Depends(require_paper_auth)])
 DB = Annotated[Session, Depends(get_db)]
 Identity = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 
@@ -145,7 +145,7 @@ def _decimal_rows(rows):
 
 
 @router.get("/{account}/status")
-def status(account: str, db: ReadDB):
+def status(account: str, db: ReadDB, request: Request = None):
     row = _account(db, account)
     balances = _decimal_rows(_query(db, "SELECT asset,available,reserved,version,reconciled_at "
                                     "FROM paper_balances WHERE account_id=:a ORDER BY asset",
@@ -157,6 +157,7 @@ def status(account: str, db: ReadDB):
     online = _runtime_online(row["heartbeat"])
     return {"account_id": account, "mode": "paper", "simulated": True,
             "clock": row["config"].get("runtime_clock", "wall"),
+            "can_control": request is not None and getattr(request.state, "paper_role", "viewer") != "viewer",
             "state": "recovering" if row["recovering"] else "blocked" if row["blocked"] else "offline" if not online else
             "executing" if active else "running" if row["enabled"] else "stopped",
             "authorized": row["enabled"], "blocked": row["blocked"], "runtime_online": online,

@@ -74,8 +74,8 @@ export function PaperPanel() {
       <label>Account <input aria-label="Paper account" value={account} disabled={connected} onChange={e => setAccount(e.target.value)} /></label>
       <label>Control token <input aria-label="Paper control token" type="password" value={token} disabled={connected} onChange={e => setToken(e.target.value)} autoComplete="off" /></label>
       <button onClick={() => { setConnected(!connected); setStatus(null); }}>{connected ? "Disconnect" : "Connect paper account"}</button>
-      {status && <><button disabled={busy || status.blocked || !status.runtime_online || status.authorized} onClick={() => void command("start")}>Start paper trading</button>
-        <button disabled={busy || !status.authorized} onClick={() => void command("stop")}>Stop paper trading</button></>}
+      {status && <><button disabled={busy || status.can_control !== true || status.blocked || !status.runtime_online || status.authorized} onClick={() => void command("start")}>Start paper trading</button>
+        <button disabled={busy || status.can_control !== true || !status.authorized} onClick={() => void command("stop")}>Stop paper trading</button></>}
     </div>
     {error && <p role="alert">{error}</p>}
     {status && <>

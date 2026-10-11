@@ -508,11 +508,17 @@ impl PaperVenue {
             .and_then(|suffix| suffix.chars().next())
             .and_then(|digit| digit.to_digit(10));
         let intent = json!({"cycle_id":self.cycle_id,"leg_number":leg_number,"order_role":if risk_reducing {"recovery_or_close"} else {"normal"},"symbol":r.symbol,"side":r.side,"quantity":r.requested_quantity.to_string(),"from":from,"to":to,"risk_reducing":risk_reducing,"simulated":true,"submission_book":{"timestamp":submission_book.timestamp,"version":submission_book.version,"bids":submission_book.bids,"asks":submission_book.asks}});
+        if let Some(leg) = leg_number {
+            crate::crash_checkpoint(&format!("before_leg_{leg}_intent"));
+        }
         let old = self
             .ledger
             .order_intent(&self.cycle_id, &r.order_link_id, &intent)
             .await?;
         crate::crash_checkpoint("after_intent");
+        if let Some(leg) = leg_number {
+            crate::crash_checkpoint(&format!("after_leg_{leg}_intent"));
+        }
         let result = if let Some(old) = old {
             old
         } else {
@@ -520,6 +526,9 @@ impl PaperVenue {
                 self.settings.latency_ms.min(self.settings.timeout_ms),
             ))
             .await;
+            if let Some(leg) = leg_number {
+                crate::crash_checkpoint(&format!("during_leg_{leg}_matching"));
+            }
             // Use a fresh synchronized snapshot at fill time; receiver remains running during latency.
             let (mut book, instrument) = self.books.snapshot(&r.symbol, r.side).await?;
             let mut matching_settings = self.settings.clone();

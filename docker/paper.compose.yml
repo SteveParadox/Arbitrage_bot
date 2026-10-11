@@ -27,6 +27,7 @@ services:
       ARB_LIVE_TRADING_ENABLED: "false"
       BYBIT_TESTNET: ${BYBIT_TESTNET:-false}
       ARB_PAPER_ACCOUNT: ${ARB_PAPER_ACCOUNT:-demo}
+      ARB_PAPER_STATE_DIR: /app/data/paper
       ARB_TRIANGLE_CONFIG: /catalog/triangles.json
     volumes:
       - paper-catalog:/catalog:ro
@@ -57,7 +58,7 @@ services:
     stop_grace_period: 20s
     mem_limit: 512m
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/livez', timeout=2)"]
       interval: 10s
       timeout: 3s
       retries: 5

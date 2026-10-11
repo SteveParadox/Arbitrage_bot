@@ -327,7 +327,12 @@ def test_completed_cycle_reports_realized_loss(api, tmp_path):
 
 
 @pytest.mark.parametrize("checkpoint", ["before_reservation", "after_reservation", "after_intent",
-                                        2, 3, "before_settlement", "after_settlement"])
+                                        2, 3, "before_settlement", "after_settlement",
+                                        *[f"{stage}_leg_{leg}_{boundary}" for leg in (1,2,3)
+                                          for stage,boundary in (("before","intent"),("after","intent"),
+                                                                 ("during","matching"),("before","fill_commit"),
+                                                                 ("after","fill_commit"))],
+                                        "before_settlement_commit", "after_pnl_finalized"])
 def test_crash_boundaries_preserve_financial_identity(api, tmp_path, checkpoint):
     account = "crash-"+uuid.uuid4().hex[:12]
     create(api, account)

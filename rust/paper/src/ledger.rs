@@ -99,6 +99,12 @@ impl Ledger {
                 eprintln!("paper database connection ended: {e}");
             }
         });
+        if std::env::var("ARB_ENV").as_deref() == Ok("production") {
+            let unsafe_role: bool = client.query_one("SELECT rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname=current_user", &[]).await?.get(0);
+            if unsafe_role {
+                bail!("production paper runtime requires a restricted PostgreSQL role");
+            }
+        }
         Ok(Self {
             client: Arc::new(Mutex::new(client)),
             account,
@@ -764,7 +770,14 @@ impl Ledger {
             json!({"order_id":id,"simulated":true,"result":result,"holdings":values(&h)}),
         )
         .await?;
+        let leg = intent["leg_number"].as_u64();
+        if let Some(leg) = leg {
+            crate::crash_checkpoint(&format!("before_leg_{leg}_fill_commit"));
+        }
         tx.commit().await?;
+        if let Some(leg) = leg {
+            crate::crash_checkpoint(&format!("after_leg_{leg}_fill_commit"));
+        }
         Ok(())
     }
     pub async fn settle(&self, id: &str, status: &str, reason: Option<&str>) -> Result<()> {
@@ -842,7 +855,9 @@ impl Ledger {
             json!({"state":state,"reason":reason}),
         )
         .await?;
+        crate::crash_checkpoint("before_settlement_commit");
         tx.commit().await?;
+        crate::crash_checkpoint("after_pnl_finalized");
         drop(c);
         self.reconcile().await?;
         Ok(())

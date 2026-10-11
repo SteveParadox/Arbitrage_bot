@@ -129,12 +129,19 @@ def test_invalid_schedule_fails_startup_before_orders(api,tmp_path,field,value):
 
 def test_synthetic_generator_refreshes_metadata_for_logical_long_replay(api,tmp_path):
     subprocess.run([sys.executable,str(ROOT/"scripts/make_paper_replay.py"),str(tmp_path),"--cycles","310"],check=True,capture_output=True)
+    for line in (tmp_path/"market.jsonl").read_text().splitlines():
+        event=json.loads(line)["event"]
+        if event["type"]=="order_book" and event["symbol"]=="ETHUSDT":
+            assert all(Decimal(str(level["price"])) % Decimal("0.001") == 0
+                       for side in ("bids","asks") for level in event[side])
     account="catalog-"+uuid.uuid4().hex[:12]
     create(api,account)
     process,log=start_engine(tmp_path,account,clock="virtual",fixture_ready=True)
     try:
         enable(api,account)
-        wait(lambda:sql("SELECT id FROM paper_events WHERE account_id=%s AND kind='paper.replay_finished'",(account,)),timeout=120)
+        # This is 310 real fsync-backed cycles, not a mocked clock microbenchmark.
+        # Measured local throughput completed ~250 cycles in the former 120s budget.
+        wait(lambda:sql("SELECT id FROM paper_events WHERE account_id=%s AND kind='paper.replay_finished'",(account,)),timeout=300)
         with psycopg.connect(URL) as connection:
             snapshot=read_snapshot(connection,account)
         verify(snapshot)

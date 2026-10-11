@@ -5,6 +5,8 @@ edition.workspace = true
 build = "build.rs"
 
 [dependencies]
+url = "2"
+percent-encoding = "2"
 runtime-clock = { path = "../runtime-clock" }
 anyhow.workspace = true
 fs2 = "0.4"

@@ -212,7 +212,7 @@ pub(super) async fn run(
         .audit("paper.replay_finished", payload.clone())
         .await?;
     events.publish_critical_at(
-        format!("paper-replay:{}:{}", ledger.account, source_hash),
+        format!("{:x}", Sha256::digest(json!({"account":ledger.account,"source":source_hash,"epoch":epoch,"end":clock.now_ms()}).to_string().as_bytes())),
         "paper.replay_finished",
         clock.now_ms(),
         payload,

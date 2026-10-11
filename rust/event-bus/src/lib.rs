@@ -1197,6 +1197,31 @@ mod tests {
     }
 
     #[test]
+    fn persisted_float_payload_retries_without_false_identity_conflict() {
+        let path = temp_outbox("float-roundtrip");
+        let event = EngineEvent {
+            event_id: "same-float".into(),
+            event_type: "opportunity.rejected".into(),
+            occurred_at_ms: 1000,
+            source: "engine-service".into(),
+            schema_version: 1,
+            payload: serde_json::json!({"profit":-0.04047932026000997,"fee":0.30047932025999996,"expected_final":99.95952067974001,"gross":100.25999999999999,"edge":5.922097964,"percentage":0.05922097964}),
+        };
+        let outbox = Outbox::open(path.clone()).unwrap();
+        let pending = outbox.persist(&event).unwrap();
+        assert_eq!(outbox.persist(&event).unwrap(), pending);
+        outbox.mark_delivered(&pending).unwrap();
+        drop(outbox);
+        let reopened = Outbox::open(path.clone()).unwrap();
+        reopened.persist(&event).unwrap();
+        let mut conflict = event.clone();
+        conflict.payload["profit"] = Value::from(-0.1);
+        assert!(reopened.persist(&conflict).is_err());
+        drop(reopened);
+        let _ = fs::remove_dir_all(path);
+    }
+
+    #[test]
     fn concurrent_duplicate_outbox_writers_accept_once_and_fail_on_conflict() {
         let path = temp_outbox("concurrent");
         let outbox = Arc::new(Outbox::open(path.clone()).unwrap());

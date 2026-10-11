@@ -5,6 +5,7 @@ import argparse
 import json
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -36,8 +37,9 @@ def main():
             if index == 0:
                 e["delay_ms"] = 1000
             if index == 2:
-                e["event"]["bids"] = [{"price": 6+cycle/1000, "quantity": 100}]
-                e["event"]["asks"] = [{"price": 6.1+cycle/1000, "quantity": 100}]
+                increment = Decimal(cycle)/1000
+                e["event"]["bids"] = [{"price": float(Decimal(6)+increment), "quantity": 100}]
+                e["event"]["asks"] = [{"price": float(Decimal("6.1")+increment), "quantity": 100}]
             events.append(e)
         trigger = json.loads(json.dumps(e))
         if cycle and cycle % 60 == 0:

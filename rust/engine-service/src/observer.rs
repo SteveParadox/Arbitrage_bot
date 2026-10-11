@@ -111,50 +111,57 @@ async fn run_inner(
     let clock = runtime_clock::Clock::current();
     let (recovery_sender, recovery) = mpsc::channel(1);
     let replay_mode = std::env::var("ARB_OBSERVER_REPLAY_FILE").is_ok();
-    let connector_task: JoinHandle<Result<()>> =
-        if let Ok(replay) = std::env::var("ARB_OBSERVER_REPLAY_FILE") {
-            if !replay_allowed(
-                std::env::var("ARB_ENV").ok().as_deref(),
-                std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
-            ) {
-                bail!(
+    let connector_task: JoinHandle<Result<()>> = if let Ok(replay) =
+        std::env::var("ARB_OBSERVER_REPLAY_FILE")
+    {
+        if !replay_allowed(
+            std::env::var("ARB_ENV").ok().as_deref(),
+            std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
+        ) {
+            bail!(
                 "observer replay requires ARB_ENV=development and ARB_LIVE_TRADING_ENABLED=false"
             );
-            }
-            if clock.is_virtual() {
-                let runtime = paper
-                    .as_ref()
-                    .context("virtual replay requires paper runtime")?;
-                let future = virtual_replay::run(
-                    PathBuf::from(replay),
-                    sender,
-                    ack_receiver,
-                    runtime.ledger.clone(),
-                    runtime.planner.clone(),
-                    events.clone(),
-                    clock.clone(),
-                );
-                tokio::spawn(async move { clock.scope(future).await })
-            } else {
-                tokio::spawn(replay_events(PathBuf::from(replay), sender))
-            }
+        }
+        if clock.is_virtual() {
+            let runtime = paper
+                .as_ref()
+                .context("virtual replay requires paper runtime")?;
+            let future = virtual_replay::run(
+                PathBuf::from(replay),
+                sender,
+                ack_receiver,
+                runtime.ledger.clone(),
+                runtime.planner.clone(),
+                events.clone(),
+                clock.clone(),
+            );
+            tokio::spawn(async move {
+                let result = clock.scope(future).await;
+                if let Err(error) = &result {
+                    tracing::error!(reason=%format!("{error:#}"), "virtual replay driver failed");
+                }
+                result
+            })
         } else {
-            let mut feed = Config::from_env()?;
-            if feed.category != Category::Spot || feed.testnet != routes.source.testnet {
-                bail!("market feed must be spot and match the triangle configuration environment");
-            }
-            if feed.orderbook_depth < 50 {
-                bail!("observer requires book depth >= 50");
-            }
-            feed.symbols = required.iter().cloned().collect();
-            feed.subscribe_trades = false;
-            feed.subscribe_tickers = false;
-            // The scanner's time bound governs the connection heartbeat as well.
-            feed.stale_after = feed
-                .stale_after
-                .min(std::time::Duration::from_millis(settings.max_book_age_ms));
-            tokio::spawn(connector::run_with_recovery(feed, sender, recovery))
-        };
+            tokio::spawn(replay_events(PathBuf::from(replay), sender))
+        }
+    } else {
+        let mut feed = Config::from_env()?;
+        if feed.category != Category::Spot || feed.testnet != routes.source.testnet {
+            bail!("market feed must be spot and match the triangle configuration environment");
+        }
+        if feed.orderbook_depth < 50 {
+            bail!("observer requires book depth >= 50");
+        }
+        feed.symbols = required.iter().cloned().collect();
+        feed.subscribe_trades = false;
+        feed.subscribe_tickers = false;
+        // The scanner's time bound governs the connection heartbeat as well.
+        feed.stale_after = feed
+            .stale_after
+            .min(std::time::Duration::from_millis(settings.max_book_age_ms));
+        tokio::spawn(connector::run_with_recovery(feed, sender, recovery))
+    };
     let _guard = ConnectorGuard(Some(connector_task));
     let mut lifecycle = Lifecycle::default();
     let mut receipts: HashMap<String, u64> = HashMap::new();

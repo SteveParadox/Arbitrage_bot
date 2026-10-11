@@ -4,6 +4,7 @@
   "required": ["account_id", "mode", "simulated", "state", "authorized", "blocked", "runtime_online", "active_cycles", "pending_orders", "balances"],
   "properties": {
     "clock": {"enum":["wall","virtual"]},
+    "can_control": {"type":"boolean"},
     "account_id": {"type":"string"}, "mode": {"const":"paper"}, "simulated": {"const":true},
     "state": {"enum":["recovering","blocked","offline","executing","running","stopped"]},
     "authorized": {"type":"boolean"}, "blocked": {"type":"boolean"}, "runtime_online": {"type":"boolean"},
