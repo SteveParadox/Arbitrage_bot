@@ -461,7 +461,17 @@ fn normalize_instrument(
     timestamp: u64,
 ) -> Result<InstrumentMetadata> {
     let lot = instrument.lot_size_filter.as_ref();
+    let execution_filters = lot.and_then(|l| {
+        Some(crate::model::ExecutionFilters {
+            base_precision: l.base_precision.clone().or_else(|| l.qty_step.clone())?,
+            quote_precision: l.quote_precision.clone()?,
+            tick_size: instrument.price_filter.as_ref()?.tick_size.clone()?,
+            min_order_amount: l.min_order_amt.clone()?,
+            max_market_quantity: l.max_market_order_qty.clone()?,
+        })
+    });
     Ok(InstrumentMetadata {
+        execution_filters: execution_filters.map(Box::new),
         symbol: instrument.symbol,
         status: instrument.status,
         base_coin: instrument.base_coin,

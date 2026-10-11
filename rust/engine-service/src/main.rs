@@ -26,6 +26,7 @@ use tonic::{transport::Server, Code, Request, Response, Status};
 use tracing::{info, warn};
 use uuid::Uuid;
 
+mod exchange_runtime;
 mod idempotency;
 mod observer;
 mod paper_runtime;
@@ -1010,8 +1011,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Managed public observation optionally dispatches to the durable paper-only pipeline.
-    // No exchange order adapter is reachable from autonomous startup.
+    // One supervised observer dispatches only to the explicitly authorized mode.
     let observer_enabled = env::var("ARB_ENGINE_AUTOSTART")
         .unwrap_or_else(|_| "false".into())
         .parse::<bool>()

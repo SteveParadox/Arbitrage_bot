@@ -74,7 +74,7 @@ impl PaperBooks {
         if m.status != "Trading" {
             bail!("inactive instrument");
         }
-        let i = Instrument {
+        let mut i = Instrument {
             base: m.base_coin.clone(),
             quote: m.quote_coin.clone(),
             step: decimal(m.qty_step.context("basePrecision missing")?)?,
@@ -87,6 +87,13 @@ impl PaperBooks {
             )?,
             timestamp: m.timestamp,
         };
+        if let Some(exact) = &m.execution_filters {
+            i.step = Decimal::from_str_exact(&exact.base_precision)?;
+            i.quote_step = Decimal::from_str_exact(&exact.quote_precision)?;
+            i.tick = Decimal::from_str_exact(&exact.tick_size)?;
+            i.min_amount = Decimal::from_str_exact(&exact.min_order_amount)?;
+            i.max_quantity = Decimal::from_str_exact(&exact.max_market_quantity)?;
+        }
         if i.step <= Decimal::ZERO
             || i.quote_step <= Decimal::ZERO
             || i.max_quantity <= Decimal::ZERO

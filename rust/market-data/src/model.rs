@@ -55,6 +55,8 @@ pub struct TickerUpdate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InstrumentMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_filters: Option<Box<ExecutionFilters>>,
     pub symbol: String,
     pub status: String,
     pub base_coin: String,
@@ -70,6 +72,15 @@ pub struct InstrumentMetadata {
     pub quote_precision: Option<f64>,
     pub max_market_order_qty: Option<f64>,
     pub timestamp: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExecutionFilters {
+    pub base_precision: String,
+    pub quote_precision: String,
+    pub tick_size: String,
+    pub min_order_amount: String,
+    pub max_market_quantity: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -1,4 +1,4 @@
-//! Managed public-data observation. No exchange order can be submitted here.
+//! One managed public connector/scanner; isolated execution workers share its evidence.
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
@@ -39,8 +39,11 @@ async fn run_inner(
     repo_root: PathBuf,
     events: EventPublisher,
 ) -> Result<()> {
-    let paper_mode = std::env::var("ARB_TRADING_MODE").as_deref() == Ok("paper");
-    if !paper_mode {
+    let mode: execution::ExecutionMode = std::env::var("ARB_TRADING_MODE")
+        .unwrap_or_else(|_| "observe".into())
+        .parse()?;
+    let paper_mode = mode == execution::ExecutionMode::Paper;
+    if mode == execution::ExecutionMode::Observe {
         validate_read_only_mode(
             std::env::var("ARB_TRADING_MODE").ok().as_deref(),
             std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
@@ -51,6 +54,18 @@ async fn run_inner(
     } else {
         None
     };
+    let mut exchange = if matches!(
+        mode,
+        execution::ExecutionMode::Testnet | execution::ExecutionMode::Live
+    ) {
+        Some(super::exchange_runtime::Runtime::start(&repo_root, events.clone(), mode).await?)
+    } else {
+        None
+    };
+    let execution_books = paper
+        .as_ref()
+        .map(|p| p.books.clone())
+        .or_else(|| exchange.as_ref().map(|e| e.books.clone()));
     let lock_path = configured_path(
         &repo_root,
         "ARB_OBSERVER_LOCK",
@@ -66,7 +81,7 @@ async fn run_inner(
     lock.try_lock_exclusive()
         .context("another managed observer is running")?;
     let routes = load_triangle_config(&triangle_path)?;
-    if paper_mode {
+    if paper_mode || exchange.is_some() {
         let generated = chrono::DateTime::parse_from_rfc3339(
             routes
                 .generated_at
@@ -81,6 +96,9 @@ async fn run_inner(
         }
     }
     let required = routes.required_symbols();
+    if exchange.is_some() && routes.source.testnet != (mode == execution::ExecutionMode::Testnet) {
+        bail!("authenticated mode and market catalog environment disagree");
+    }
     if required.is_empty() {
         bail!("observation autostart requires at least one configured triangle");
     }
@@ -94,8 +112,8 @@ async fn run_inner(
             .with_context(|| format!("reading {}", scanner_path.display()))?,
     )?;
     settings.validate().map_err(|error| anyhow!(error))?;
-    if let Some(p) = &paper {
-        p.books.set_skew_limit(settings.max_book_skew_ms).await?;
+    if let Some(books) = &execution_books {
+        books.set_skew_limit(settings.max_book_skew_ms).await?;
     }
     let profitability_path = configured_path(
         &repo_root,
@@ -175,10 +193,12 @@ async fn run_inner(
                 signal?;
                 publish_health(&events, "offline", "observer shutdown", lifecycle.generation);
                 if let Some(runtime) = paper.take() { runtime.shutdown().await?; }
+                if let Some(runtime) = exchange.take() { runtime.shutdown().await?; }
                 return Ok(());
             }
             _ = health_tick.tick(), if !runtime_clock::Clock::current().is_virtual() => {
                 if paper.as_ref().is_some_and(|p|p.is_finished()) { bail!("paper worker ended; managed restart required"); }
+                if exchange.as_ref().is_some_and(|e|e.is_finished()) {bail!("authenticated worker ended; managed restart required");}
                 let now = now_ms();
                 if lifecycle.connected && !lifecycle.recovering && lifecycle.metadata.values().any(|m| !metadata_fresh(m.timestamp, now)) {
                     lifecycle.invalidate(); scanner.reset_books(); receipts.clear(); feed_health = Value::Null;
@@ -188,7 +208,7 @@ async fn run_inner(
                 let ready = observer_ready(&lifecycle, &routes, &required, &scanner,
                     &receipts, &feed_health, now, settings.max_book_age_ms);
                 if state == "scanning" && !ready { state = "stale"; reason = "readiness expired".into(); }
-                if let Some(p) = &paper { p.books.ready(ready).await; }
+                if let Some(books) = &execution_books { books.ready(ready).await; }
                 publish_health(&events, state, &reason, lifecycle.generation);
                 continue;
             }
@@ -211,8 +231,8 @@ async fn run_inner(
         };
         if let MarketDataEvent::Status(status) = event.as_ref() {
             if status.state == "connecting" && generation > lifecycle.generation {
-                if let Some(p) = &paper {
-                    p.books.reset().await;
+                if let Some(books) = &execution_books {
+                    books.reset().await;
                 }
                 lifecycle.begin(generation);
                 scanner.reset_books();
@@ -230,8 +250,11 @@ async fn run_inner(
                 if lifecycle.recovering {
                     continue;
                 }
-                if let Some(p) = &paper {
-                    p.books.instrument(&instrument).await?;
+                if exchange.is_some() && instrument.execution_filters.is_none() {
+                    bail!("authenticated execution requires exact instrument filters");
+                }
+                if let Some(books) = &execution_books {
+                    books.instrument(&instrument).await?;
                 }
                 if let Err(error) = validate_instrument(&routes, &instrument) {
                     lifecycle.metadata.remove(&instrument.symbol);
@@ -254,8 +277,8 @@ async fn run_inner(
                         state = "synchronizing";
                     }
                     "reconnecting" | "metadata_retry" | "disconnected" => {
-                        if let Some(p) = &paper {
-                            p.books.reset().await;
+                        if let Some(books) = &execution_books {
+                            books.reset().await;
                         }
                         lifecycle.invalidate();
                         scanner.reset_books();
@@ -300,8 +323,8 @@ async fn run_inner(
                     "required observation dependencies incomplete or stale"
                 }
                 .into();
-                if let Some(p) = &paper {
-                    p.books.ready(ready).await;
+                if let Some(books) = &execution_books {
+                    books.ready(ready).await;
                 }
                 events.publish("market.health", feed_health.clone());
             }
@@ -333,8 +356,8 @@ async fn run_inner(
                 let records = match scanner.on_book_update(update.clone()) {
                     Ok(records) => records,
                     Err(error) => {
-                        if let Some(p) = &paper {
-                            p.books.reset().await;
+                        if let Some(books) = &execution_books {
+                            books.reset().await;
                         }
                         lifecycle.invalidate();
                         scanner.reset_books();
@@ -352,8 +375,8 @@ async fn run_inner(
                 };
                 // Let the managed scanner perform its existing coordinated
                 // desynchronization recovery before updating execution books.
-                if let Some(p) = &paper {
-                    p.books.update(update).await?;
+                if let Some(books) = &execution_books {
+                    books.update(update).await?;
                 }
                 receipts.insert(receipt_symbol, now_ms());
                 if !observer_ready(
@@ -396,6 +419,23 @@ async fn run_inner(
                                 "paper.dispatch_rejected",
                                 json!({"candidate_id":candidate_id,"reason":error.to_string()}),
                             )?;
+                        }
+                    } else if let Some(runtime) = &exchange {
+                        runtime.books.ready(true).await;
+                        let route = routes
+                            .routes
+                            .iter()
+                            .find(|r| r.id == record.route_id)
+                            .context("candidate route absent")?
+                            .clone();
+                        if let Err(error) = runtime.dispatch(candidate_id.clone(), record, route) {
+                            runtime
+                                .ledger
+                                .audit(
+                                    "execution.dispatch_rejected",
+                                    json!({"candidate_id":candidate_id,"reason":error.to_string()}),
+                                )
+                                .await?;
                         }
                     }
                 }
@@ -485,6 +525,35 @@ async fn replay_events(path: PathBuf, sender: mpsc::Sender<MarketDataEvent>) -> 
             continue;
         }
         let mut raw: Value = serde_json::from_str(&line)?;
+        if let Some(leg) = raw["wait_for_execution_leg"].as_u64() {
+            if std::env::var("ARB_EXECUTION_OFFLINE_MOCK").as_deref() != Ok("true")
+                || std::env::var("ARB_TRADING_MODE").as_deref() != Ok("testnet")
+                || !(1..=3).contains(&leg)
+            {
+                bail!("execution replay barrier requires isolated offline mock");
+            }
+            let ledger = authenticated::Ledger::connect(
+                &std::env::var("ARB_DATABASE_URL")?,
+                std::env::var("ARB_EXECUTION_ACCOUNT")?,
+            )
+            .await?;
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    if ledger
+                        .pending_orders()
+                        .await?
+                        .iter()
+                        .any(|(link, _)| link.ends_with(&format!("-l{leg}0")))
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                Ok::<(), anyhow::Error>(())
+            })
+            .await
+            .context("offline exchange replay barrier timed out")??;
+        }
         if let Some(leg) = raw["wait_for_paper_leg"].as_u64() {
             // Replays already require development + live=false. A barrier
             // additionally requires explicitly authorized paper deployment.
@@ -760,6 +829,7 @@ mod tests {
         let mut lifecycle = Lifecycle::default();
         lifecycle.begin(1);
         let instrument = InstrumentMetadata {
+            execution_filters: None,
             symbol: "BTCUSDT".into(),
             status: "Trading".into(),
             base_coin: "BTC".into(),

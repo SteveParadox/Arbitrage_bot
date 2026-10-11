@@ -5,6 +5,7 @@ edition.workspace = true
 build = "build.rs"
 
 [dependencies]
+authenticated = { path = "../authenticated" }
 url = "2"
 percent-encoding = "2"
 runtime-clock = { path = "../runtime-clock" }
