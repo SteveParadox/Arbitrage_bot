@@ -38,6 +38,8 @@ def capture(account):
 def test_repeated_replay_accounting_ignores_wall_and_sql_delay(api,tmp_path,scenario,pnl,orders):
     frozen_fixture(tmp_path,scenario)
     results=[]
+    isolated="isolated-"+uuid.uuid4().hex[:12]
+    create(api,isolated)
     for repeat in range(2):
         account="virtual-"+uuid.uuid4().hex[:12]
         create(api,account)
@@ -55,6 +57,7 @@ def test_repeated_replay_accounting_ignores_wall_and_sql_delay(api,tmp_path,scen
             assert all(o["intent"]["simulated"] for o in snapshot["orders"])
             status=api.get(f"/paper/{account}/status").json()
             assert status["clock"]=="virtual" and not status["authorized"]
+            assert sql("SELECT config FROM paper_accounts WHERE id=%s",(isolated,))[0][0] == {"start_asset":"USDT"}
             valuation=api.get(f"/paper/{account}/valuation").json()
             assert valuation["clock"]=="virtual" and valuation["valued_at_ms"]<1_700_000_010_000
             assert Decimal(api.get(f"/paper/{account}/performance").json()["net_realized_pnl"])==Decimal(pnl)

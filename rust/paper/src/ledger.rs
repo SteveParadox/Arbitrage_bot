@@ -214,7 +214,7 @@ impl Ledger {
             }
         }
         tx.execute(
-            "UPDATE paper_accounts SET config=jsonb_set(config,'{runtime_clock}',$2)",
+            "UPDATE paper_accounts SET config=jsonb_set(config,'{runtime_clock}',$2) WHERE id=$1",
             &[&self.account, &json!(mode)],
         )
         .await?;
