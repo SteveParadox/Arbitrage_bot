@@ -32,23 +32,90 @@ impl RoutePlanner for ExchangePlanner {
         link: String,
         emergency: bool,
     ) -> Result<PlannedOrder, CoordinatorError> {
-        // Preserve a fee + adverse-price budget instead of spending the entire
-        // quote balance at the observed ask before a market BUY moves.
-        let budget = if conversion.order_side() == execution::OrderSide::Buy {
-            input
-                / (Decimal::ONE
-                    + self.0.settings.slippage_percent / Decimal::from(100)
-                    + self.0.settings.fee_rate)
-        } else {
-            input
-        };
-        let mut plan = self
-            .0
-            .plan_conversion(route, conversion, budget, link, emergency)
-            .await?;
-        plan.input_amount = input;
-        Ok(plan)
+        let planned: Result<PlannedOrder> = async {
+            let side = conversion.order_side();
+            // The exchange anchors market slippage to its own arrival-time book.
+            // An explicit IOC limit preserves the locally authorized price bound.
+            let tolerance = if emergency {
+                Decimal::new(50, 2)
+            } else {
+                self.0.settings.slippage_percent
+            };
+            let budget = if side == execution::OrderSide::Buy {
+                input / (Decimal::ONE + tolerance / Decimal::from(100) + self.0.settings.fee_rate)
+            } else {
+                input
+            };
+            let mut plan = self
+                .0
+                .plan_conversion(route, conversion, budget, link, emergency)
+                .await?;
+            let (book, instrument) = self.0.books.snapshot(&conversion.symbol, side).await?;
+            if instrument.base != conversion.base_asset
+                || instrument.quote != conversion.quote_asset
+            {
+                bail!("limit-order metadata changed route identity");
+            }
+            if current_time_ms()
+                .checked_sub(book.timestamp)
+                .is_none_or(|age| age > self.0.settings.max_age_ms)
+                || current_time_ms()
+                    .checked_sub(instrument.timestamp)
+                    .is_none_or(|age| age > 300_000)
+            {
+                bail!("stale limit-order evidence");
+            }
+            let best = if side == execution::OrderSide::Buy {
+                book.asks.first()
+            } else {
+                book.bids.first()
+            }
+            .context("missing limit-order price evidence")?
+            .0;
+            let (quantity, price) = limit_bounds(
+                side,
+                input,
+                plan.request.requested_quantity,
+                best,
+                &instrument,
+                self.0.settings.fee_rate,
+                tolerance,
+            )?;
+            plan.input_amount = input;
+            plan.request.requested_quantity = quantity;
+            plan.request.order_type = execution::OrderType::Limit;
+            plan.request.price = Some(price);
+            plan.request.slippage_tolerance_percent = None;
+            plan.rules = risk::SymbolRules {
+                qty_step: instrument.step,
+                min_order_qty: instrument.step,
+                tick_size: instrument.tick,
+            };
+            plan.market_timestamp_ms = book.timestamp.min(plan.market_timestamp_ms);
+            plan.estimated_output = if side == execution::OrderSide::Buy {
+                quantity * (Decimal::ONE - self.0.settings.fee_rate)
+            } else {
+                quantity * price * (Decimal::ONE - self.0.settings.fee_rate)
+            };
+            plan.estimated_notional_base = self
+                .0
+                .value_in_base(
+                    route,
+                    &conversion.from_asset,
+                    if side == execution::OrderSide::Buy {
+                        quantity * price
+                    } else {
+                        quantity
+                    },
+                )
+                .await?;
+            plan.request.estimated_notional = plan.estimated_notional_base;
+            Ok(plan)
+        }
+        .await;
+        planned.map_err(|e| CoordinatorError::Planning(e.to_string()))
     }
+
     async fn value_in_base(
         &self,
         route: &TriangleRoute,
@@ -57,6 +124,71 @@ impl RoutePlanner for ExchangePlanner {
     ) -> Result<Decimal, CoordinatorError> {
         self.0.value_in_base(route, asset, amount).await
     }
+}
+
+fn limit_bounds(
+    side: execution::OrderSide,
+    input: Decimal,
+    planned_quantity: Decimal,
+    best: Decimal,
+    instrument: &paper::Instrument,
+    fee: Decimal,
+    tolerance_percent: Decimal,
+) -> Result<(Decimal, Decimal)> {
+    let maximum = instrument
+        .max_limit_quantity
+        .context("maxLimitOrderQty missing")?;
+    if input <= Decimal::ZERO
+        || planned_quantity <= Decimal::ZERO
+        || best <= Decimal::ZERO
+        || maximum <= Decimal::ZERO
+        || instrument.step <= Decimal::ZERO
+        || instrument.tick <= Decimal::ZERO
+        || fee < Decimal::ZERO
+        || fee >= Decimal::ONE
+        || tolerance_percent < Decimal::ZERO
+        || tolerance_percent >= Decimal::from(100)
+    {
+        bail!("invalid bounded IOC inputs");
+    }
+    let buy = side == execution::OrderSide::Buy;
+    let multiplier = if buy {
+        Decimal::ONE + tolerance_percent / Decimal::from(100)
+    } else {
+        Decimal::ONE - tolerance_percent / Decimal::from(100)
+    };
+    let raw = best
+        .checked_mul(multiplier)
+        .context("limit price overflow")?;
+    // Buy caps round down; sell floors round up. Neither can loosen the bound.
+    let mut price = raw - raw % instrument.tick;
+    if !buy && price != raw {
+        price = price
+            .checked_add(instrument.tick)
+            .context("limit price overflow")?;
+    }
+    if price <= Decimal::ZERO {
+        bail!("price below tick size");
+    }
+    let affordable = if buy {
+        input
+            .checked_div(
+                price
+                    .checked_mul(Decimal::ONE + fee)
+                    .context("fee budget overflow")?,
+            )
+            .context("quantity overflow")?
+    } else {
+        input
+    };
+    let raw_quantity = planned_quantity.min(maximum).min(affordable);
+    let quantity = raw_quantity - raw_quantity % instrument.step;
+    if quantity <= Decimal::ZERO
+        || quantity.checked_mul(price).context("notional overflow")? < instrument.min_amount
+    {
+        bail!("bounded IOC below minimum order amount");
+    }
+    Ok((quantity, price))
 }
 
 #[derive(Clone)]
@@ -144,9 +276,14 @@ impl CoordinatorVenue for Venue {
             let (from,to)=if request.side==execution::OrderSide::Buy {(&leg.quote_asset,&leg.base_asset)} else {(&leg.base_asset,&leg.quote_asset)};
             let holdings=self.ledger.holdings(&self.cycle).await?;
             if holdings.values().any(|v|*v<Decimal::ZERO) || holdings.get(from).copied().unwrap_or_default()<=Decimal::ZERO { bail!("unknown fees or unavailable cycle holding"); }
+            if request.order_type != execution::OrderType::Limit || request.time_in_force != execution::TimeInForce::Ioc || request.slippage_tolerance_percent.is_some() { bail!("authenticated runner requires a price-bounded IOC"); }
+            let price=request.price.context("explicit IOC price required")?;
+            let maximum_spend=if request.side==execution::OrderSide::Buy {request.requested_quantity.checked_mul(price).and_then(|v|v.checked_mul(Decimal::ONE+self.fee_ceiling)).context("order spend overflow")?} else {request.requested_quantity};
+            let input_budget=holdings.get(from).copied().unwrap_or_default();
+            if maximum_spend>input_budget {bail!("bounded order exceeds cycle-owned capital");}
             let fee_rate=self.client.verify_spot_fee_rate(&request.symbol,self.fee_ceiling).await?;
             // Private request cannot begin before the immutable intent commits.
-            self.ledger.intent(&self.cycle,&request.order_link_id,&json!({"symbol":request.symbol,"side":request.side,"from":from,"to":to,"quantity":request.requested_quantity.to_string(),"fee_ceiling":self.fee_ceiling.to_string(),"verified_taker_fee_rate":fee_rate.to_string(),"risk_approved_at_ms":prepared.risk_approved_at_ms(),"risk_reducing":prepared.is_risk_reducing(),"mode":format!("{:?}",prepared.mode())})).await?;
+            self.ledger.intent(&self.cycle,&request.order_link_id,&json!({"symbol":request.symbol,"side":request.side,"from":from,"to":to,"quantity":request.requested_quantity.to_string(),"order_type":request.order_type,"limit_price":price.to_string(),"input_budget":input_budget.to_string(),"maximum_spend":maximum_spend.to_string(),"fee_ceiling":self.fee_ceiling.to_string(),"verified_taker_fee_rate":fee_rate.to_string(),"risk_approved_at_ms":prepared.risk_approved_at_ms(),"risk_reducing":prepared.is_risk_reducing(),"mode":format!("{:?}",prepared.mode())})).await?;
             crate::checkpoint(&self.client,"after_intent");
             self.ledger.order_state(&request.order_link_id,"SUBMITTING").await?;
             Ok(())
@@ -311,7 +448,7 @@ impl RiskIntentProvider for Provider {
                     legs: vec![ProposedOrderLeg {
                         symbol: c.planned.request.symbol.clone(),
                         quantity: c.planned.request.requested_quantity,
-                        limit_price: None,
+                        limit_price: c.planned.request.price,
                         rules: c.planned.rules.clone(),
                     }],
                 },
@@ -345,5 +482,130 @@ impl RiskIntentProvider for Provider {
                     .into(),
         };
         Ok((health.clone(), health))
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+    fn d(s: &str) -> Decimal {
+        Decimal::from_str_exact(s).unwrap()
+    }
+    fn instrument() -> paper::Instrument {
+        paper::Instrument {
+            base: "BTC".into(),
+            quote: "USDT".into(),
+            step: d("0.00000001"),
+            quote_step: d("0.00000001"),
+            tick: d("0.01"),
+            min_amount: d("0.01"),
+            max_quantity: d("1000"),
+            max_limit_quantity: Some(d("1000")),
+            timestamp: 0,
+        }
+    }
+    #[test]
+    fn worst_case_buy_and_input_fee_fit_exact_reserved_capital() {
+        let (q, p) = limit_bounds(
+            execution::OrderSide::Buy,
+            d("100"),
+            d("1"),
+            d("100"),
+            &instrument(),
+            d("0.001"),
+            d("0.1"),
+        )
+        .unwrap();
+        assert_eq!(p, d("100.10"));
+        assert_eq!(q, d("0.99800299"));
+        assert!(q * p * d("1.001") <= d("100"));
+        assert!((q + d("0.00000001")) * p * d("1.001") > d("100"));
+    }
+    #[test]
+    fn rounding_never_loosens_buy_cap_or_sell_floor() {
+        let i = instrument();
+        assert_eq!(
+            limit_bounds(
+                execution::OrderSide::Buy,
+                d("100"),
+                d("1"),
+                d("99.999"),
+                &i,
+                d("0.001"),
+                d("0.1")
+            )
+            .unwrap()
+            .1,
+            d("100.09")
+        );
+        assert_eq!(
+            limit_bounds(
+                execution::OrderSide::Sell,
+                d("1"),
+                d("1"),
+                d("99.999"),
+                &i,
+                d("0.001"),
+                d("0.1")
+            )
+            .unwrap()
+            .1,
+            d("99.90")
+        );
+    }
+    #[test]
+    fn limit_quantity_cap_is_distinct_from_market_cap() {
+        let mut i = instrument();
+        i.max_limit_quantity = Some(d("0.25"));
+        assert_eq!(
+            limit_bounds(
+                execution::OrderSide::Buy,
+                d("100"),
+                d("1"),
+                d("100"),
+                &i,
+                d("0.001"),
+                d("0.1")
+            )
+            .unwrap()
+            .0,
+            d("0.25")
+        );
+        i.max_limit_quantity = None;
+        assert!(limit_bounds(
+            execution::OrderSide::Buy,
+            d("100"),
+            d("1"),
+            d("100"),
+            &i,
+            d("0.001"),
+            d("0.1")
+        )
+        .is_err());
+    }
+    #[test]
+    fn invalid_or_below_minimum_limit_fails_closed() {
+        for input in [Decimal::ZERO, d("-1"), d("0.00001")] {
+            assert!(limit_bounds(
+                execution::OrderSide::Buy,
+                input,
+                d("1"),
+                d("100"),
+                &instrument(),
+                d("0.001"),
+                d("0.1")
+            )
+            .is_err());
+        }
+        assert!(limit_bounds(
+            execution::OrderSide::Buy,
+            d("100"),
+            d("1"),
+            Decimal::MAX,
+            &instrument(),
+            d("0.001"),
+            d("0.1")
+        )
+        .is_err());
     }
 }

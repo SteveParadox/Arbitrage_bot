@@ -32,6 +32,7 @@ CASES += ["missing_control"]
 CASES += ["wrong_side", "wrong_quantity", "startup_discrepancy", "after_outbox_fsync", "regressed_fill"]
 CASES += ["fee_tier", "fee_change"]
 CASES += ["status_STOPPED", "status_FAILED"]
+CASES += ["adverse_buy", "wrong_price"]
 PREFIX = uuid.uuid4().hex[:10]
 
 
@@ -76,6 +77,23 @@ def ready(client):
         return False
 
 
+def wait_execution_ready(client, name):
+    # READY precedes market synchronization. Wait for the actual start gates;
+    # a transient 409 during synchronization is correct fail-closed behavior.
+    def check():
+        response = client.get(f"/execution/{name}/status")
+        if response.status_code != 200:
+            return False
+        state = response.json()
+        now = int(time.time()*1000)
+        return (state["state"] == "READY" and state["runtime_online"] and
+                state["market_ready"] and not state["blocked"] and
+                not state["recovering"] and
+                0 <= now-(state["market_ms"] or 0) < 750 and
+                0 <= now-(state["snapshot_ms"] or 0) < 750)
+    wait(check)
+
+
 def market_fixture(directory, loss=False):
     subprocess.run([sys.executable, str(ROOT/"scripts/make_observer_replay.py"), str(directory)], check=True, capture_output=True)
     original = [json.loads(line) for line in (directory/"market.jsonl").read_text().splitlines()]
@@ -85,7 +103,7 @@ def market_fixture(directory, loss=False):
         if raw["event"]["type"] == "instrument":
             raw["event"].update(qty_step=1e-8 if raw["event"]["symbol"] == "BTCUSDT" else 1e-5,
                                 min_order_amt=1e-8, quote_precision=1e-8)
-            raw["event"]["execution_filters"]={"base_precision":"0.00000001" if raw["event"]["symbol"]=="BTCUSDT" else "0.00001","quote_precision":"0.00000001","tick_size":"0.00001","min_order_amount":"0.00000001","max_market_quantity":"1000"}
+            raw["event"]["execution_filters"]={"base_precision":"0.00000001" if raw["event"]["symbol"]=="BTCUSDT" else "0.00001","quote_precision":"0.00000001","tick_size":"0.00001","min_order_amount":"0.00000001","max_market_quantity":"1000","max_limit_quantity":"1000"}
         events.append(raw)
     # The original fixture has health at index 8; a fresh update creates the candidate.
     trigger = json.loads(json.dumps(original[9]))
@@ -180,7 +198,7 @@ def test_autonomous_mock_cycle(api, tmp_path, scenario):
     with BybitMock(uid, scenario, capital="50" if scenario == "insufficient" else "1000") as mock:
         process, log = start(tmp_path, name, mock, permit)
         try:
-            wait(lambda: sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'", (name,)))
+            wait_execution_ready(client, name)
             # Paper/control tokens cannot activate exchange execution; neither can a viewer.
             denied = client.post(f"/execution/{name}/control/start", headers={"Authorization": "Bearer "+VIEWER}, json={"request_id": "denied", "reason": "viewer denied", "authorization": "authorize_testnet"})
             assert denied.status_code == 403
@@ -205,10 +223,10 @@ def test_autonomous_mock_cycle(api, tmp_path, scenario):
             else:
                 assert rows[0][4], (rows, sql("SELECT state,reason FROM execution_cycles WHERE account_id=%s", (name,)),mock.posts)
                 assert (Decimal(rows[0][3]) < 0) == (scenario in {"loss", "reject"})
-                if scenario in {"partial", "reject"}:
+                if scenario in {"partial", "reject", "loss"}:
                     assert sql("SELECT state FROM execution_cycles WHERE account_id=%s", (name,))[0][0] == "RECOVERED"
             fills = client.get(f"/execution/{name}/fills").json()
-            assert len(fills) == len(mock.fills)
+            assert len(fills) == sum(bool(f) for f in mock.fills.values())
             status = client.get(f"/execution/{name}/status").json()
             assert status["environment"] == "offline_mock" and not status["exchange_confirmed"]
             persisted = {"cycles": rows, "orders": sql("SELECT intent,evidence FROM execution_orders WHERE account_id=%s ORDER BY created_at", (name,)), "fills": fills, "opening": mock.opening, "ending": mock.wallet, "independent_rational_reconciliation": True}
@@ -229,7 +247,7 @@ def test_crash_does_not_replay_exchange_order(api, tmp_path, boundary):
     with BybitMock(uid) as mock:
         process, log = start(tmp_path, name, mock, permit, crash=boundary)
         try:
-            wait(lambda: sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'", (name,)))
+            wait_execution_ready(client, name)
             result = client.post(f"/execution/{name}/control/start", json={"request_id": "start", "reason": "offline crash injection", "authorization": "authorize_testnet"})
             assert result.status_code == 200, result.text
             assert process.wait(timeout=15) == 89
@@ -260,7 +278,7 @@ def test_ambiguous_submission_never_retries_post(api, tmp_path):
     with BybitMock(uid, "unknown") as mock:
         process, log = start(tmp_path, name, mock, permit)
         try:
-            wait(lambda: sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'", (name,)))
+            wait_execution_ready(client, name)
             result = client.post(f"/execution/{name}/control/start", json={"request_id": "start", "reason": "uncertain HTTP outcome fixture", "authorization": "authorize_testnet"})
             assert result.status_code == 200, result.text
             wait(lambda: sql("SELECT id FROM execution_cycles WHERE account_id=%s AND state='RECOVERY_REQUIRED'", (name,)))
@@ -304,7 +322,7 @@ def test_uncertain_exchange_evidence_preserves_commitment(api, tmp_path, scenari
     with BybitMock(uid,scenario) as mock:
         process,log=start(tmp_path,name,mock,permit)
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"bounded fault fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             wait(lambda:sql("SELECT id FROM execution_cycles WHERE account_id=%s AND state='RECOVERY_REQUIRED'",(name,)))
@@ -349,7 +367,7 @@ def test_emergency_stop_after_exchange_fill_blocks_next_exposure(api,tmp_path):
         mock.on_fill=halt
         process,log=start(tmp_path,name,mock,permit)
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"stop fault fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             wait(lambda:sql("SELECT id FROM execution_cycles WHERE account_id=%s AND (settled OR state='RECOVERY_REQUIRED')",(name,)))
@@ -383,7 +401,7 @@ def test_dependency_failure_after_fill_retains_financial_ownership(api,tmp_path,
         mock.on_fill=disrupt
         process,log=start(tmp_path,name,mock,permit)
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"dependency disruption fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             wait(lambda:len(mock.posts)==1)
@@ -438,7 +456,7 @@ def test_startup_discrepancy_cannot_release_recent_reservation(api,tmp_path):
     with BybitMock(uid) as mock:
         process,log=start(tmp_path,name,mock,permit,crash="after_reservation")
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"reservation crash fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             assert process.wait(timeout=15)==89
@@ -455,7 +473,7 @@ def test_startup_discrepancy_cannot_release_recent_reservation(api,tmp_path):
             stop(restarted,log)
 
 
-@pytest.mark.parametrize("scenario",["wrong_side","wrong_quantity"])
+@pytest.mark.parametrize("scenario",["wrong_side","wrong_quantity","wrong_price"])
 def test_exchange_order_must_match_durable_economic_intent(api,tmp_path,scenario):
     name=f"{scenario}-{PREFIX}"
     uid=str(uuid.uuid4().int % 10**15)
@@ -465,7 +483,7 @@ def test_exchange_order_must_match_durable_economic_intent(api,tmp_path,scenario
     with BybitMock(uid,scenario) as mock:
         process,log=start(tmp_path,name,mock,permit)
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"order identity mismatch fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             wait(lambda:sql("SELECT id FROM execution_cycles WHERE account_id=%s AND state='RECOVERY_REQUIRED'",(name,)))
@@ -485,7 +503,7 @@ def test_financial_outbox_retry_keeps_the_original_event(api,tmp_path):
     with BybitMock(uid) as mock:
         process,log=start(tmp_path,name,mock,permit,crash="after_outbox_fsync")
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"outbox crash fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             assert process.wait(timeout=15)==89
@@ -512,7 +530,7 @@ def test_restart_rejects_regressed_fill_evidence(api,tmp_path):
     with BybitMock(uid) as mock:
         process,log=start(tmp_path,name,mock,permit,crash="after_l10")
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"persisted fill fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             assert process.wait(timeout=15)==89
@@ -542,7 +560,7 @@ def test_account_fee_evidence_is_required_before_each_order(api,tmp_path,scenari
     with BybitMock(uid,scenario) as mock:
         process,log=start(tmp_path,name,mock,permit)
         try:
-            wait(lambda:sql("SELECT id FROM execution_accounts WHERE id=%s AND state='READY'",(name,)))
+            wait_execution_ready(client, name)
             response=client.post(f"/execution/{name}/control/start",json={"request_id":"start","reason":"account fee rate fixture","authorization":"authorize_testnet"})
             assert response.status_code==200,response.text
             if scenario=="fee_tier":
@@ -574,3 +592,31 @@ def test_terminal_runtime_state_is_offline_and_cannot_authorize_start(api,state)
     assert not status.json()["runtime_online"]
     sql("UPDATE execution_accounts SET heartbeat=now()-interval '1 minute' WHERE id=%s",(name,))
     assert client.get(f"/execution/{name}/status").json()["state"]==state
+
+
+def test_buy_price_movement_cannot_spend_unreserved_wallet(api, tmp_path):
+    name=f"adverse_buy-{PREFIX}"
+    uid=str(uuid.uuid4().int % 10**15)
+    client,_=api
+    market_fixture(tmp_path)
+    permit=provision(api,name,uid)
+    with BybitMock(uid,"adverse_buy") as mock:
+        process,log=start(tmp_path,name,mock,permit)
+        try:
+            wait_execution_ready(client,name)
+            response=client.post(f"/execution/{name}/control/start",json={"request_id":"price-bound","reason":"adverse exchange ask fixture","authorization":"authorize_testnet"})
+            assert response.status_code==200,response.text
+            wait(lambda:sql("SELECT state FROM execution_cycles WHERE account_id=%s AND (settled OR state='RECOVERY_REQUIRED')",(name,)))
+            # The account has 1000 USDT, but this cycle owns only 100. A market
+            # order can spend the extra wallet funds before local accounting.
+            spent=sum((Decimal(f["execValue"]) + Decimal(f["execFee"]) for fills in mock.fills.values() for f in fills if f["orderId"].endswith("-l10")), Decimal(0))
+            assert spent<=Decimal("100"),f"reserved 100 USDT; exchange spent {spent}"
+            assert not mock.errors,mock.errors
+            assert len(mock.posts)==1
+            assert mock.posts[0]["orderType"]=="Limit"
+            assert Decimal(mock.posts[0]["price"])==Decimal("100.10")
+            assert mock.wallet==mock.opening
+            assert sql("SELECT committed,settled,realized_pnl::text FROM execution_cycles WHERE account_id=%s",(name,))==[(False,True,"0")], (sql("SELECT state,reason,holdings FROM execution_cycles WHERE account_id=%s",(name,)), sql("SELECT state,terminal,confirmed,evidence FROM execution_orders WHERE account_id=%s",(name,)))
+            verify_accounting(name,mock)
+        finally:
+            stop(process,log)

@@ -22,6 +22,7 @@ pub struct Instrument {
     pub tick: Decimal,
     pub min_amount: Decimal,
     pub max_quantity: Decimal,
+    pub max_limit_quantity: Option<Decimal>,
     pub timestamp: u64,
 }
 #[derive(Clone, Debug)]
@@ -250,6 +251,7 @@ mod tests {
                 tick: d("0.01"),
                 min_amount: d("1"),
                 max_quantity: d("100"),
+                max_limit_quantity: None,
                 timestamp: 1000,
             },
             MatchSettings {

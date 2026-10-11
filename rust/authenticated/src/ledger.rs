@@ -339,9 +339,42 @@ impl Ledger {
         let tx = c.transaction().await?;
         self.fence(&tx).await?;
         if intent["risk_reducing"]!=true && !tx.query_one("SELECT enabled AND NOT blocked AND NOT recovering AND NOT emergency_stop FROM execution_accounts WHERE id=$1", &[&self.account]).await?.get::<_,bool>(0) {bail!("new exposure stopped before intent commit");}
-        let row=tx.query_one("SELECT committed,settled FROM execution_cycles WHERE id=$1 AND account_id=$2 FOR UPDATE", &[&cycle,&self.account]).await?;
+        let row=tx.query_one("SELECT committed,settled,holdings FROM execution_cycles WHERE id=$1 AND account_id=$2 FOR UPDATE", &[&cycle,&self.account]).await?;
         if !row.get::<_, bool>(0) || row.get::<_, bool>(1) {
             bail!("closed reservation cannot create an order");
+        }
+        let holdings = amounts(&row.get::<_, Value>(2))?;
+        let input = intent["from"].as_str().context("order input asset")?;
+        let capital = holdings.get(input).copied().unwrap_or_default();
+        let quantity =
+            Decimal::from_str_exact(intent["quantity"].as_str().context("order quantity")?)?;
+        let price = Decimal::from_str_exact(
+            intent["limit_price"]
+                .as_str()
+                .context("order price bound")?,
+        )?;
+        let fee = Decimal::from_str_exact(
+            intent["fee_ceiling"]
+                .as_str()
+                .context("order fee ceiling")?,
+        )?;
+        let maximum = if intent["side"] == "Buy" {
+            quantity
+                .checked_mul(price)
+                .and_then(|v| v.checked_mul(Decimal::ONE + fee))
+                .context("order spend overflow")?
+        } else {
+            quantity
+        };
+        if intent["order_type"] != "Limit"
+            || quantity <= Decimal::ZERO
+            || price <= Decimal::ZERO
+            || fee < Decimal::ZERO
+            || fee >= Decimal::ONE
+            || maximum > capital
+            || holdings.values().any(|v| *v < Decimal::ZERO)
+        {
+            bail!("authoritative bounded order exceeds cycle capital");
         }
         // A persisted order of any state cannot be submitted again. Recovery only queries it.
         if tx
@@ -489,6 +522,10 @@ impl Ledger {
         let from = intent["from"].as_str().context("from")?;
         let to = intent["to"].as_str().context("to")?;
         let buy = intent["side"] == "Buy";
+        let limit = intent["limit_price"]
+            .as_str()
+            .map(Decimal::from_str_exact)
+            .transpose()?;
         let row = tx
             .query_one(
                 "SELECT holdings,settled FROM execution_cycles WHERE id=$1 FOR UPDATE",
@@ -510,6 +547,14 @@ impl Ledger {
                 || fill.execution_id.is_empty()
                 || fill.quantity <= Decimal::ZERO
                 || fill.value <= Decimal::ZERO
+                || fill.price <= Decimal::ZERO
+                || limit.is_some_and(|price| {
+                    if buy {
+                        fill.price > price
+                    } else {
+                        fill.price < price
+                    }
+                })
                 || (fill.fee != Decimal::ZERO && fill.fee_currency.is_empty())
             {
                 bail!("invalid or unknown economic evidence");

@@ -468,6 +468,7 @@ fn normalize_instrument(
             tick_size: instrument.price_filter.as_ref()?.tick_size.clone()?,
             min_order_amount: l.min_order_amt.clone()?,
             max_market_quantity: l.max_market_order_qty.clone()?,
+            max_limit_quantity: l.max_limit_order_qty.clone(),
         })
     });
     Ok(InstrumentMetadata {
@@ -542,7 +543,7 @@ mod tests {
             "quoteCoin":"USDT", "priceFilter":{"tickSize":"0.01"},
             "lotSizeFilter":{"basePrecision":"0.000001", "quotePrecision":"0.00000001",
                 "minOrderQty":"0.000001", "minOrderAmt":"5",
-                "maxMarketOrderQty":"2"}
+                "maxMarketOrderQty":"2", "maxLimitOrderQty":"1.234567890123456789"}
         }))
         .unwrap();
         let metadata = normalize_instrument(raw, 123).unwrap();
@@ -550,6 +551,14 @@ mod tests {
         assert_eq!(metadata.min_order_amt, Some(5.0));
         assert_eq!(metadata.max_market_order_qty, Some(2.0));
         assert_eq!(metadata.tick_size, Some(0.01));
+        assert_eq!(
+            metadata
+                .execution_filters
+                .unwrap()
+                .max_limit_quantity
+                .as_deref(),
+            Some("1.234567890123456789")
+        );
     }
 
     #[test]

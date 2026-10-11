@@ -81,6 +81,8 @@ pub struct ExecutionFilters {
     pub tick_size: String,
     pub min_order_amount: String,
     pub max_market_quantity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_limit_quantity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -184,6 +186,7 @@ pub(crate) struct LotSizeFilter {
     pub quote_precision: Option<String>,
     pub min_order_amt: Option<String>,
     pub max_market_order_qty: Option<String>,
+    pub max_limit_order_qty: Option<String>,
     pub min_order_qty: Option<String>,
 }
 

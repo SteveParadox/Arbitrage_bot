@@ -260,7 +260,7 @@ impl Runtime {
                         let snapshot=client.sync_balances(&[]).await?;
                         if !ledger.reconcile(&snapshot,current_time_ms(),1000).await? {bail!("post-execution wallet discrepancy");}
                         let (state,reason)=match report {Ok(r)=>{
-                            if ledger.holdings(&id).await?!=r.holdings {bail!("coordinator/journal holdings disagree");}
+                            if !holdings_agree(&ledger.holdings(&id).await?,&r.holdings) {bail!("coordinator/journal holdings disagree");}
                             (match r.status {coordinator::CoordinatorStatus::Completed|coordinator::CoordinatorStatus::CompletedWithResidualCleanup=>"COMPLETED",coordinator::CoordinatorStatus::NotStarted=>"NOT_STARTED",_=>"RECOVERED"},r.failure_reason)
                         },Err(e)=>("RECOVERED",Some(e.to_string()))};
                         authenticated::checkpoint(&client,"before_settlement");
@@ -311,5 +311,32 @@ impl Runtime {
         self.stop.send(true)?;
         self.worker.await??;
         self.ledger.state("STOPPED", true, false).await
+    }
+}
+
+// A confirmed zero-fill order may introduce a zero-valued asset key in the
+// coordinator, while the ledger correctly records no economic movement.
+fn holdings_agree(
+    left: &std::collections::BTreeMap<String, Decimal>,
+    right: &std::collections::BTreeMap<String, Decimal>,
+) -> bool {
+    left.iter().chain(right.iter()).all(|(asset, _)| {
+        left.get(asset).copied().unwrap_or_default()
+            == right.get(asset).copied().unwrap_or_default()
+    })
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn zero_fill_asset_keys_are_economically_equal() {
+        let left = std::collections::BTreeMap::from([("USDT".into(), Decimal::from(100))]);
+        let mut right = left.clone();
+        right.insert("BTC".into(), Decimal::ZERO);
+        assert!(holdings_agree(&left, &right));
+        assert!(holdings_agree(&right, &left));
+        right.insert("BTC".into(), Decimal::new(1, 8));
+        assert!(!holdings_agree(&left, &right));
+        assert!(!holdings_agree(&right, &left));
     }
 }

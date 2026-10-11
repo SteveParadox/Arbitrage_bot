@@ -120,8 +120,13 @@ class BybitMock:
                             return self.respond({"orderId": request["orderId"], "orderLinkId": request["orderLinkId"]})
                         assert self.path == "/v5/order/create"
                         assert request["category"] == "spot" and request["isLeverage"] == 0
-                        assert request["orderType"] == "Market" and request["timeInForce"] == "IOC"
-                        assert request["marketUnit"] == "baseCoin"
+                        assert request["timeInForce"] == "IOC"
+                        if request["orderType"] == "Market":
+                            assert request["marketUnit"] == "baseCoin"
+                        else:
+                            assert request["orderType"] == "Limit"
+                            assert "marketUnit" not in request and "slippageTolerance" not in request
+                            assert Decimal(request["price"]) > 0 and Decimal(request["price"]) % Decimal(".00001") == 0
                         link = request["orderLinkId"]
                         assert len(link) <= 36 and link.replace("-", "").replace("_", "").isalnum()
                         outer.posts.append(request)
@@ -138,12 +143,24 @@ class BybitMock:
                         price = Decimal(ask if request["side"] == "Buy" else bid)
                         if outer.scenario == "loss" and symbol == "ETHUSDT":
                             price = Decimal("4.9")
+                        if outer.scenario == "adverse_buy" and link.endswith("-l10"):
+                            price = Decimal("101")
+                        if request["orderType"] == "Limit":
+                            limit=Decimal(request["price"])
+                            if request["side"] == "Buy" and price>limit or request["side"] == "Sell" and price<limit:
+                                # IOC cannot fill beyond the submitted price, even if
+                                # the market moved after local validation.
+                                quantity=Decimal(0)
                         if outer.scenario in {"partial","cancel_unknown"} and link.endswith("-l20"):
                             quantity = (quantity/2).quantize(Decimal(".00001"), rounding=ROUND_DOWN)
+                        if outer.scenario == "wrong_price" and link.endswith("-l10"):
+                            # Deliberately contradictory exchange evidence; unlike
+                            # adverse_buy this fault violates the submitted limit.
+                            price=Decimal("102")
                         value = quantity*price
                         # Both base/quote and a supported third route currency
                         # are exercised without inventing exchange confirmation.
-                        fee_asset, fee = "USDT", Decimal(".001")
+                        fee_asset, fee = "USDT", Decimal(".001") if quantity else Decimal(0)
                         if outer.scenario == "foreign_fee":
                             fee_asset = "MNT"
                         from_asset, to_asset = (quote, base) if request["side"] == "Buy" else (base, quote)
@@ -161,7 +178,7 @@ class BybitMock:
                         outer.orders[link] = order
                         if outer.scenario == "cancel_unknown" and link.endswith("-l20"):
                             order["orderStatus"]="PartiallyFilled"
-                        outer.fills[order_id] = [{"execId": "fill-"+link, "orderId": order_id, "execPrice": str(price), "execQty": format(quantity,"f"), "execValue": format(value,"f"), "execFee": str(fee), "feeCurrency": fee_asset, "isMaker": False, "execTime": str(int(time.time()*1000))}]
+                        outer.fills[order_id] = [{"execId": "fill-"+link, "orderId": order_id, "execPrice": str(price), "execQty": format(quantity,"f"), "execValue": format(value,"f"), "execFee": str(fee), "feeCurrency": fee_asset, "isMaker": False, "execTime": str(int(time.time()*1000))}] if quantity else []
                         if outer.scenario == "extra_fees":
                             outer.fills[order_id][0]["extraFees"]=[{"feeCoin":"USDT","fee":"0.01"}]
                         if outer.on_fill:

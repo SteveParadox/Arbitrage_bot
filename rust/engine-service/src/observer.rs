@@ -251,7 +251,12 @@ async fn run_inner(
                 if lifecycle.recovering {
                     continue;
                 }
-                if exchange.is_some() && instrument.execution_filters.is_none() {
+                if exchange.is_some()
+                    && instrument
+                        .execution_filters
+                        .as_ref()
+                        .is_none_or(|f| f.max_limit_quantity.is_none())
+                {
                     bail!("authenticated execution requires exact instrument filters");
                 }
                 if let Some(books) = &execution_books {
