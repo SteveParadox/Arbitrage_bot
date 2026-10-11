@@ -1,0 +1,54 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________ test_reservation_lock_wait_is_bounded_and_rolls_back _____________
+
+api = <httpx.Client object at 0x7f9dd8330800>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-3/test_reservation_lock_wait_is_0')
+
+    def test_reservation_lock_wait_is_bounded_and_rolls_back(api, tmp_path):
+        account = "locked-" + uuid.uuid4().hex[:12]
+        create(api, account)
+        fixture(tmp_path)
+        sql("UPDATE paper_accounts SET enabled=true WHERE id=%s", (account,))
+        with psycopg.connect(URL) as connection:
+            connection.execute("SELECT id FROM paper_accounts WHERE id=%s FOR UPDATE", (account,))
+>           result = subprocess.run([str(ROOT/"rust/target/debug/reservation_probe"), account, "0",
+                                     str(tmp_path/"triangles.json"), "reserve", account+"-cycle"],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=5,
+                                    env={**os.environ, "ARB_ENV": "development", "ARB_TRADING_MODE": "paper",
+                                         "ARB_PAPER_TRADING_ENABLED": "true", "ARB_LIVE_TRADING_ENABLED": "false"})
+
+tests/test_autonomous_paper.py:572:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:550: in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:1209: in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:2116: in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Popen: returncode: -9 args: ['/workspace/scratch/029697e70c9a/Arbitrage_bot...>
+endtime = 2724.156747623, orig_timeout = 5, stdout_seq = [], stderr_seq = []
+skip_check_and_raise = False
+
+    def _check_timeout(self, endtime, orig_timeout, stdout_seq, stderr_seq,
+                       skip_check_and_raise=False):
+        """Convenience for checking if a timeout has expired."""
+        if endtime is None:
+            return
+        if skip_check_and_raise or _time() > endtime:
+>           raise TimeoutExpired(
+                    self.args, orig_timeout,
+                    output=b''.join(stdout_seq) if stdout_seq else None,
+                    stderr=b''.join(stderr_seq) if stderr_seq else None)
+E           subprocess.TimeoutExpired: Command '['/workspace/scratch/029697e70c9a/Arbitrage_bot/rust/target/debug/reservation_probe', 'locked-054f2de01c45', '0', '/tmp/pytest-of-root/pytest-3/test_reservation_lock_wait_is_0/triangles.json', 'reserve', 'locked-054f2de01c45-cycle']' timed out after 5 seconds
+
+/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py:1253: TimeoutExpired
+=========================== short test summary info ============================
+FAILED tests/test_autonomous_paper.py::test_reservation_lock_wait_is_bounded_and_rolls_back
+1 failed, 32 deselected in 6.16s

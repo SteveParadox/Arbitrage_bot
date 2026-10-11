@@ -1,0 +1,3926 @@
+{
+  "source": "synthetic executable-depth fixtures; not live Bybit prices",
+  "simulated": true,
+  "runs": [
+    {
+      "account": "soak-5ce99dcfd4cd",
+      "latency_ms": 25,
+      "actual_seconds": 5.002486554999905,
+      "max_rss_kib": 37172,
+      "cpu_seconds": 0.16752,
+      "postgres_probe_ms": 0.4353140002422151,
+      "status": {
+        "account_id": "soak-5ce99dcfd4cd",
+        "mode": "paper",
+        "simulated": true,
+        "state": "executing",
+        "authorized": true,
+        "blocked": false,
+        "runtime_online": true,
+        "heartbeat": "2026-10-11T11:34:40.600791+01:00",
+        "epoch": 1,
+        "active_cycles": 1,
+        "pending_orders": 1,
+        "balances": [
+          {
+            "asset": "BTC",
+            "available": "0.00000",
+            "reserved": "0",
+            "version": 2,
+            "reconciled_at": "2026-10-11T11:34:39.713789+01:00"
+          },
+          {
+            "asset": "ETH",
+            "available": "0.000000",
+            "reserved": "0",
+            "version": 2,
+            "reconciled_at": "2026-10-11T11:34:39.713789+01:00"
+          },
+          {
+            "asset": "USDT",
+            "available": "459.020760000000",
+            "reserved": "100",
+            "version": 10,
+            "reconciled_at": "2026-10-11T11:34:39.713789+01:00"
+          }
+        ]
+      },
+      "performance": {
+        "mode": "paper",
+        "simulated": true,
+        "closed_cycles": 3,
+        "total_cycles": 4,
+        "net_realized_pnl": "59.020760000000",
+        "daily_pnl": {
+          "2026-10-11": "59.020760000000"
+        },
+        "win_rate_pct": "100",
+        "average_win": "19.67358666666666666666666667",
+        "average_loss": null,
+        "profit_factor": null,
+        "max_drawdown_start_asset": "0",
+        "average_duration_ms": 111.94200000000001,
+        "unresolved_cycles": 0,
+        "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+      },
+      "cycle_states": {
+        "EXECUTING": 1,
+        "COMPLETED": 3
+      },
+      "transport_health": {
+        "status": "degraded",
+        "generated_at": "2026-10-11T10:34:40.694172Z",
+        "environment": "development",
+        "database_status": "online",
+        "market_stream_status": "connected_and_fresh",
+        "last_market_event": "2026-10-11T10:34:40.598000Z",
+        "market_data": {
+          "status": "connected_and_fresh",
+          "source": "scanner market.health telemetry",
+          "required_symbols": [
+            "BTCUSDT",
+            "ETHBTC",
+            "ETHUSDT"
+          ],
+          "symbols": {
+            "BTCUSDT": {
+              "exchange_timestamp_ms": 1791714880598,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHBTC": {
+              "exchange_timestamp_ms": 1791714880598,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHUSDT": {
+              "exchange_timestamp_ms": 1791714880598,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            }
+          },
+          "age_ms": 88,
+          "detail": "all required books synchronized and fresh",
+          "last_event_at": "2026-10-11T10:34:40.598000Z"
+        },
+        "observer": {
+          "state": "scanning",
+          "execution_enabled": false,
+          "scanner_ready": true,
+          "age_ms": 89,
+          "reason": "all metadata, acknowledgements and books ready",
+          "generation": 1
+        },
+        "event_pipeline": {
+          "status": "online",
+          "last_event_id": "0f5f50c2-c361-4a5b-8a9b-c052dd0566fc",
+          "last_event_at": "2026-10-11T10:34:40.582000Z",
+          "age_ms": 105,
+          "source": "engine-service"
+        },
+        "redis": {
+          "status": "online",
+          "pending": 0,
+          "lag": 0,
+          "detail": "Redis and event consumer backlog within bounds"
+        },
+        "risk": {
+          "available": false,
+          "state": "unavailable",
+          "kill_switch_active": false,
+          "kill_switch_detail": "risk runtime files are not mounted into the API process",
+          "circuit_breaker": null,
+          "execution_failures_recorded": 0
+        },
+        "engine_grpc": {
+          "status": "online",
+          "runtime_enabled": false,
+          "detail": "engine control service ready",
+          "event_pipeline_status": "healthy",
+          "critical_event_backlog": 0,
+          "event_pipeline": {
+            "best_effort_dropped_total": 0,
+            "critical_events_pending": 0,
+            "event_outbox_pending": 0,
+            "event_pipeline_status": "healthy",
+            "event_publish_failures_total": 0,
+            "event_publish_retries_total": 0,
+            "event_publish_success_total": 59,
+            "event_queue_depth": 1,
+            "event_queue_full_total": 0,
+            "oldest_pending_event_age_ms": null,
+            "publisher_alive": true,
+            "redis_connected": true
+          },
+          "grpc_idempotency_store_status": "healthy",
+          "strategy_generation": "",
+          "oldest_pending_event_age_ms": null,
+          "grpc_idempotency_in_progress": 0
+        },
+        "event_consumer": {
+          "dead_letter_events_total": 0,
+          "database_duplicate_events_total": 0
+        },
+        "trading": {
+          "deployment_enabled": false,
+          "runtime_enabled": false,
+          "risk_allows_new_orders": false,
+          "effective_enabled": false,
+          "dependencies": {
+            "database": true,
+            "engine": true,
+            "market_data": true,
+            "risk": false,
+            "redis": true,
+            "event_consumer": true,
+            "event_outbox": true,
+            "command_store": true,
+            "control_auth": true,
+            "control_state": false,
+            "stop_resolved": true
+          },
+          "blocking_reasons": [
+            "risk",
+            "control_state"
+          ],
+          "stop_outcome": null,
+          "stop_request_id": null,
+          "updated_at": null,
+          "reason": "runtime control state has not been initialized",
+          "source": "default_fail_closed"
+        },
+        "control_auth_configured": true
+      },
+      "partial_orders": 0,
+      "journal_counts": {
+        "candidate.approved": 4,
+        "candidate.rejected": 1,
+        "capital.reserved": 4,
+        "paper.balance_settled": 3,
+        "paper.control": 2,
+        "paper.cycle_completed": 3,
+        "paper.cycle_started": 4,
+        "paper.cycle_unwinding": 3,
+        "paper.leg_filled": 10,
+        "paper.leg_submitted": 11,
+        "paper.pnl_finalized": 3,
+        "paper.reconciled": 9,
+        "paper.runtime_recovery_started": 1
+      },
+      "rejections": [
+        {
+          "id": 2633,
+          "account_id": "soak-5ce99dcfd4cd",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "ROUTE_COOLDOWN",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "ROUTE_COOLDOWN",
+            "candidate_id": "c22f827acd3e26e9a98e6bf8e73304581272509775d455dd9eff0acb7b2c16b0"
+          },
+          "created_at": "2026-10-11T11:34:37.605593+01:00"
+        }
+      ],
+      "first_cycle": {
+        "id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+        "account_id": "soak-5ce99dcfd4cd",
+        "candidate_id": "5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "COMPLETED",
+        "holdings": {
+          "BTC": "0.00000",
+          "ETH": "0.000000",
+          "USDT": "119.640350000"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=10ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714876593,
+                  "update_id": 100,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714876593,
+                  "update_id": 100,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 101,
+                  "timestamp": 1791714876593,
+                  "update_id": 101,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791714876594,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 100,
+                "timestamp": 1791714876593,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 100,
+                "timestamp": 1791714876593,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 101,
+                "timestamp": 1791714876593,
+                "update_id": 101
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 101,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791714876593,
+            "trigger_update_id": 101,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "a78cc3898702da101edc9cca51effd5ef5f7c975e298b8bf7c744cc61217d6d8",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791714876593,
+            "oldest_book_timestamp": 1791714876593,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "19.640350000",
+        "cash_delta": "19.640350000",
+        "failure_reason": null,
+        "created_at": "2026-10-11T11:34:36.605019+01:00",
+        "completed_at": "2026-10-11T11:34:36.722724+01:00",
+        "paper_metrics": {
+          "simulated": true,
+          "expected_gross_profit": 20.0,
+          "expected_net_profit": "19.51035988",
+          "simulated_gross_start_asset_received": "119.760120",
+          "fees_by_asset": {
+            "BTC": "0.001",
+            "ETH": "0.019980",
+            "USDT": "0.119770000"
+          },
+          "return_pct": "19.640350000",
+          "return_bps": "1964.035000000",
+          "capital_committed": "100",
+          "execution_duration_ms": 117.705,
+          "expected_minus_realized_net": "-0.129990120"
+        }
+      },
+      "first_orders": [
+        {
+          "id": "arb-44b5cb5a6fc5a93269a8-l30",
+          "cycle_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+          "intent": {
+            "to": "USDT",
+            "from": "ETH",
+            "side": "Sell",
+            "symbol": "ETHUSDT",
+            "cycle_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+            "quantity": "19.960020",
+            "simulated": true,
+            "leg_number": 3,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "6.1",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "6",
+                  "100"
+                ]
+              ],
+              "version": "ETHUSDT:1791714876593:101:101",
+              "timestamp": 1791714876593
+            }
+          },
+          "result": {
+            "fee": "0.119770000",
+            "price": "6",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.960020",
+            "remaining": "0.000000",
+            "requested": "19.960020",
+            "quote_value": "119.760120",
+            "book_version": "ETHUSDT:1791714876593:101:101",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791714876719,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "6"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:36.689358+01:00",
+          "completed_at": "2026-10-11T11:34:36.719472+01:00"
+        },
+        {
+          "id": "arb-44b5cb5a6fc5a93269a8-l20",
+          "cycle_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+          "intent": {
+            "to": "ETH",
+            "from": "BTC",
+            "side": "Buy",
+            "symbol": "ETHBTC",
+            "cycle_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+            "quantity": "19.980",
+            "simulated": true,
+            "leg_number": 2,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "0.05",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.049",
+                  "100"
+                ]
+              ],
+              "version": "ETHBTC:1791714876593:100:100",
+              "timestamp": 1791714876593
+            }
+          },
+          "result": {
+            "fee": "0.019980",
+            "price": "0.05",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.980",
+            "remaining": "0.000",
+            "requested": "19.980",
+            "quote_value": "0.99900",
+            "book_version": "ETHBTC:1791714876593:100:100",
+            "fee_currency": "ETH",
+            "executed_at_ms": 1791714876682,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "0.05"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:36.653765+01:00",
+          "completed_at": "2026-10-11T11:34:36.682529+01:00"
+        },
+        {
+          "id": "arb-44b5cb5a6fc5a93269a8-l10",
+          "cycle_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "soak-5ce99dcfd4cd:5e6c2bf7f7b8fa1ac63d9791060529a1cd536eec68bb3f3e33222e55765ae892",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791714876593:100:100",
+              "timestamp": 1791714876593
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791714876593:100:100",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791714876648,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:36.618428+01:00",
+          "completed_at": "2026-10-11T11:34:36.648524+01:00"
+        }
+      ],
+      "resource_source": "wait4 child process resource accounting",
+      "after_graceful_shutdown": {
+        "status": {
+          "account_id": "soak-5ce99dcfd4cd",
+          "mode": "paper",
+          "simulated": true,
+          "state": "stopped",
+          "authorized": false,
+          "blocked": false,
+          "runtime_online": true,
+          "heartbeat": "2026-10-11T11:34:40.690059+01:00",
+          "epoch": 1,
+          "active_cycles": 0,
+          "pending_orders": 0,
+          "balances": [
+            {
+              "asset": "BTC",
+              "available": "0.00000",
+              "reserved": "0",
+              "version": 3,
+              "reconciled_at": "2026-10-11T11:34:40.726404+01:00"
+            },
+            {
+              "asset": "ETH",
+              "available": "0.000000",
+              "reserved": "0",
+              "version": 3,
+              "reconciled_at": "2026-10-11T11:34:40.726404+01:00"
+            },
+            {
+              "asset": "USDT",
+              "available": "578.740880000000",
+              "reserved": "0",
+              "version": 12,
+              "reconciled_at": "2026-10-11T11:34:40.726404+01:00"
+            }
+          ]
+        },
+        "performance": {
+          "mode": "paper",
+          "simulated": true,
+          "closed_cycles": 4,
+          "total_cycles": 4,
+          "net_realized_pnl": "78.740880000000",
+          "daily_pnl": {
+            "2026-10-11": "78.740880000000"
+          },
+          "win_rate_pct": "100",
+          "average_win": "19.685220000000",
+          "average_loss": null,
+          "profit_factor": null,
+          "max_drawdown_start_asset": "0",
+          "average_duration_ms": 114.01975,
+          "unresolved_cycles": 0,
+          "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+        },
+        "reconciliation": {
+          "mode": "paper",
+          "balanced": true,
+          "checks": [
+            {
+              "asset": "BTC",
+              "available_difference": "0.00000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "ETH",
+              "available_difference": "0.000000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "USDT",
+              "available_difference": "0E-12",
+              "reservation_difference": "0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "account": "soak-459d55756302",
+      "latency_ms": 50,
+      "actual_seconds": 5.003608496000197,
+      "max_rss_kib": 38456,
+      "cpu_seconds": 0.15523499999999998,
+      "postgres_probe_ms": 0.39397499995175167,
+      "status": {
+        "account_id": "soak-459d55756302",
+        "mode": "paper",
+        "simulated": true,
+        "state": "running",
+        "authorized": true,
+        "blocked": false,
+        "runtime_online": true,
+        "heartbeat": "2026-10-11T11:34:45.909610+01:00",
+        "epoch": 1,
+        "active_cycles": 0,
+        "pending_orders": 0,
+        "balances": [
+          {
+            "asset": "BTC",
+            "available": "0.00000",
+            "reserved": "0",
+            "version": 2,
+            "reconciled_at": "2026-10-11T11:34:45.132392+01:00"
+          },
+          {
+            "asset": "ETH",
+            "available": "0.000000",
+            "reserved": "0",
+            "version": 2,
+            "reconciled_at": "2026-10-11T11:34:45.132392+01:00"
+          },
+          {
+            "asset": "USDT",
+            "available": "559.000820000000",
+            "reserved": "0",
+            "version": 9,
+            "reconciled_at": "2026-10-11T11:34:45.132392+01:00"
+          }
+        ]
+      },
+      "performance": {
+        "mode": "paper",
+        "simulated": true,
+        "closed_cycles": 3,
+        "total_cycles": 3,
+        "net_realized_pnl": "59.000820000000",
+        "daily_pnl": {
+          "2026-10-11": "59.000820000000"
+        },
+        "win_rate_pct": "100",
+        "average_win": "19.666940000000",
+        "average_loss": null,
+        "profit_factor": null,
+        "max_drawdown_start_asset": "0",
+        "average_duration_ms": 190.91233333333332,
+        "unresolved_cycles": 0,
+        "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+      },
+      "cycle_states": {
+        "COMPLETED": 3
+      },
+      "transport_health": {
+        "status": "degraded",
+        "generated_at": "2026-10-11T10:34:46.002084Z",
+        "environment": "development",
+        "database_status": "online",
+        "market_stream_status": "connected_and_fresh",
+        "last_market_event": "2026-10-11T10:34:45.906000Z",
+        "market_data": {
+          "status": "connected_and_fresh",
+          "source": "scanner market.health telemetry",
+          "required_symbols": [
+            "BTCUSDT",
+            "ETHBTC",
+            "ETHUSDT"
+          ],
+          "symbols": {
+            "BTCUSDT": {
+              "exchange_timestamp_ms": 1791714885905,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHBTC": {
+              "exchange_timestamp_ms": 1791714885905,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHUSDT": {
+              "exchange_timestamp_ms": 1791714885905,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            }
+          },
+          "age_ms": 86,
+          "detail": "all required books synchronized and fresh",
+          "last_event_at": "2026-10-11T10:34:45.906000Z"
+        },
+        "observer": {
+          "state": "scanning",
+          "execution_enabled": false,
+          "scanner_ready": true,
+          "age_ms": 87,
+          "reason": "all metadata, acknowledgements and books ready",
+          "generation": 1
+        },
+        "event_pipeline": {
+          "status": "online",
+          "last_event_id": "66864962-267b-4d33-a8fe-88493e090543",
+          "last_event_at": "2026-10-11T10:34:45.893000Z",
+          "age_ms": 99,
+          "source": "engine-service"
+        },
+        "redis": {
+          "status": "online",
+          "pending": 0,
+          "lag": 0,
+          "detail": "Redis and event consumer backlog within bounds"
+        },
+        "risk": {
+          "available": false,
+          "state": "unavailable",
+          "kill_switch_active": false,
+          "kill_switch_detail": "risk runtime files are not mounted into the API process",
+          "circuit_breaker": null,
+          "execution_failures_recorded": 0
+        },
+        "engine_grpc": {
+          "status": "online",
+          "runtime_enabled": false,
+          "detail": "engine control service ready",
+          "event_pipeline_status": "healthy",
+          "critical_event_backlog": 0,
+          "event_pipeline": {
+            "best_effort_dropped_total": 0,
+            "critical_events_pending": 0,
+            "event_outbox_pending": 0,
+            "event_pipeline_status": "healthy",
+            "event_publish_failures_total": 0,
+            "event_publish_retries_total": 0,
+            "event_publish_success_total": 62,
+            "event_queue_depth": 1,
+            "event_queue_full_total": 0,
+            "oldest_pending_event_age_ms": null,
+            "publisher_alive": true,
+            "redis_connected": true
+          },
+          "grpc_idempotency_store_status": "healthy",
+          "strategy_generation": "",
+          "oldest_pending_event_age_ms": null,
+          "grpc_idempotency_in_progress": 0
+        },
+        "event_consumer": {
+          "dead_letter_events_total": 0,
+          "database_duplicate_events_total": 0
+        },
+        "trading": {
+          "deployment_enabled": false,
+          "runtime_enabled": false,
+          "risk_allows_new_orders": false,
+          "effective_enabled": false,
+          "dependencies": {
+            "database": true,
+            "engine": true,
+            "market_data": true,
+            "risk": false,
+            "redis": true,
+            "event_consumer": true,
+            "event_outbox": true,
+            "command_store": true,
+            "control_auth": true,
+            "control_state": false,
+            "stop_resolved": true
+          },
+          "blocking_reasons": [
+            "risk",
+            "control_state"
+          ],
+          "stop_outcome": null,
+          "stop_request_id": null,
+          "updated_at": null,
+          "reason": "runtime control state has not been initialized",
+          "source": "default_fail_closed"
+        },
+        "control_auth_configured": true
+      },
+      "partial_orders": 0,
+      "journal_counts": {
+        "candidate.approved": 3,
+        "candidate.rejected": 4,
+        "capital.reserved": 3,
+        "paper.balance_settled": 3,
+        "paper.control": 2,
+        "paper.cycle_completed": 3,
+        "paper.cycle_started": 3,
+        "paper.cycle_unwinding": 3,
+        "paper.leg_filled": 9,
+        "paper.leg_submitted": 9,
+        "paper.pnl_finalized": 3,
+        "paper.reconciled": 11,
+        "paper.runtime_recovery_started": 1
+      },
+      "rejections": [
+        {
+          "id": 2736,
+          "account_id": "soak-459d55756302",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "ROUTE_COOLDOWN",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "ROUTE_COOLDOWN",
+            "candidate_id": "3fb52cfedf13588203fc0bbacc266f5135edca2d290a4e95fb85c1439719d41d"
+          },
+          "created_at": "2026-10-11T11:34:45.921314+01:00"
+        },
+        {
+          "id": 2719,
+          "account_id": "soak-459d55756302",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "NET_PROFITABILITY_OR_DATA_REJECTED",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "NET_PROFITABILITY_OR_DATA_REJECTED",
+            "candidate_id": "3814c3eb933a3bf911bc29774af0a23889ef90f1bab4c79601021cc3b102b1f7"
+          },
+          "created_at": "2026-10-11T11:34:44.917626+01:00"
+        },
+        {
+          "id": 2717,
+          "account_id": "soak-459d55756302",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "ROUTE_COOLDOWN",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "ROUTE_COOLDOWN",
+            "candidate_id": "58a52699c3c455f57dd0daa2a9856028ce4d500410b3706f1ea2fa54e6559343"
+          },
+          "created_at": "2026-10-11T11:34:43.922157+01:00"
+        },
+        {
+          "id": 2700,
+          "account_id": "soak-459d55756302",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "NET_PROFITABILITY_OR_DATA_REJECTED",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "NET_PROFITABILITY_OR_DATA_REJECTED",
+            "candidate_id": "b682375dc2dff5a700963357d710f93c6bda33231bbd7d0d2b6ee3c5ccc33f21"
+          },
+          "created_at": "2026-10-11T11:34:42.914599+01:00"
+        }
+      ],
+      "first_cycle": {
+        "id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+        "account_id": "soak-459d55756302",
+        "candidate_id": "a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "COMPLETED",
+        "holdings": {
+          "BTC": "0.00000",
+          "ETH": "0.000000",
+          "USDT": "119.640350000"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=12ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714881902,
+                  "update_id": 100,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714881902,
+                  "update_id": 100,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 101,
+                  "timestamp": 1791714881902,
+                  "update_id": 101,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791714881902,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 100,
+                "timestamp": 1791714881902,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 100,
+                "timestamp": 1791714881902,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 101,
+                "timestamp": 1791714881902,
+                "update_id": 101
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 101,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791714881902,
+            "trigger_update_id": 101,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "19df4350b2e22bda4e4ccceed2796b539cf662f320a13af314267e060717bc43",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791714881902,
+            "oldest_book_timestamp": 1791714881902,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "19.640350000",
+        "cash_delta": "19.640350000",
+        "failure_reason": null,
+        "created_at": "2026-10-11T11:34:41.915167+01:00",
+        "completed_at": "2026-10-11T11:34:42.101519+01:00",
+        "paper_metrics": {
+          "simulated": true,
+          "expected_gross_profit": 20.0,
+          "expected_net_profit": "19.51035988",
+          "simulated_gross_start_asset_received": "119.760120",
+          "fees_by_asset": {
+            "BTC": "0.001",
+            "ETH": "0.019980",
+            "USDT": "0.119770000"
+          },
+          "return_pct": "19.640350000",
+          "return_bps": "1964.035000000",
+          "capital_committed": "100",
+          "execution_duration_ms": 186.352,
+          "expected_minus_realized_net": "-0.129990120"
+        }
+      },
+      "first_orders": [
+        {
+          "id": "arb-cc84466567136655a792-l30",
+          "cycle_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+          "intent": {
+            "to": "USDT",
+            "from": "ETH",
+            "side": "Sell",
+            "symbol": "ETHUSDT",
+            "cycle_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+            "quantity": "19.960020",
+            "simulated": true,
+            "leg_number": 3,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "6.1",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "6",
+                  "100"
+                ]
+              ],
+              "version": "ETHUSDT:1791714881902:101:101",
+              "timestamp": 1791714881902
+            }
+          },
+          "result": {
+            "fee": "0.119770000",
+            "price": "6",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.960020",
+            "remaining": "0.000000",
+            "requested": "19.960020",
+            "quote_value": "119.760120",
+            "book_version": "ETHUSDT:1791714881902:101:101",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791714882098,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "6"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:42.044912+01:00",
+          "completed_at": "2026-10-11T11:34:42.098470+01:00"
+        },
+        {
+          "id": "arb-cc84466567136655a792-l20",
+          "cycle_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+          "intent": {
+            "to": "ETH",
+            "from": "BTC",
+            "side": "Buy",
+            "symbol": "ETHBTC",
+            "cycle_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+            "quantity": "19.980",
+            "simulated": true,
+            "leg_number": 2,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "0.05",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.049",
+                  "100"
+                ]
+              ],
+              "version": "ETHBTC:1791714881902:100:100",
+              "timestamp": 1791714881902
+            }
+          },
+          "result": {
+            "fee": "0.019980",
+            "price": "0.05",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.980",
+            "remaining": "0.000",
+            "requested": "19.980",
+            "quote_value": "0.99900",
+            "book_version": "ETHBTC:1791714881902:100:100",
+            "fee_currency": "ETH",
+            "executed_at_ms": 1791714882041,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "0.05"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:41.988301+01:00",
+          "completed_at": "2026-10-11T11:34:42.041595+01:00"
+        },
+        {
+          "id": "arb-cc84466567136655a792-l10",
+          "cycle_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "soak-459d55756302:a5246941b583524437597e9367cba8a6bc0563adf86e6218ba58942fdcba5622",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791714881902:100:100",
+              "timestamp": 1791714881902
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791714881902:100:100",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791714881982,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:41.928782+01:00",
+          "completed_at": "2026-10-11T11:34:41.982992+01:00"
+        }
+      ],
+      "resource_source": "wait4 child process resource accounting",
+      "after_graceful_shutdown": {
+        "status": {
+          "account_id": "soak-459d55756302",
+          "mode": "paper",
+          "simulated": true,
+          "state": "stopped",
+          "authorized": false,
+          "blocked": false,
+          "runtime_online": true,
+          "heartbeat": "2026-10-11T11:34:45.909610+01:00",
+          "epoch": 1,
+          "active_cycles": 0,
+          "pending_orders": 0,
+          "balances": [
+            {
+              "asset": "BTC",
+              "available": "0.00000",
+              "reserved": "0",
+              "version": 2,
+              "reconciled_at": "2026-10-11T11:34:45.132392+01:00"
+            },
+            {
+              "asset": "ETH",
+              "available": "0.000000",
+              "reserved": "0",
+              "version": 2,
+              "reconciled_at": "2026-10-11T11:34:45.132392+01:00"
+            },
+            {
+              "asset": "USDT",
+              "available": "559.000820000000",
+              "reserved": "0",
+              "version": 9,
+              "reconciled_at": "2026-10-11T11:34:45.132392+01:00"
+            }
+          ]
+        },
+        "performance": {
+          "mode": "paper",
+          "simulated": true,
+          "closed_cycles": 3,
+          "total_cycles": 3,
+          "net_realized_pnl": "59.000820000000",
+          "daily_pnl": {
+            "2026-10-11": "59.000820000000"
+          },
+          "win_rate_pct": "100",
+          "average_win": "19.666940000000",
+          "average_loss": null,
+          "profit_factor": null,
+          "max_drawdown_start_asset": "0",
+          "average_duration_ms": 190.91233333333332,
+          "unresolved_cycles": 0,
+          "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+        },
+        "reconciliation": {
+          "mode": "paper",
+          "balanced": true,
+          "checks": [
+            {
+              "asset": "BTC",
+              "available_difference": "0.00000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "ETH",
+              "available_difference": "0.000000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "USDT",
+              "available_difference": "0E-12",
+              "reservation_difference": "0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "account": "soak-a3b526592101",
+      "latency_ms": 100,
+      "actual_seconds": 5.002610488999835,
+      "max_rss_kib": 38584,
+      "cpu_seconds": 0.14751999999999998,
+      "postgres_probe_ms": 0.5407499998000276,
+      "status": {
+        "account_id": "soak-a3b526592101",
+        "mode": "paper",
+        "simulated": true,
+        "state": "running",
+        "authorized": true,
+        "blocked": false,
+        "runtime_online": true,
+        "heartbeat": "2026-10-11T11:34:51.158678+01:00",
+        "epoch": 1,
+        "active_cycles": 0,
+        "pending_orders": 0,
+        "balances": [
+          {
+            "asset": "BTC",
+            "available": "0.00000",
+            "reserved": "0",
+            "version": 2,
+            "reconciled_at": "2026-10-11T11:34:50.507912+01:00"
+          },
+          {
+            "asset": "ETH",
+            "available": "0.000000",
+            "reserved": "0",
+            "version": 2,
+            "reconciled_at": "2026-10-11T11:34:50.507912+01:00"
+          },
+          {
+            "asset": "USDT",
+            "available": "559.000820000000",
+            "reserved": "0",
+            "version": 9,
+            "reconciled_at": "2026-10-11T11:34:50.507912+01:00"
+          }
+        ]
+      },
+      "performance": {
+        "mode": "paper",
+        "simulated": true,
+        "closed_cycles": 3,
+        "total_cycles": 3,
+        "net_realized_pnl": "59.000820000000",
+        "daily_pnl": {
+          "2026-10-11": "59.000820000000"
+        },
+        "win_rate_pct": "100",
+        "average_win": "19.666940000000",
+        "average_loss": null,
+        "profit_factor": null,
+        "max_drawdown_start_asset": "0",
+        "average_duration_ms": 336.28000000000003,
+        "unresolved_cycles": 0,
+        "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+      },
+      "cycle_states": {
+        "COMPLETED": 3
+      },
+      "transport_health": {
+        "status": "degraded",
+        "generated_at": "2026-10-11T10:34:51.240322Z",
+        "environment": "development",
+        "database_status": "online",
+        "market_stream_status": "connected_and_fresh",
+        "last_market_event": "2026-10-11T10:34:51.156000Z",
+        "market_data": {
+          "status": "connected_and_fresh",
+          "source": "scanner market.health telemetry",
+          "required_symbols": [
+            "BTCUSDT",
+            "ETHBTC",
+            "ETHUSDT"
+          ],
+          "symbols": {
+            "BTCUSDT": {
+              "exchange_timestamp_ms": 1791714891155,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHBTC": {
+              "exchange_timestamp_ms": 1791714891155,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHUSDT": {
+              "exchange_timestamp_ms": 1791714891155,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            }
+          },
+          "age_ms": 77,
+          "detail": "all required books synchronized and fresh",
+          "last_event_at": "2026-10-11T10:34:51.156000Z"
+        },
+        "observer": {
+          "state": "scanning",
+          "execution_enabled": false,
+          "scanner_ready": true,
+          "age_ms": 77,
+          "reason": "all metadata, acknowledgements and books ready",
+          "generation": 1
+        },
+        "event_pipeline": {
+          "status": "online",
+          "last_event_id": "6c8b7496-c01f-4ee8-97d6-4dfcbe3b5287",
+          "last_event_at": "2026-10-11T10:34:51.140000Z",
+          "age_ms": 94,
+          "source": "engine-service"
+        },
+        "redis": {
+          "status": "online",
+          "pending": 0,
+          "lag": 0,
+          "detail": "Redis and event consumer backlog within bounds"
+        },
+        "risk": {
+          "available": false,
+          "state": "unavailable",
+          "kill_switch_active": false,
+          "kill_switch_detail": "risk runtime files are not mounted into the API process",
+          "circuit_breaker": null,
+          "execution_failures_recorded": 0
+        },
+        "engine_grpc": {
+          "status": "online",
+          "runtime_enabled": false,
+          "detail": "engine control service ready",
+          "event_pipeline_status": "healthy",
+          "critical_event_backlog": 0,
+          "event_pipeline": {
+            "best_effort_dropped_total": 0,
+            "critical_events_pending": 0,
+            "event_outbox_pending": 0,
+            "event_pipeline_status": "healthy",
+            "event_publish_failures_total": 0,
+            "event_publish_retries_total": 0,
+            "event_publish_success_total": 58,
+            "event_queue_depth": 1,
+            "event_queue_full_total": 0,
+            "oldest_pending_event_age_ms": null,
+            "publisher_alive": true,
+            "redis_connected": true
+          },
+          "grpc_idempotency_store_status": "healthy",
+          "strategy_generation": "",
+          "oldest_pending_event_age_ms": null,
+          "grpc_idempotency_in_progress": 0
+        },
+        "event_consumer": {
+          "dead_letter_events_total": 0,
+          "database_duplicate_events_total": 0
+        },
+        "trading": {
+          "deployment_enabled": false,
+          "runtime_enabled": false,
+          "risk_allows_new_orders": false,
+          "effective_enabled": false,
+          "dependencies": {
+            "database": true,
+            "engine": true,
+            "market_data": true,
+            "risk": false,
+            "redis": true,
+            "event_consumer": true,
+            "event_outbox": true,
+            "command_store": true,
+            "control_auth": true,
+            "control_state": false,
+            "stop_resolved": true
+          },
+          "blocking_reasons": [
+            "risk",
+            "control_state"
+          ],
+          "stop_outcome": null,
+          "stop_request_id": null,
+          "updated_at": null,
+          "reason": "runtime control state has not been initialized",
+          "source": "default_fail_closed"
+        },
+        "control_auth_configured": true
+      },
+      "partial_orders": 0,
+      "journal_counts": {
+        "paper.control": 2,
+        "paper.cycle_started": 3,
+        "paper.runtime_recovery_started": 1,
+        "paper.reconciled": 9,
+        "candidate.rejected": 2,
+        "paper.leg_filled": 9,
+        "paper.cycle_completed": 3,
+        "capital.reserved": 3,
+        "paper.balance_settled": 3,
+        "candidate.approved": 3,
+        "paper.cycle_unwinding": 3,
+        "paper.pnl_finalized": 3,
+        "paper.leg_submitted": 9
+      },
+      "rejections": [
+        {
+          "id": 2790,
+          "account_id": "soak-a3b526592101",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "ROUTE_COOLDOWN",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "ROUTE_COOLDOWN",
+            "candidate_id": "a391e0221843f7618456e97f2629d2a7a223b27a293cfa0cc10dc174ec044632"
+          },
+          "created_at": "2026-10-11T11:34:51.166526+01:00"
+        },
+        {
+          "id": 2773,
+          "account_id": "soak-a3b526592101",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "ROUTE_COOLDOWN",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "ROUTE_COOLDOWN",
+            "candidate_id": "fca51befd98a8801429d8b6997e9c9fd55c6c0ecb394773a63e1bc100e2ed840"
+          },
+          "created_at": "2026-10-11T11:34:49.163413+01:00"
+        }
+      ],
+      "first_cycle": {
+        "id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+        "account_id": "soak-a3b526592101",
+        "candidate_id": "ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "COMPLETED",
+        "holdings": {
+          "BTC": "0.00000",
+          "ETH": "0.000000",
+          "USDT": "119.640350000"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=9ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714887148,
+                  "update_id": 100,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714887148,
+                  "update_id": 100,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 101,
+                  "timestamp": 1791714887148,
+                  "update_id": 101,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791714887149,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 100,
+                "timestamp": 1791714887148,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 100,
+                "timestamp": 1791714887148,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 101,
+                "timestamp": 1791714887148,
+                "update_id": 101
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 101,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791714887148,
+            "trigger_update_id": 101,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "794ec3dcbf75e1a13fa107537206d55a9545be728a9e6a06c201f4b4d16cc466",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791714887148,
+            "oldest_book_timestamp": 1791714887148,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "19.640350000",
+        "cash_delta": "19.640350000",
+        "failure_reason": null,
+        "created_at": "2026-10-11T11:34:47.158740+01:00",
+        "completed_at": "2026-10-11T11:34:47.493055+01:00",
+        "paper_metrics": {
+          "simulated": true,
+          "expected_gross_profit": 20.0,
+          "expected_net_profit": "19.51035988",
+          "simulated_gross_start_asset_received": "119.760120",
+          "fees_by_asset": {
+            "BTC": "0.001",
+            "ETH": "0.019980",
+            "USDT": "0.119770000"
+          },
+          "return_pct": "19.640350000",
+          "return_bps": "1964.035000000",
+          "capital_committed": "100",
+          "execution_duration_ms": 334.315,
+          "expected_minus_realized_net": "-0.129990120"
+        }
+      },
+      "first_orders": [
+        {
+          "id": "arb-d5d62ac9131e396a79b4-l30",
+          "cycle_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+          "intent": {
+            "to": "USDT",
+            "from": "ETH",
+            "side": "Sell",
+            "symbol": "ETHUSDT",
+            "cycle_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+            "quantity": "19.960020",
+            "simulated": true,
+            "leg_number": 3,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "6.1",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "6",
+                  "100"
+                ]
+              ],
+              "version": "ETHUSDT:1791714887148:101:101",
+              "timestamp": 1791714887148
+            }
+          },
+          "result": {
+            "fee": "0.119770000",
+            "price": "6",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.960020",
+            "remaining": "0.000000",
+            "requested": "19.960020",
+            "quote_value": "119.760120",
+            "book_version": "ETHUSDT:1791714887148:101:101",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791714887489,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "6"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:47.386007+01:00",
+          "completed_at": "2026-10-11T11:34:47.489831+01:00"
+        },
+        {
+          "id": "arb-d5d62ac9131e396a79b4-l20",
+          "cycle_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+          "intent": {
+            "to": "ETH",
+            "from": "BTC",
+            "side": "Buy",
+            "symbol": "ETHBTC",
+            "cycle_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+            "quantity": "19.980",
+            "simulated": true,
+            "leg_number": 2,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "0.05",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.049",
+                  "100"
+                ]
+              ],
+              "version": "ETHBTC:1791714887148:100:100",
+              "timestamp": 1791714887148
+            }
+          },
+          "result": {
+            "fee": "0.019980",
+            "price": "0.05",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.980",
+            "remaining": "0.000",
+            "requested": "19.980",
+            "quote_value": "0.99900",
+            "book_version": "ETHBTC:1791714887148:100:100",
+            "fee_currency": "ETH",
+            "executed_at_ms": 1791714887382,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "0.05"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:47.279007+01:00",
+          "completed_at": "2026-10-11T11:34:47.382799+01:00"
+        },
+        {
+          "id": "arb-d5d62ac9131e396a79b4-l10",
+          "cycle_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "soak-a3b526592101:ea31a7f2d3511c7756daef410f42035631f73e35beb8a768a0864ada5414da8c",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791714887148:100:100",
+              "timestamp": 1791714887148
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791714887148:100:100",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791714887273,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:47.170244+01:00",
+          "completed_at": "2026-10-11T11:34:47.274065+01:00"
+        }
+      ],
+      "resource_source": "wait4 child process resource accounting",
+      "after_graceful_shutdown": {
+        "status": {
+          "account_id": "soak-a3b526592101",
+          "mode": "paper",
+          "simulated": true,
+          "state": "stopped",
+          "authorized": false,
+          "blocked": false,
+          "runtime_online": true,
+          "heartbeat": "2026-10-11T11:34:51.158678+01:00",
+          "epoch": 1,
+          "active_cycles": 0,
+          "pending_orders": 0,
+          "balances": [
+            {
+              "asset": "BTC",
+              "available": "0.00000",
+              "reserved": "0",
+              "version": 2,
+              "reconciled_at": "2026-10-11T11:34:50.507912+01:00"
+            },
+            {
+              "asset": "ETH",
+              "available": "0.000000",
+              "reserved": "0",
+              "version": 2,
+              "reconciled_at": "2026-10-11T11:34:50.507912+01:00"
+            },
+            {
+              "asset": "USDT",
+              "available": "559.000820000000",
+              "reserved": "0",
+              "version": 9,
+              "reconciled_at": "2026-10-11T11:34:50.507912+01:00"
+            }
+          ]
+        },
+        "performance": {
+          "mode": "paper",
+          "simulated": true,
+          "closed_cycles": 3,
+          "total_cycles": 3,
+          "net_realized_pnl": "59.000820000000",
+          "daily_pnl": {
+            "2026-10-11": "59.000820000000"
+          },
+          "win_rate_pct": "100",
+          "average_win": "19.666940000000",
+          "average_loss": null,
+          "profit_factor": null,
+          "max_drawdown_start_asset": "0",
+          "average_duration_ms": 336.28000000000003,
+          "unresolved_cycles": 0,
+          "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+        },
+        "reconciliation": {
+          "mode": "paper",
+          "balanced": true,
+          "checks": [
+            {
+              "asset": "BTC",
+              "available_difference": "0.00000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "ETH",
+              "available_difference": "0.000000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "USDT",
+              "available_difference": "0E-12",
+              "reservation_difference": "0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "account": "soak-0a8fd0a79755",
+      "latency_ms": 200,
+      "actual_seconds": 5.00268155699996,
+      "max_rss_kib": 38584,
+      "cpu_seconds": 0.09109899999999999,
+      "postgres_probe_ms": 0.4551410002022749,
+      "status": {
+        "account_id": "soak-0a8fd0a79755",
+        "mode": "paper",
+        "simulated": true,
+        "state": "blocked",
+        "authorized": false,
+        "blocked": true,
+        "runtime_online": true,
+        "heartbeat": "2026-10-11T11:34:56.399532+01:00",
+        "epoch": 1,
+        "active_cycles": 0,
+        "pending_orders": 0,
+        "balances": [
+          {
+            "asset": "BTC",
+            "available": "0.00000",
+            "reserved": "0",
+            "version": 0,
+            "reconciled_at": "2026-10-11T11:34:53.047349+01:00"
+          },
+          {
+            "asset": "ETH",
+            "available": "19.960020",
+            "reserved": "0",
+            "version": 0,
+            "reconciled_at": "2026-10-11T11:34:53.047349+01:00"
+          },
+          {
+            "asset": "USDT",
+            "available": "400",
+            "reserved": "0",
+            "version": 3,
+            "reconciled_at": "2026-10-11T11:34:53.047349+01:00"
+          }
+        ]
+      },
+      "performance": {
+        "mode": "paper",
+        "simulated": true,
+        "closed_cycles": 0,
+        "total_cycles": 1,
+        "net_realized_pnl": "0",
+        "daily_pnl": {},
+        "win_rate_pct": null,
+        "average_win": null,
+        "average_loss": null,
+        "profit_factor": null,
+        "max_drawdown_start_asset": "0",
+        "average_duration_ms": null,
+        "unresolved_cycles": 1,
+        "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+      },
+      "cycle_states": {
+        "RECOVERY_REQUIRED": 1
+      },
+      "transport_health": {
+        "status": "degraded",
+        "generated_at": "2026-10-11T10:34:56.475590Z",
+        "environment": "development",
+        "database_status": "online",
+        "market_stream_status": "connected_and_fresh",
+        "last_market_event": "2026-10-11T10:34:56.397000Z",
+        "market_data": {
+          "status": "connected_and_fresh",
+          "source": "scanner market.health telemetry",
+          "required_symbols": [
+            "BTCUSDT",
+            "ETHBTC",
+            "ETHUSDT"
+          ],
+          "symbols": {
+            "BTCUSDT": {
+              "exchange_timestamp_ms": 1791714896396,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHBTC": {
+              "exchange_timestamp_ms": 1791714896396,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHUSDT": {
+              "exchange_timestamp_ms": 1791714896396,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            }
+          },
+          "age_ms": 71,
+          "detail": "all required books synchronized and fresh",
+          "last_event_at": "2026-10-11T10:34:56.397000Z"
+        },
+        "observer": {
+          "state": "scanning",
+          "execution_enabled": false,
+          "scanner_ready": true,
+          "age_ms": 72,
+          "reason": "all metadata, acknowledgements and books ready",
+          "generation": 1
+        },
+        "event_pipeline": {
+          "status": "online",
+          "last_event_id": "84f31942-41d0-4cdc-8473-64060fde4d9b",
+          "last_event_at": "2026-10-11T10:34:56.383000Z",
+          "age_ms": 86,
+          "source": "engine-service"
+        },
+        "redis": {
+          "status": "online",
+          "pending": 0,
+          "lag": 0,
+          "detail": "Redis and event consumer backlog within bounds"
+        },
+        "risk": {
+          "available": false,
+          "state": "unavailable",
+          "kill_switch_active": false,
+          "kill_switch_detail": "risk runtime files are not mounted into the API process",
+          "circuit_breaker": null,
+          "execution_failures_recorded": 0
+        },
+        "engine_grpc": {
+          "status": "online",
+          "runtime_enabled": false,
+          "detail": "engine control service ready",
+          "event_pipeline_status": "healthy",
+          "critical_event_backlog": 0,
+          "event_pipeline": {
+            "best_effort_dropped_total": 0,
+            "critical_events_pending": 0,
+            "event_outbox_pending": 0,
+            "event_pipeline_status": "healthy",
+            "event_publish_failures_total": 0,
+            "event_publish_retries_total": 0,
+            "event_publish_success_total": 54,
+            "event_queue_depth": 0,
+            "event_queue_full_total": 0,
+            "oldest_pending_event_age_ms": null,
+            "publisher_alive": true,
+            "redis_connected": true
+          },
+          "grpc_idempotency_store_status": "healthy",
+          "strategy_generation": "",
+          "oldest_pending_event_age_ms": null,
+          "grpc_idempotency_in_progress": 0
+        },
+        "event_consumer": {
+          "dead_letter_events_total": 0,
+          "database_duplicate_events_total": 0
+        },
+        "trading": {
+          "deployment_enabled": false,
+          "runtime_enabled": false,
+          "risk_allows_new_orders": false,
+          "effective_enabled": false,
+          "dependencies": {
+            "database": true,
+            "engine": true,
+            "market_data": true,
+            "risk": false,
+            "redis": true,
+            "event_consumer": true,
+            "event_outbox": true,
+            "command_store": true,
+            "control_auth": true,
+            "control_state": false,
+            "stop_resolved": true
+          },
+          "blocking_reasons": [
+            "risk",
+            "control_state"
+          ],
+          "stop_outcome": null,
+          "stop_request_id": null,
+          "updated_at": null,
+          "reason": "runtime control state has not been initialized",
+          "source": "default_fail_closed"
+        },
+        "control_auth_configured": true
+      },
+      "partial_orders": 0,
+      "journal_counts": {
+        "candidate.approved": 1,
+        "candidate.rejected": 4,
+        "capital.reserved": 1,
+        "paper.balance_settled": 1,
+        "paper.control": 2,
+        "paper.cycle_recovery_required": 1,
+        "paper.cycle_started": 1,
+        "paper.cycle_unwinding": 1,
+        "paper.leg_failed": 1,
+        "paper.leg_filled": 2,
+        "paper.leg_submitted": 3,
+        "paper.pnl_finalized": 1,
+        "paper.reconciled": 7,
+        "paper.runtime_recovery_started": 1
+      },
+      "rejections": [
+        {
+          "id": 2818,
+          "account_id": "soak-0a8fd0a79755",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "PAPER_NOT_AUTHORIZED",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "PAPER_NOT_AUTHORIZED",
+            "candidate_id": "68f167fa5a65b5ea3835d4b5e29d2ae1a6b6bb8c0a3f9d8b04378c3b1ee0150a"
+          },
+          "created_at": "2026-10-11T11:34:56.402560+01:00"
+        },
+        {
+          "id": 2816,
+          "account_id": "soak-0a8fd0a79755",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "PAPER_NOT_AUTHORIZED",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "PAPER_NOT_AUTHORIZED",
+            "candidate_id": "425e8522c7b86e84e459a697c37c199477f91c1c16687e44ce6ebbcc711c48f6"
+          },
+          "created_at": "2026-10-11T11:34:55.403203+01:00"
+        },
+        {
+          "id": 2814,
+          "account_id": "soak-0a8fd0a79755",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "PAPER_NOT_AUTHORIZED",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "PAPER_NOT_AUTHORIZED",
+            "candidate_id": "c7864cb2fecbb1bf6c0cafb93e5aee1f8972649ee12cb0e9525d95f0b8399d8a"
+          },
+          "created_at": "2026-10-11T11:34:54.403123+01:00"
+        },
+        {
+          "id": 2812,
+          "account_id": "soak-0a8fd0a79755",
+          "cycle_id": null,
+          "kind": "candidate.rejected",
+          "payload": {
+            "detail": {
+              "reason": "PAPER_NOT_AUTHORIZED",
+              "risk_configuration_version": 1
+            },
+            "reason_code": "PAPER_NOT_AUTHORIZED",
+            "candidate_id": "1d0ac77597f53e5e07c17f40dde39f8df5e64ed6b4b226fd4fd9ea5448599c20"
+          },
+          "created_at": "2026-10-11T11:34:53.400110+01:00"
+        }
+      ],
+      "first_cycle": {
+        "id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+        "account_id": "soak-0a8fd0a79755",
+        "candidate_id": "05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "RECOVERY_REQUIRED",
+        "holdings": {
+          "BTC": "0.00000",
+          "ETH": "19.960020",
+          "USDT": "0"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=13ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714892391,
+                  "update_id": 100,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714892391,
+                  "update_id": 100,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 101,
+                  "timestamp": 1791714892391,
+                  "update_id": 101,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791714892392,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 100,
+                "timestamp": 1791714892391,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 100,
+                "timestamp": 1791714892391,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 101,
+                "timestamp": 1791714892391,
+                "update_id": 101
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 101,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791714892391,
+            "trigger_update_id": 101,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "478a9e055dde17d6af196729a39f0e716d2fc5074aa6678390cc510cd6a8631d",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791714892391,
+            "oldest_book_timestamp": 1791714892391,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": null,
+        "cash_delta": "-100",
+        "failure_reason": "planning failed: residual cannot be valued at executable depth",
+        "created_at": "2026-10-11T11:34:52.405117+01:00",
+        "completed_at": "2026-10-11T11:34:53.047349+01:00",
+        "paper_metrics": {
+          "simulated": true,
+          "expected_gross_profit": 20.0,
+          "expected_net_profit": "19.51035988",
+          "simulated_gross_start_asset_received": "0",
+          "fees_by_asset": {
+            "BTC": "0.001",
+            "ETH": "0.019980",
+            "USDT": "0"
+          },
+          "return_pct": null,
+          "return_bps": null,
+          "capital_committed": "100",
+          "execution_duration_ms": 642.232,
+          "expected_minus_realized_net": null
+        }
+      },
+      "first_orders": [
+        {
+          "id": "arb-07dd8faf0751234fab71-l30",
+          "cycle_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+          "intent": {
+            "to": "USDT",
+            "from": "ETH",
+            "side": "Sell",
+            "symbol": "ETHUSDT",
+            "cycle_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+            "quantity": "19.960020",
+            "simulated": true,
+            "leg_number": 3,
+            "order_role": "recovery_or_close",
+            "risk_reducing": true,
+            "submission_book": {
+              "asks": [
+                [
+                  "6.1",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "6",
+                  "100"
+                ]
+              ],
+              "version": "ETHUSDT:1791714892391:101:101",
+              "timestamp": 1791714892391
+            }
+          },
+          "result": {
+            "fee": "0",
+            "price": null,
+            "reason": "STALE_MARKET_OR_METADATA",
+            "status": "Rejected",
+            "quantity": "0",
+            "remaining": "19.960020",
+            "requested": "19.960020",
+            "quote_value": "0",
+            "book_version": "ETHUSDT:1791714892391:101:101",
+            "fee_currency": "USDT",
+            "executed_at_ms": 1791714893045
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:52.840926+01:00",
+          "completed_at": "2026-10-11T11:34:53.045224+01:00"
+        },
+        {
+          "id": "arb-07dd8faf0751234fab71-l20",
+          "cycle_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+          "intent": {
+            "to": "ETH",
+            "from": "BTC",
+            "side": "Buy",
+            "symbol": "ETHBTC",
+            "cycle_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+            "quantity": "19.980",
+            "simulated": true,
+            "leg_number": 2,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "0.05",
+                  "100"
+                ]
+              ],
+              "bids": [
+                [
+                  "0.049",
+                  "100"
+                ]
+              ],
+              "version": "ETHBTC:1791714892391:100:100",
+              "timestamp": 1791714892391
+            }
+          },
+          "result": {
+            "fee": "0.019980",
+            "price": "0.05",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "19.980",
+            "remaining": "0.000",
+            "requested": "19.980",
+            "quote_value": "0.99900",
+            "book_version": "ETHBTC:1791714892391:100:100",
+            "fee_currency": "ETH",
+            "executed_at_ms": 1791714892837,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "0.05"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:52.633009+01:00",
+          "completed_at": "2026-10-11T11:34:52.837268+01:00"
+        },
+        {
+          "id": "arb-07dd8faf0751234fab71-l10",
+          "cycle_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "soak-0a8fd0a79755:05979eae1e4ddc922d99b1d586aa269d2a1237808f0eb1d2299c24a208f5985e",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791714892391:100:100",
+              "timestamp": 1791714892391
+            }
+          },
+          "result": {
+            "fee": "0.001",
+            "price": "100",
+            "reason": null,
+            "status": "Filled",
+            "quantity": "1",
+            "remaining": "0",
+            "requested": "1",
+            "quote_value": "100",
+            "book_version": "BTCUSDT:1791714892391:100:100",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791714892625,
+            "execution_slippage_bps": "0",
+            "submission_reference_price": "100"
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:52.421504+01:00",
+          "completed_at": "2026-10-11T11:34:52.625710+01:00"
+        }
+      ],
+      "resource_source": "wait4 child process resource accounting",
+      "after_graceful_shutdown": {
+        "status": {
+          "account_id": "soak-0a8fd0a79755",
+          "mode": "paper",
+          "simulated": true,
+          "state": "blocked",
+          "authorized": false,
+          "blocked": true,
+          "runtime_online": true,
+          "heartbeat": "2026-10-11T11:34:56.399532+01:00",
+          "epoch": 1,
+          "active_cycles": 0,
+          "pending_orders": 0,
+          "balances": [
+            {
+              "asset": "BTC",
+              "available": "0.00000",
+              "reserved": "0",
+              "version": 0,
+              "reconciled_at": "2026-10-11T11:34:53.047349+01:00"
+            },
+            {
+              "asset": "ETH",
+              "available": "19.960020",
+              "reserved": "0",
+              "version": 0,
+              "reconciled_at": "2026-10-11T11:34:53.047349+01:00"
+            },
+            {
+              "asset": "USDT",
+              "available": "400",
+              "reserved": "0",
+              "version": 3,
+              "reconciled_at": "2026-10-11T11:34:53.047349+01:00"
+            }
+          ]
+        },
+        "performance": {
+          "mode": "paper",
+          "simulated": true,
+          "closed_cycles": 0,
+          "total_cycles": 1,
+          "net_realized_pnl": "0",
+          "daily_pnl": {},
+          "win_rate_pct": null,
+          "average_win": null,
+          "average_loss": null,
+          "profit_factor": null,
+          "max_drawdown_start_asset": "0",
+          "average_duration_ms": null,
+          "unresolved_cycles": 1,
+          "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+        },
+        "reconciliation": {
+          "mode": "paper",
+          "balanced": true,
+          "checks": [
+            {
+              "asset": "BTC",
+              "available_difference": "0.00000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "ETH",
+              "available_difference": "0.000000",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "USDT",
+              "available_difference": "0",
+              "reservation_difference": "0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "account": "soak-38ebe4e4e173",
+      "latency_ms": 500,
+      "actual_seconds": 5.008749916999932,
+      "max_rss_kib": 38712,
+      "cpu_seconds": 0.130661,
+      "postgres_probe_ms": 0.41070199995374423,
+      "status": {
+        "account_id": "soak-38ebe4e4e173",
+        "mode": "paper",
+        "simulated": true,
+        "state": "executing",
+        "authorized": true,
+        "blocked": false,
+        "runtime_online": true,
+        "heartbeat": "2026-10-11T11:35:01.630044+01:00",
+        "epoch": 1,
+        "active_cycles": 1,
+        "pending_orders": 1,
+        "balances": [
+          {
+            "asset": "BTC",
+            "available": "0",
+            "reserved": "0",
+            "version": 3,
+            "reconciled_at": "2026-10-11T11:35:01.155554+01:00"
+          },
+          {
+            "asset": "USDT",
+            "available": "400",
+            "reserved": "100",
+            "version": 13,
+            "reconciled_at": "2026-10-11T11:35:01.155554+01:00"
+          }
+        ]
+      },
+      "performance": {
+        "mode": "paper",
+        "simulated": true,
+        "closed_cycles": 4,
+        "total_cycles": 5,
+        "net_realized_pnl": "0",
+        "daily_pnl": {
+          "2026-10-11": "0"
+        },
+        "win_rate_pct": "0",
+        "average_win": null,
+        "average_loss": null,
+        "profit_factor": null,
+        "max_drawdown_start_asset": "0",
+        "average_duration_ms": 517.0715,
+        "unresolved_cycles": 0,
+        "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+      },
+      "cycle_states": {
+        "RECOVERED": 4,
+        "EXECUTING": 1
+      },
+      "transport_health": {
+        "status": "degraded",
+        "generated_at": "2026-10-11T10:35:01.719787Z",
+        "environment": "development",
+        "database_status": "online",
+        "market_stream_status": "connected_and_fresh",
+        "last_market_event": "2026-10-11T10:35:01.628000Z",
+        "market_data": {
+          "status": "connected_and_fresh",
+          "source": "scanner market.health telemetry",
+          "required_symbols": [
+            "BTCUSDT",
+            "ETHBTC",
+            "ETHUSDT"
+          ],
+          "symbols": {
+            "BTCUSDT": {
+              "exchange_timestamp_ms": 1791714901627,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHBTC": {
+              "exchange_timestamp_ms": 1791714901627,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            },
+            "ETHUSDT": {
+              "exchange_timestamp_ms": 1791714901627,
+              "initialized": true,
+              "receive_age_ms": 0,
+              "synchronized": true
+            }
+          },
+          "age_ms": 85,
+          "detail": "all required books synchronized and fresh",
+          "last_event_at": "2026-10-11T10:35:01.628000Z"
+        },
+        "observer": {
+          "state": "scanning",
+          "execution_enabled": false,
+          "scanner_ready": true,
+          "age_ms": 85,
+          "reason": "all metadata, acknowledgements and books ready",
+          "generation": 1
+        },
+        "event_pipeline": {
+          "status": "online",
+          "last_event_id": "31e8e3f0-3023-4f13-b365-0cf68a8ec175",
+          "last_event_at": "2026-10-11T10:35:01.610000Z",
+          "age_ms": 104,
+          "source": "engine-service"
+        },
+        "redis": {
+          "status": "online",
+          "pending": 0,
+          "lag": 0,
+          "detail": "Redis and event consumer backlog within bounds"
+        },
+        "risk": {
+          "available": false,
+          "state": "unavailable",
+          "kill_switch_active": false,
+          "kill_switch_detail": "risk runtime files are not mounted into the API process",
+          "circuit_breaker": null,
+          "execution_failures_recorded": 0
+        },
+        "engine_grpc": {
+          "status": "online",
+          "runtime_enabled": false,
+          "detail": "engine control service ready",
+          "event_pipeline_status": "healthy",
+          "critical_event_backlog": 0,
+          "event_pipeline": {
+            "best_effort_dropped_total": 0,
+            "critical_events_pending": 0,
+            "event_outbox_pending": 0,
+            "event_pipeline_status": "healthy",
+            "event_publish_failures_total": 0,
+            "event_publish_retries_total": 0,
+            "event_publish_success_total": 61,
+            "event_queue_depth": 1,
+            "event_queue_full_total": 0,
+            "oldest_pending_event_age_ms": null,
+            "publisher_alive": true,
+            "redis_connected": true
+          },
+          "grpc_idempotency_store_status": "healthy",
+          "strategy_generation": "",
+          "oldest_pending_event_age_ms": null,
+          "grpc_idempotency_in_progress": 0
+        },
+        "event_consumer": {
+          "dead_letter_events_total": 0,
+          "database_duplicate_events_total": 0
+        },
+        "trading": {
+          "deployment_enabled": false,
+          "runtime_enabled": false,
+          "risk_allows_new_orders": false,
+          "effective_enabled": false,
+          "dependencies": {
+            "database": true,
+            "engine": true,
+            "market_data": true,
+            "risk": false,
+            "redis": true,
+            "event_consumer": true,
+            "event_outbox": true,
+            "command_store": true,
+            "control_auth": true,
+            "control_state": false,
+            "stop_resolved": true
+          },
+          "blocking_reasons": [
+            "risk",
+            "control_state"
+          ],
+          "stop_outcome": null,
+          "stop_request_id": null,
+          "updated_at": null,
+          "reason": "runtime control state has not been initialized",
+          "source": "default_fail_closed"
+        },
+        "control_auth_configured": true
+      },
+      "partial_orders": 0,
+      "journal_counts": {
+        "candidate.approved": 5,
+        "capital.reserved": 5,
+        "paper.balance_settled": 4,
+        "paper.control": 2,
+        "paper.cycle_completed": 4,
+        "paper.cycle_started": 5,
+        "paper.leg_failed": 4,
+        "paper.leg_submitted": 5,
+        "paper.pnl_finalized": 4,
+        "paper.reconciled": 10,
+        "paper.runtime_recovery_started": 1
+      },
+      "rejections": [],
+      "first_cycle": {
+        "id": "soak-38ebe4e4e173:940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b",
+        "account_id": "soak-38ebe4e4e173",
+        "candidate_id": "940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b",
+        "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+        "route_id": "USDT>BTC>ETH>USDT",
+        "start_asset": "USDT",
+        "starting": "100",
+        "expected_profit": "19.51035988",
+        "epoch": 1,
+        "state": "RECOVERED",
+        "holdings": {
+          "BTC": "0",
+          "USDT": "100"
+        },
+        "route": {
+          "id": "USDT>BTC>ETH>USDT",
+          "legs": [
+            {
+              "side": "BUY",
+              "symbol": "BTCUSDT",
+              "to_asset": "BTC",
+              "base_asset": "BTC",
+              "from_asset": "USDT",
+              "quote_asset": "USDT"
+            },
+            {
+              "side": "BUY",
+              "symbol": "ETHBTC",
+              "to_asset": "ETH",
+              "base_asset": "ETH",
+              "from_asset": "BTC",
+              "quote_asset": "BTC"
+            },
+            {
+              "side": "SELL",
+              "symbol": "ETHUSDT",
+              "to_asset": "USDT",
+              "base_asset": "ETH",
+              "from_asset": "ETH",
+              "quote_asset": "USDT"
+            }
+          ],
+          "pair1": "BTCUSDT",
+          "pair2": "ETHBTC",
+          "pair3": "ETHUSDT",
+          "assets": [
+            "USDT",
+            "BTC",
+            "ETH",
+            "USDT"
+          ],
+          "start_asset": "USDT",
+          "triangle_id": "BTC-ETH-USDT"
+        },
+        "risk": {
+          "version": 1,
+          "decision": {
+            "checks": [
+              {
+                "check": "trading_control",
+                "detail": "runtime trading control is enabled",
+                "passed": true
+              },
+              {
+                "check": "manual_kill_switch",
+                "detail": "manual kill switch is clear",
+                "passed": true
+              },
+              {
+                "check": "circuit_breaker",
+                "detail": "no circuit breaker is active",
+                "passed": true
+              },
+              {
+                "check": "market_data_freshness",
+                "detail": "market data age=7ms, limit=500ms",
+                "passed": true
+              },
+              {
+                "check": "minimum_net_edge",
+                "detail": "net edge=1951.035988 bps, minimum=5 bps",
+                "passed": true
+              },
+              {
+                "check": "maximum_slippage",
+                "detail": "estimated slippage=0 bps, maximum=10 bps",
+                "passed": true
+              },
+              {
+                "check": "available_liquidity",
+                "detail": "available=100, required=100, ratio=1, minimum_ratio=1",
+                "passed": true
+              },
+              {
+                "check": "account_balance",
+                "detail": "balance=500, required=100",
+                "passed": true
+              },
+              {
+                "check": "maximum_trade_size",
+                "detail": "trade_size=100, maximum=500",
+                "passed": true
+              },
+              {
+                "check": "symbol_precision",
+                "detail": "all leg quantities/prices match symbol rules",
+                "passed": true
+              },
+              {
+                "check": "maximum_exposure",
+                "detail": "current=0, projected_peak=119.640350000, combined_peak=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_daily_loss",
+                "detail": "daily_realized_pnl=0, loss_limit=-50",
+                "passed": true
+              },
+              {
+                "check": "api_health",
+                "detail": "api health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "exchange_health",
+                "detail": "exchange health age=0ms, limit=5000ms",
+                "passed": true
+              },
+              {
+                "check": "maximum_asset_exposure",
+                "detail": "projected per-asset upper bound=119.640350000, maximum=1000",
+                "passed": true
+              },
+              {
+                "check": "maximum_drawdown",
+                "detail": "closed-equity drawdown=0, maximum=50",
+                "passed": true
+              },
+              {
+                "check": "consecutive_losses",
+                "detail": "consecutive closed losses=0, maximum=3",
+                "passed": true
+              }
+            ],
+            "approved": true,
+            "trade_id": "soak-38ebe4e4e173:940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b"
+          },
+          "candidate": {
+            "legs": [
+              {
+                "side": "BUY",
+                "symbol": "BTCUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "BTCUSDT",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714897621,
+                  "update_id": 100,
+                  "best_price": 100.0,
+                  "worst_price": 100.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 1.0,
+                  "filled_quote_quantity": 100.0,
+                  "average_execution_price": 100.0,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 100.0
+                },
+                "leg_index": 1,
+                "input_asset": "USDT",
+                "input_amount": 100.0,
+                "output_asset": "BTC",
+                "output_amount": 1.0
+              },
+              {
+                "side": "BUY",
+                "symbol": "ETHBTC",
+                "complete": true,
+                "execution": {
+                  "side": "buy",
+                  "symbol": "ETHBTC",
+                  "complete": true,
+                  "sequence": 100,
+                  "timestamp": 1791714897621,
+                  "update_id": 100,
+                  "best_price": 0.05,
+                  "worst_price": 0.05,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 1.0,
+                  "average_execution_price": 0.05,
+                  "requested_base_quantity": null,
+                  "requested_quote_quantity": 1.0
+                },
+                "leg_index": 2,
+                "input_asset": "BTC",
+                "input_amount": 1.0,
+                "output_asset": "ETH",
+                "output_amount": 20.0
+              },
+              {
+                "side": "SELL",
+                "symbol": "ETHUSDT",
+                "complete": true,
+                "execution": {
+                  "side": "sell",
+                  "symbol": "ETHUSDT",
+                  "complete": true,
+                  "sequence": 101,
+                  "timestamp": 1791714897621,
+                  "update_id": 101,
+                  "best_price": 6.0,
+                  "worst_price": 6.0,
+                  "slippage_bps": 0.0,
+                  "levels_consumed": 1,
+                  "filled_base_quantity": 20.0,
+                  "filled_quote_quantity": 120.0,
+                  "average_execution_price": 6.0,
+                  "requested_base_quantity": 20.0,
+                  "requested_quote_quantity": null
+                },
+                "leg_index": 3,
+                "input_asset": "ETH",
+                "input_amount": 20.0,
+                "output_asset": "USDT",
+                "output_amount": 120.0
+              }
+            ],
+            "reason": null,
+            "status": "complete",
+            "route_id": "USDT>BTC>ETH>USDT",
+            "start_asset": "USDT",
+            "triangle_id": "BTC-ETH-USDT",
+            "final_amount": 120.0,
+            "gross_profit": 20.0,
+            "start_amount": 100.0,
+            "fees_included": true,
+            "profitability": {
+              "fee_amount": 0.35964012,
+              "fee_profile": "bybit_spot_vip0_reference",
+              "net_profitable": true,
+              "total_cost_bps": 48.964012,
+              "fee_bps_per_leg": [
+                10.0,
+                10.0,
+                10.0
+              ],
+              "nominal_fee_bps": 30.0,
+              "fee_bps_on_start": 35.964012,
+              "rounding_loss_bps": 0.0,
+              "safety_margin_bps": 5.0,
+              "total_cost_amount": 0.48964012,
+              "latency_buffer_bps": 3.0,
+              "expected_net_profit": 19.51035988,
+              "rounding_loss_amount": 0.0,
+              "safety_margin_amount": 0.05,
+              "expected_final_amount": 119.51035988,
+              "expected_slippage_bps": 5.0,
+              "latency_buffer_amount": 0.03,
+              "expected_net_return_bps": 1951.035988,
+              "expected_net_return_pct": 19.51035988,
+              "expected_slippage_amount": 0.05
+            },
+            "net_profitable": true,
+            "scan_timestamp": 1791714897622,
+            "trigger_symbol": "ETHUSDT",
+            "market_versions": [
+              {
+                "symbol": "BTCUSDT",
+                "sequence": 100,
+                "timestamp": 1791714897621,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHBTC",
+                "sequence": 100,
+                "timestamp": 1791714897621,
+                "update_id": 100
+              },
+              {
+                "symbol": "ETHUSDT",
+                "sequence": 101,
+                "timestamp": 1791714897621,
+                "update_id": 101
+              }
+            ],
+            "gross_profitable": true,
+            "gross_return_bps": 2000.0,
+            "gross_return_pct": 20.0,
+            "strategy_version": "depth-scanner-v2",
+            "trigger_sequence": 101,
+            "execution_enabled": false,
+            "trigger_timestamp": 1791714897621,
+            "trigger_update_id": 101,
+            "configuration_hash": "ee64aa2153ecad2a130576042e681d799001a8d26da1060b211eb6f2d86fad12",
+            "market_fingerprint": "f174b4eb27dbfefd2d95889249fd00bd79140d73f9b5466d710268a66980ba20",
+            "expected_net_profit": 19.51035988,
+            "expected_final_amount": 119.51035988,
+            "newest_book_timestamp": 1791714897621,
+            "oldest_book_timestamp": 1791714897621,
+            "book_timestamp_skew_ms": 0,
+            "expected_net_return_bps": 1951.035988,
+            "expected_net_return_pct": 19.51035988
+          },
+          "candidate_id": "940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b",
+          "evidence_key": "b59bef23740193c4bfa22684249b19146b89576c8a0cedc62a62ae0cd14f918c",
+          "decimal_expected_profit": "19.640350000",
+          "projected_asset_exposure": "119.640350000"
+        },
+        "settled": true,
+        "realized_pnl": "0",
+        "cash_delta": "0",
+        "failure_reason": "leg 1 partially filled or ended without full fill",
+        "created_at": "2026-10-11T11:34:57.629070+01:00",
+        "completed_at": "2026-10-11T11:34:58.144723+01:00",
+        "paper_metrics": {
+          "simulated": true,
+          "expected_gross_profit": 20.0,
+          "expected_net_profit": "19.51035988",
+          "simulated_gross_start_asset_received": "0",
+          "fees_by_asset": {
+            "BTC": "0"
+          },
+          "return_pct": "0",
+          "return_bps": "0",
+          "capital_committed": "100",
+          "execution_duration_ms": 515.653,
+          "expected_minus_realized_net": "19.51035988"
+        }
+      },
+      "first_orders": [
+        {
+          "id": "arb-0461e10c611ca9dda7c1-l10",
+          "cycle_id": "soak-38ebe4e4e173:940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b",
+          "intent": {
+            "to": "BTC",
+            "from": "USDT",
+            "side": "Buy",
+            "symbol": "BTCUSDT",
+            "cycle_id": "soak-38ebe4e4e173:940e7bc523ab2a8d709246c8a6373000b01fe7de41f92590313921aad316af8b",
+            "quantity": "1",
+            "simulated": true,
+            "leg_number": 1,
+            "order_role": "normal",
+            "risk_reducing": false,
+            "submission_book": {
+              "asks": [
+                [
+                  "100",
+                  "10"
+                ]
+              ],
+              "bids": [
+                [
+                  "99",
+                  "10"
+                ]
+              ],
+              "version": "BTCUSDT:1791714897621:100:100",
+              "timestamp": 1791714897621
+            }
+          },
+          "result": {
+            "fee": "0",
+            "price": null,
+            "reason": "STALE_MARKET_OR_METADATA",
+            "status": "Rejected",
+            "quantity": "0",
+            "remaining": "1",
+            "requested": "1",
+            "quote_value": "0",
+            "book_version": "BTCUSDT:1791714897621:100:100",
+            "fee_currency": "BTC",
+            "executed_at_ms": 1791714898141
+          },
+          "state": "TERMINAL",
+          "created_at": "2026-10-11T11:34:57.637955+01:00",
+          "completed_at": "2026-10-11T11:34:58.141970+01:00"
+        }
+      ],
+      "resource_source": "wait4 child process resource accounting",
+      "after_graceful_shutdown": {
+        "status": {
+          "account_id": "soak-38ebe4e4e173",
+          "mode": "paper",
+          "simulated": true,
+          "state": "stopped",
+          "authorized": false,
+          "blocked": false,
+          "runtime_online": true,
+          "heartbeat": "2026-10-11T11:35:01.630044+01:00",
+          "epoch": 1,
+          "active_cycles": 0,
+          "pending_orders": 0,
+          "balances": [
+            {
+              "asset": "BTC",
+              "available": "0",
+              "reserved": "0",
+              "version": 4,
+              "reconciled_at": "2026-10-11T11:35:02.152075+01:00"
+            },
+            {
+              "asset": "USDT",
+              "available": "500",
+              "reserved": "0",
+              "version": 15,
+              "reconciled_at": "2026-10-11T11:35:02.152075+01:00"
+            }
+          ]
+        },
+        "performance": {
+          "mode": "paper",
+          "simulated": true,
+          "closed_cycles": 5,
+          "total_cycles": 5,
+          "net_realized_pnl": "0",
+          "daily_pnl": {
+            "2026-10-11": "0"
+          },
+          "win_rate_pct": "0",
+          "average_win": null,
+          "average_loss": null,
+          "profit_factor": null,
+          "max_drawdown_start_asset": "0",
+          "average_duration_ms": 516.9788,
+          "unresolved_cycles": 0,
+          "valuation": "Residual inventory is excluded from realized P&L; no fresh mark is fabricated"
+        },
+        "reconciliation": {
+          "mode": "paper",
+          "balanced": true,
+          "checks": [
+            {
+              "asset": "BTC",
+              "available_difference": "0",
+              "reservation_difference": "0"
+            },
+            {
+              "asset": "USDT",
+              "available_difference": "0",
+              "reservation_difference": "0"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

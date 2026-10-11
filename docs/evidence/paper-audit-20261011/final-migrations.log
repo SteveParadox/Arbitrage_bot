@@ -1,0 +1,23 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_opportunity_ledger, Create opportunity ledger and continuous opportunity windows.
+INFO  [alembic.runtime.migration] Running upgrade 0001_opportunity_ledger -> 0002_paper_simulation, Add market-book archive and paper-trading simulation tables.
+INFO  [alembic.runtime.migration] Running upgrade 0002_paper_simulation -> 0003_paper_remaining_lifetime, Add remaining lifetime to paper simulation results.
+INFO  [alembic.runtime.migration] Running upgrade 0003_paper_remaining_lifetime -> 0004_live_shadow, Add live shadow-mode observations and latency samples.
+INFO  [alembic.runtime.migration] Running upgrade 0004_live_shadow -> 0005_micro_live, Add Phase 13 micro-live canary telemetry.
+INFO  [alembic.runtime.migration] Running upgrade 0005_micro_live -> 0006_engine_events, Phase 16 Rust/Python event stream ledger.
+INFO  [alembic.runtime.migration] Running upgrade 0006_engine_events -> 0007_reconciliation_idempotency, Persist reconciliation identity and payload fingerprint without modifying old records.
+INFO  [alembic.runtime.migration] Running upgrade 0007_reconciliation_idempotency -> 0008_autonomous_paper, Isolated decimal paper accounts, intent, reservations, orders, balanced ledger and audit.
+INFO  [alembic.runtime.migration] Running upgrade 0008_autonomous_paper -> 0009_paper_valuation, Timestamped conservative paper inventory valuations, separate from realized P&L.
+INFO  [alembic.runtime.migration] Running upgrade 0009_paper_valuation -> 0010_paper_finite, Reject non-finite financial values without silently repairing existing data.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0010_paper_finite -> 0009_paper_valuation, Reject non-finite financial values without silently repairing existing data.
+INFO  [alembic.runtime.migration] Running downgrade 0009_paper_valuation -> 0008_autonomous_paper, Timestamped conservative paper inventory valuations, separate from realized P&L.
+INFO  [alembic.runtime.migration] Running downgrade 0008_autonomous_paper -> 0007_reconciliation_idempotency, Isolated decimal paper accounts, intent, reservations, orders, balanced ledger and audit.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0007_reconciliation_idempotency -> 0008_autonomous_paper, Isolated decimal paper accounts, intent, reservations, orders, balanced ledger and audit.
+INFO  [alembic.runtime.migration] Running upgrade 0008_autonomous_paper -> 0009_paper_valuation, Timestamped conservative paper inventory valuations, separate from realized P&L.
+INFO  [alembic.runtime.migration] Running upgrade 0009_paper_valuation -> 0010_paper_finite, Reject non-finite financial values without silently repairing existing data.
+Migration fresh upgrade, rollback to 0007, re-upgrade and negative balance constraint: PASS

@@ -1,0 +1,50 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_opportunity_ledger, Create opportunity ledger and continuous opportunity windows.
+INFO  [alembic.runtime.migration] Running upgrade 0001_opportunity_ledger -> 0002_paper_simulation, Add market-book archive and paper-trading simulation tables.
+INFO  [alembic.runtime.migration] Running upgrade 0002_paper_simulation -> 0003_paper_remaining_lifetime, Add remaining lifetime to paper simulation results.
+INFO  [alembic.runtime.migration] Running upgrade 0003_paper_remaining_lifetime -> 0004_live_shadow, Add live shadow-mode observations and latency samples.
+INFO  [alembic.runtime.migration] Running upgrade 0004_live_shadow -> 0005_micro_live, Add Phase 13 micro-live canary telemetry.
+INFO  [alembic.runtime.migration] Running upgrade 0005_micro_live -> 0006_engine_events, Phase 16 Rust/Python event stream ledger.
+INFO  [alembic.runtime.migration] Running upgrade 0006_engine_events -> 0007_reconciliation_idempotency, Persist reconciliation identity and payload fingerprint without modifying old records.
+INFO  [alembic.runtime.migration] Running upgrade 0007_reconciliation_idempotency -> 0008_autonomous_paper, Isolated decimal paper accounts, intent, reservations, orders, balanced ledger and audit.
+INFO  [alembic.runtime.migration] Running upgrade 0008_autonomous_paper -> 0009_paper_valuation, Timestamped conservative paper inventory valuations, separate from realized P&L.
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_____________ test_missing_balance_row_is_a_reconciliation_failure _____________
+
+account = (Engine(postgresql+psycopg://arbitrage@127.0.0.1:55432/arbitrage_audit), 'audit-52436b52540146ab')
+
+    def test_missing_balance_row_is_a_reconciliation_failure(account):
+        engine, name = account
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM paper_balances WHERE account_id=:a"), {"a": name})
+        with Session(engine) as db:
+            result = paper.reconciliation(name, db)
+>       assert not result["balanced"], result
+E       AssertionError: {'balanced': True, 'checks': [], 'mode': 'paper'}
+E       assert not True
+
+tests/test_paper_audit.py:32: AssertionError
+________________ test_future_heartbeat_does_not_authorize_start ________________
+
+account = (Engine(postgresql+psycopg://arbitrage@127.0.0.1:55432/arbitrage_audit), 'audit-be4db54be47042b9')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f28d1b2e9f0>
+
+    def test_future_heartbeat_does_not_authorize_start(account, monkeypatch):
+        engine, name = account
+        monkeypatch.setattr(paper.settings, "arb_trading_mode", "paper")
+        monkeypatch.setattr(paper.settings, "arb_paper_trading_enabled", True)
+        monkeypatch.setattr(paper.settings, "arb_live_trading_enabled", False)
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE paper_accounts SET heartbeat=:h WHERE id=:a"),
+                               {"a": name, "h": datetime.now(UTC) + timedelta(hours=1)})
+        with Session(engine) as db:
+>           assert not paper.status(name, db)["runtime_online"]
+E           assert not True
+
+tests/test_paper_audit.py:45: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_paper_audit.py::test_missing_balance_row_is_a_reconciliation_failure
+FAILED tests/test_paper_audit.py::test_future_heartbeat_does_not_authorize_start
+2 failed in 0.68s
