@@ -43,10 +43,9 @@ non-paper application routes require the global administrator credential.
 API responses use no-store/nosniff/frame-denial/referrer headers. Production
 interactive docs/OpenAPI are disabled; validation errors hide input values.
 
-Supported `_FILE` sources: `ARB_DATABASE_URL`, `ARB_REDIS_URL`,
-`ARB_CONTROL_API_TOKEN`, `ARB_ENGINE_GRPC_TOKEN`, `ARB_PAPER_API_KEYS_JSON`
-(last two API-specific controls only where applicable). Engine supports its
-database, Redis and internal-token files. Inline/file conflicts, oversized files
+API `_FILE` sources: `ARB_DATABASE_URL`, `ARB_REDIS_URL`,
+`ARB_CONTROL_API_TOKEN`, `ARB_ENGINE_GRPC_TOKEN`, `ARB_PAPER_API_KEYS_JSON`.
+Engine supports its database, Redis and internal-token files. Inline/file conflicts, oversized files
 and group/other-writable files fail startup. Do not also load development inline
 secrets when using files. No credential is returned in status/config summaries.
 

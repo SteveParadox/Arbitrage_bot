@@ -42,6 +42,13 @@ body bounds, production startup checks and secret-file support are now delivered
 See [PAPER_SECURITY.md](PAPER_SECURITY.md) for the actual configuration and
 remaining deployment acceptance, not a production-security certification.
 
+Final source `051bbb5` subsequently passed 314 Python tests with every integration
+category enabled, 108 Rust tests plus three explicitly executed ignored Redis
+tests, strict Clippy/build/format, and 21 frontend tests/lint/build. A measured
+60.127633316-second wall-clock run closed 46 cycles with independently balanced
+accounting. Full evidence, failure history, actual financial traces and remaining
+acceptance are in [PAPER_CONTINUATION_20261011.md](PAPER_CONTINUATION_20261011.md).
+
 ## Reproduction
 
 Use isolated migrated PostgreSQL and Redis and a built Rust engine. Keep all exchange credentials unset.
