@@ -516,7 +516,7 @@ impl PaperVenue {
         let result = if let Some(old) = old {
             old
         } else {
-            tokio::time::sleep(Duration::from_millis(
+            runtime_clock::sleep(Duration::from_millis(
                 self.settings.latency_ms.min(self.settings.timeout_ms),
             ))
             .await;

@@ -27,6 +27,7 @@ def main():
             e["event"]["min_order_amt"] = .0001
     templates = [e for e in events if e["event"]["type"] == "order_book"]
     health = events[-1]
+    metadata = [e for e in events if e["event"]["type"] == "instrument"]
     for cycle in range(args.cycles):
         for index, template in enumerate(templates):
             e = json.loads(json.dumps(template))
@@ -38,8 +39,11 @@ def main():
                 e["event"]["bids"] = [{"price": 6+cycle/1000, "quantity": 100}]
                 e["event"]["asks"] = [{"price": 6.1+cycle/1000, "quantity": 100}]
             events.append(e)
+        trigger = json.loads(json.dumps(e))
+        if cycle and cycle % 60 == 0:
+            # Explicit refreshed evidence keeps synthetic metadata valid beyond five logical minutes.
+            events.extend(json.loads(json.dumps(e)) for e in metadata)
         events.append(json.loads(json.dumps(health)))
-        trigger = json.loads(json.dumps(events[-2]))
         trigger["event"]["update_id"] += 1
         trigger["event"]["sequence"] += 1
         events.append(trigger)

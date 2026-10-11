@@ -156,6 +156,7 @@ def status(account: str, db: ReadDB):
                      "WHERE c.account_id=:a AND o.state='SUBMITTING'", a=account).scalar_one()
     online = _runtime_online(row["heartbeat"])
     return {"account_id": account, "mode": "paper", "simulated": True,
+            "clock": row["config"].get("runtime_clock", "wall"),
             "state": "recovering" if row["recovering"] else "blocked" if row["blocked"] else "offline" if not online else
             "executing" if active else "running" if row["enabled"] else "stopped",
             "authorized": row["enabled"], "blocked": row["blocked"], "runtime_online": online,
@@ -294,7 +295,13 @@ def valuation(account: str, db: ReadDB):
             actual[asset] = actual.get(asset, Decimal(0))+Decimal(amount)
     marks = {r["asset"]: r for r in _query(db, "SELECT * FROM paper_valuations WHERE account_id=:a",
                                         a=account).mappings()}
+    clock = row["config"].get("runtime_clock", "wall")
     now_ms = int(datetime.now(UTC).timestamp()*1000)
+    if clock == "virtual":
+        audit = _query(db, "SELECT payload FROM paper_events WHERE account_id=:a "
+                       "AND kind IN ('paper.replay_finished','paper.replay_restart_quarantined') "
+                       "ORDER BY id DESC LIMIT 1", a=account).scalar_one_or_none()
+        now_ms = (audit.get("completed_at_ms", audit.get("restored_at_ms")) if audit else None)
     checks = []
     equity = Decimal(0)
     complete = True
@@ -310,7 +317,7 @@ def valuation(account: str, db: ReadDB):
             timestamp = details.get("market_timestamp_ms")
             if mark["amount"] != amount:
                 value, reason = None, "AMOUNT_CHANGED_SINCE_VALUATION"
-            elif timestamp is None or not 0 <= now_ms-timestamp <= details.get("max_age_ms", 0):
+            elif now_ms is None or timestamp is None or not 0 <= now_ms-timestamp <= details.get("max_age_ms", 0):
                 value, reason = None, "STALE_OR_MISSING_MARKET_EVIDENCE"
             elif value is None:
                 reason = "INSUFFICIENT_EXECUTABLE_EVIDENCE"
@@ -327,5 +334,5 @@ def valuation(account: str, db: ReadDB):
     return {"mode": "paper", "simulated": True, "start_asset": start_asset, "complete_evidence": complete,
             "estimated_equity": str(equity) if complete else None,
             "estimated_unrealized_pnl": str(equity-funded-realized) if complete else None,
-            "realized_pnl": str(realized), "valued_at_ms": now_ms, "inventory": checks,
+            "realized_pnl": str(realized), "clock": clock, "valued_at_ms": now_ms, "inventory": checks,
             "policy": "Executable depth after modeled liquidation fees; unavailable or stale marks are excluded and total equity is null"}

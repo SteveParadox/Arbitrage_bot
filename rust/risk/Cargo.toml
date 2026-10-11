@@ -5,6 +5,7 @@ edition.workspace = true
 autobins = false
 
 [dependencies]
+runtime-clock = { path = "../runtime-clock" }
 anyhow.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 fs2 = "0.4"

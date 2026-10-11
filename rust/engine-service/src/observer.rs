@@ -4,7 +4,6 @@ use std::{
     fs,
     io::{BufRead, BufReader},
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -25,7 +24,21 @@ use sha2::{Digest, Sha256};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::warn;
 
+#[path = "virtual_replay.rs"]
+mod virtual_replay;
+
 pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublisher) -> Result<()> {
+    let clock = virtual_replay::configured_clock()?;
+    clock
+        .scope(run_inner(triangle_path, repo_root, events))
+        .await
+}
+
+async fn run_inner(
+    triangle_path: PathBuf,
+    repo_root: PathBuf,
+    events: EventPublisher,
+) -> Result<()> {
     let paper_mode = std::env::var("ARB_TRADING_MODE").as_deref() == Ok("paper");
     if !paper_mode {
         validate_read_only_mode(
@@ -94,6 +107,8 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
         .map_err(|error| anyhow!(error))?;
 
     let (sender, mut receiver) = mpsc::channel(1024);
+    let (ack_sender, ack_receiver) = mpsc::unbounded_channel();
+    let clock = runtime_clock::Clock::current();
     let (recovery_sender, recovery) = mpsc::channel(1);
     let replay_mode = std::env::var("ARB_OBSERVER_REPLAY_FILE").is_ok();
     let connector_task: JoinHandle<Result<()>> =
@@ -106,7 +121,23 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 "observer replay requires ARB_ENV=development and ARB_LIVE_TRADING_ENABLED=false"
             );
             }
-            tokio::spawn(replay_events(PathBuf::from(replay), sender))
+            if clock.is_virtual() {
+                let runtime = paper
+                    .as_ref()
+                    .context("virtual replay requires paper runtime")?;
+                let future = virtual_replay::run(
+                    PathBuf::from(replay),
+                    sender,
+                    ack_receiver,
+                    runtime.ledger.clone(),
+                    runtime.planner.clone(),
+                    events.clone(),
+                    clock.clone(),
+                );
+                tokio::spawn(async move { clock.scope(future).await })
+            } else {
+                tokio::spawn(replay_events(PathBuf::from(replay), sender))
+            }
         } else {
             let mut feed = Config::from_env()?;
             if feed.category != Category::Spot || feed.testnet != routes.source.testnet {
@@ -126,7 +157,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
         };
     let _guard = ConnectorGuard(Some(connector_task));
     let mut lifecycle = Lifecycle::default();
-    let mut receipts: HashMap<String, std::time::Instant> = HashMap::new();
+    let mut receipts: HashMap<String, u64> = HashMap::new();
     let mut feed_health = Value::Null;
     let mut state = "connecting";
     let mut reason = "starting public observation".to_string();
@@ -139,7 +170,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 if let Some(runtime) = paper.take() { runtime.shutdown().await?; }
                 return Ok(());
             }
-            _ = health_tick.tick() => {
+            _ = health_tick.tick(), if !runtime_clock::Clock::current().is_virtual() => {
                 if paper.as_ref().is_some_and(|p|p.is_finished()) { bail!("paper worker ended; managed restart required"); }
                 let now = now_ms();
                 if lifecycle.connected && !lifecycle.recovering && lifecycle.metadata.values().any(|m| !metadata_fresh(m.timestamp, now)) {
@@ -162,6 +193,11 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 }
             }
         };
+        let _ack = ReplayAck(
+            runtime_clock::Clock::current()
+                .is_virtual()
+                .then(|| ack_sender.clone()),
+        );
         let MarketDataEvent::Session { generation, event } = event else {
             // Ungenerated events cannot reopen a managed observation gate.
             continue;
@@ -312,7 +348,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 if let Some(p) = &paper {
                     p.books.update(update).await?;
                 }
-                receipts.insert(receipt_symbol, std::time::Instant::now());
+                receipts.insert(receipt_symbol, now_ms());
                 if !observer_ready(
                     &lifecycle,
                     &routes,
@@ -397,7 +433,7 @@ fn observer_ready(
     routes: &TriangleConfig,
     required: &BTreeSet<String>,
     scanner: &ArbitrageScanner,
-    receipts: &HashMap<String, std::time::Instant>,
+    receipts: &HashMap<String, u64>,
     feed: &Value,
     now: u64,
     max_age: u64,
@@ -409,7 +445,7 @@ fn observer_ready(
         && required.iter().all(|symbol| {
             receipts
                 .get(symbol)
-                .is_some_and(|at| at.elapsed().as_millis() <= max_age as u128)
+                .is_some_and(|at| now.checked_sub(*at).is_some_and(|age| age <= max_age))
                 && lifecycle.metadata.get(symbol).is_some_and(|m| {
                     validate_instrument(routes, m).is_ok() && metadata_fresh(m.timestamp, now)
                 })
@@ -492,6 +528,15 @@ async fn replay_events(path: PathBuf, sender: mpsc::Sender<MarketDataEvent>) -> 
     // Preserve the running control service and allow a health query after replay.
     tokio::signal::ctrl_c().await?;
     Ok(())
+}
+
+struct ReplayAck(Option<mpsc::UnboundedSender<()>>);
+impl Drop for ReplayAck {
+    fn drop(&mut self) {
+        if let Some(sender) = &self.0 {
+            let _ = sender.send(());
+        }
+    }
 }
 
 struct ConnectorGuard(Option<JoinHandle<Result<()>>>);
@@ -643,10 +688,7 @@ fn candidate_event(
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    runtime_clock::now_ms()
 }
 
 #[cfg(test)]

@@ -126,11 +126,11 @@ def fixture(directory, *, fail=False, partial=False, adverse=False, losing=False
     return path
 
 
-def start_engine(directory, account, *, crash=None, fail=False, partial=False, risk_config=None, adverse=False, losing=False, port=55053, expect_ready=True):
-    path = fixture(directory, fail=fail, partial=partial, adverse=adverse, losing=losing)
+def start_engine(directory, account, *, crash=None, fail=False, partial=False, risk_config=None, adverse=False, losing=False, port=55053, expect_ready=True, clock="wall", fixture_ready=False, latency_ms=None):
+    path = directory/"market.jsonl" if fixture_ready else fixture(directory, fail=fail, partial=partial, adverse=adverse, losing=losing)
     env = dict(os.environ, ARB_ENV="development", ARB_TRADING_MODE="paper",
                ARB_PAPER_TRADING_ENABLED="true", ARB_LIVE_TRADING_ENABLED="false",
-               ARB_PAPER_ACCOUNT=account, ARB_ENGINE_AUTOSTART="true",
+               ARB_PAPER_ACCOUNT=account, ARB_ENGINE_AUTOSTART="true", ARB_REPLAY_CLOCK=clock,
                ARB_ENGINE_GRPC_ADDR=f"127.0.0.1:{port}",
                ARB_ENGINE_GRPC_TOKEN="paper-test-internal-token-0123456789",
                ARB_OBSERVER_REPLAY_FILE=str(path), ARB_TRIANGLE_CONFIG=str(directory/"triangles.json"),
@@ -140,6 +140,8 @@ def start_engine(directory, account, *, crash=None, fail=False, partial=False, r
                ARB_EVENT_STREAM="arb.paper.integration.api",
                ARB_CONTROL_STATE_FILE=str(directory/"control.json"),
                ARB_RUNTIME_LIMITS_FILE=str(directory/"limits.json"))
+    if latency_ms is not None:
+        env["ARB_PAPER_LATENCY_MS"] = str(latency_ms)
     if risk_config:
         env["ARB_RISK_CONFIG"] = str(risk_config)
     else:

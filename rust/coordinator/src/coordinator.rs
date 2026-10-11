@@ -107,6 +107,7 @@ where
             .ensure_critical_ready()
             .map_err(|error| CoordinatorError::Execution(error.to_string()))?;
         let started = Instant::now();
+        let logical_started = current_time_ms();
         let result = self
             .execute_route_inner(
                 risk_engine,
@@ -116,7 +117,11 @@ where
                 opportunity_window_id,
             )
             .await;
-        let execution_time_ms = started.elapsed().as_millis() as u64;
+        let execution_time_ms = if runtime_clock::Clock::current().is_virtual() {
+            current_time_ms().saturating_sub(logical_started)
+        } else {
+            started.elapsed().as_millis() as u64
+        };
         let event_result = self.publish_trade_event(
             trade_id,
             route,

@@ -42,6 +42,11 @@ fn values(h: &BTreeMap<String, Decimal>) -> Value {
         .map(|(k, v)| (k.clone(), v.to_string()))
         .collect::<BTreeMap<_, _>>())
 }
+fn financial_ms() -> Option<i64> {
+    runtime_clock::Clock::current()
+        .is_virtual()
+        .then(|| runtime_clock::now_ms() as i64)
+}
 async fn event(
     tx: &Transaction<'_>,
     account: &str,
@@ -50,8 +55,8 @@ async fn event(
     payload: Value,
 ) -> Result<()> {
     tx.execute(
-        "INSERT INTO paper_events(account_id,cycle_id,kind,payload) VALUES($1,$2,$3,$4)",
-        &[&account, &cycle, &kind, &payload],
+        "INSERT INTO paper_events(account_id,cycle_id,kind,payload,created_at) VALUES($1,$2,$3,$4,COALESCE(to_timestamp($5::bigint/1000.0),now()))",
+        &[&account, &cycle, &kind, &payload, &financial_ms()],
     )
     .await?;
     Ok(())
@@ -73,8 +78,8 @@ async fn transfer(
     if amount < Decimal::ZERO {
         bail!("negative ledger transfer");
     }
-    tx.execute("INSERT INTO paper_ledger(account_id,cycle_id,operation_id,asset,debit_scope,credit_scope,amount) VALUES($1,$2,$3,$4,$5,$6,$7::text::numeric)",
-        &[&account,&cycle,&operation,&asset,&from,&to,&amount.to_string()]).await?;
+    tx.execute("INSERT INTO paper_ledger(account_id,cycle_id,operation_id,asset,debit_scope,credit_scope,amount,created_at) VALUES($1,$2,$3,$4,$5,$6,$7::text::numeric,COALESCE(to_timestamp($8::bigint/1000.0),now()))",
+        &[&account,&cycle,&operation,&asset,&from,&to,&amount.to_string(),&financial_ms()]).await?;
     Ok(())
 }
 impl Ledger {
@@ -99,6 +104,44 @@ impl Ledger {
             account,
             epoch: 0,
         })
+    }
+    pub async fn audit(&self, kind: &str, payload: Value) -> Result<()> {
+        let mut c = self.client.lock().await;
+        let tx = c.transaction().await?;
+        let epoch: i64 = tx
+            .query_one(
+                "SELECT epoch FROM paper_accounts WHERE id=$1 FOR UPDATE",
+                &[&self.account],
+            )
+            .await?
+            .get(0);
+        if epoch != self.epoch {
+            bail!("runtime fenced");
+        }
+        event(&tx, &self.account, None, kind, payload).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+    pub async fn has_financial_history(&self) -> Result<bool> {
+        Ok(self
+            .client
+            .lock()
+            .await
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM paper_cycles WHERE account_id=$1)",
+                &[&self.account],
+            )
+            .await?
+            .get(0))
+    }
+    pub async fn verify_replay_finished(&self) -> Result<()> {
+        self.disable().await?;
+        self.reconcile().await?;
+        let pending: bool = self.client.lock().await.query_one("SELECT EXISTS(SELECT 1 FROM paper_cycles WHERE account_id=$1 AND NOT settled) OR EXISTS(SELECT 1 FROM paper_orders o JOIN paper_cycles c ON c.id=o.cycle_id WHERE c.account_id=$1 AND o.state='SUBMITTING')", &[&self.account]).await?.get(0);
+        if pending {
+            bail!("replay ended with unresolved financial work");
+        }
+        Ok(())
     }
     pub async fn account_exists(&self) -> Result<bool> {
         Ok(self
@@ -135,6 +178,46 @@ impl Ledger {
             bail!("paper account already has an authoritative runtime");
         }
         let tx = c.transaction().await?;
+        let configuration: Value = tx
+            .query_one(
+                "SELECT config FROM paper_accounts WHERE id=$1 FOR UPDATE",
+                &[&self.account],
+            )
+            .await?
+            .get(0);
+        let clock = runtime_clock::Clock::current();
+        let mode = if clock.is_virtual() {
+            "virtual"
+        } else {
+            "wall"
+        };
+        if configuration["runtime_clock"]
+            .as_str()
+            .is_some_and(|old| old != mode)
+        {
+            bail!("account financial clock mode is immutable");
+        }
+        let history: bool = tx
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM paper_cycles WHERE account_id=$1)",
+                &[&self.account],
+            )
+            .await?
+            .get(0);
+        if clock.is_virtual() && history && configuration["runtime_clock"] != "virtual" {
+            bail!("cannot replay an account with untagged financial history");
+        }
+        if clock.is_virtual() && history {
+            let restored: Option<i64> = tx.query_one("SELECT max(t) FROM (SELECT (extract(epoch FROM greatest(created_at,completed_at))*1000)::bigint t FROM paper_cycles WHERE account_id=$1 UNION ALL SELECT (o.result->>'executed_at_ms')::bigint FROM paper_orders o JOIN paper_cycles c ON c.id=o.cycle_id WHERE c.account_id=$1 AND o.result IS NOT NULL) clocks", &[&self.account]).await?.get(0);
+            if let Some(restored) = restored {
+                clock.advance(clock.now_ms().max(restored.try_into()?), true)?;
+            }
+        }
+        tx.execute(
+            "UPDATE paper_accounts SET config=jsonb_set(config,'{runtime_clock}',$2)",
+            &[&self.account, &json!(mode)],
+        )
+        .await?;
         self.epoch=tx.query_one("UPDATE paper_accounts SET enabled=false,recovering=true,epoch=epoch+1,heartbeat=NULL WHERE id=$1 RETURNING epoch",&[&self.account]).await?.get(0);
         event(
             &tx,
@@ -162,7 +245,7 @@ impl Ledger {
     }
     pub async fn portfolio(&self, asset: &str) -> Result<Portfolio> {
         let c = self.client.lock().await;
-        let r=c.query_one("SELECT (a.enabled AND NOT a.recovering),a.blocked,COALESCE(b.available,0)::text,(SELECT COALESCE(sum(starting),0)::text FROM paper_cycles WHERE account_id=$1 AND NOT settled),(SELECT COALESCE(sum(realized_pnl),0)::text FROM paper_cycles WHERE account_id=$1 AND completed_at>=(date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')),(SELECT count(*) FROM paper_cycles WHERE account_id=$1 AND NOT settled) FROM paper_accounts a LEFT JOIN paper_balances b ON b.account_id=a.id AND b.asset=$2 WHERE a.id=$1",&[&self.account,&asset]).await?;
+        let r=c.query_one("SELECT (a.enabled AND NOT a.recovering),a.blocked,COALESCE(b.available,0)::text,(SELECT COALESCE(sum(starting),0)::text FROM paper_cycles WHERE account_id=$1 AND NOT settled),(SELECT COALESCE(sum(realized_pnl),0)::text FROM paper_cycles WHERE account_id=$1 AND completed_at>=(date_trunc('day',COALESCE(to_timestamp($3::bigint/1000.0),now()) AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')),(SELECT count(*) FROM paper_cycles WHERE account_id=$1 AND NOT settled) FROM paper_accounts a LEFT JOIN paper_balances b ON b.account_id=a.id AND b.asset=$2 WHERE a.id=$1",&[&self.account,&asset,&financial_ms()]).await?;
         Ok(Portfolio {
             enabled: r.get(0),
             blocked: r.get(1),
@@ -230,7 +313,7 @@ impl Ledger {
         value: Option<Decimal>,
         details: Value,
     ) -> Result<()> {
-        self.client.lock().await.execute("INSERT INTO paper_valuations(account_id,asset,amount,estimated_value,details) SELECT $1,$3,$4::text::numeric,$5::text::numeric,$6 FROM paper_accounts WHERE id=$1 AND epoch=$2 ON CONFLICT(account_id,asset) DO UPDATE SET amount=EXCLUDED.amount,estimated_value=EXCLUDED.estimated_value,details=EXCLUDED.details,updated_at=now()", &[&self.account,&self.epoch,&asset,&amount.to_string(),&value.map(|v|v.to_string()),&details]).await?;
+        self.client.lock().await.execute("INSERT INTO paper_valuations(account_id,asset,amount,estimated_value,details,updated_at) SELECT $1,$3,$4::text::numeric,$5::text::numeric,$6,COALESCE(to_timestamp($7::bigint/1000.0),now()) FROM paper_accounts WHERE id=$1 AND epoch=$2 ON CONFLICT(account_id,asset) DO UPDATE SET amount=EXCLUDED.amount,estimated_value=EXCLUDED.estimated_value,details=EXCLUDED.details,updated_at=EXCLUDED.updated_at", &[&self.account,&self.epoch,&asset,&amount.to_string(),&value.map(|v|v.to_string()),&details,&financial_ms()]).await?;
         Ok(())
     }
     pub async fn portfolio_stats(&self, projected: Decimal) -> Result<risk::PortfolioStats> {
@@ -388,17 +471,17 @@ impl Ledger {
         if checks.iter().any(|c| !c.passed) {
             bail!("PORTFOLIO_LIMIT: {}", json!(checks));
         }
-        let pnl=tx.query_one("SELECT COALESCE(sum(realized_pnl),0)::text FROM paper_cycles WHERE account_id=$1 AND completed_at>=(date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')",&[&self.account]).await?;
+        let pnl=tx.query_one("SELECT COALESCE(sum(realized_pnl),0)::text FROM paper_cycles WHERE account_id=$1 AND completed_at>=(date_trunc('day',COALESCE(to_timestamp($2::bigint/1000.0),now()) AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')",&[&self.account,&financial_ms()]).await?;
         if d(pnl.get(0))? <= -max_loss {
             bail!("DAILY_LOSS_LIMIT");
         }
-        if tx.query_one("SELECT EXISTS(SELECT 1 FROM paper_cycles WHERE account_id=$1 AND route_id=$2 AND created_at > now()-($3::bigint*interval '1 millisecond'))",&[&self.account,&route.id,&cooldown_ms]).await?.get::<_,bool>(0) {bail!("ROUTE_COOLDOWN");}
+        if tx.query_one("SELECT EXISTS(SELECT 1 FROM paper_cycles WHERE account_id=$1 AND route_id=$2 AND created_at > COALESCE(to_timestamp($4::bigint/1000.0),now())-($3::bigint*interval '1 millisecond'))",&[&self.account,&route.id,&cooldown_ms,&financial_ms()]).await?.get::<_,bool>(0) {bail!("ROUTE_COOLDOWN");}
         let n=tx.execute("UPDATE paper_balances SET available=available-$3::text::numeric,reserved=reserved+$3::text::numeric,version=version+1 WHERE account_id=$1 AND asset=$2 AND available >= $3::text::numeric",&[&self.account,&route.start_asset,&starting.to_string()]).await?;
         if n != 1 {
             bail!("INSUFFICIENT_CAPITAL");
         }
         let h = json!({route.start_asset.clone():starting.to_string()});
-        tx.execute("INSERT INTO paper_cycles(id,account_id,candidate_id,evidence_key,route_id,start_asset,starting,expected_profit,epoch,state,holdings,route,risk) VALUES($1,$2,$11,$12,$3,$4,$5::text::numeric,$6::text::numeric,$7,'RESERVED',$8,$9,$10)",&[&id,&self.account,&route.id,&route.start_asset,&starting.to_string(),&expected.to_string(),&self.epoch,&h,&json!(route),&risk,&candidate,&evidence]).await?;
+        tx.execute("INSERT INTO paper_cycles(id,account_id,candidate_id,evidence_key,route_id,start_asset,starting,expected_profit,epoch,state,holdings,route,risk,created_at) VALUES($1,$2,$11,$12,$3,$4,$5::text::numeric,$6::text::numeric,$7,'RESERVED',$8,$9,$10,COALESCE(to_timestamp($13::bigint/1000.0),now()))",&[&id,&self.account,&route.id,&route.start_asset,&starting.to_string(),&expected.to_string(),&self.epoch,&h,&json!(route),&risk,&candidate,&evidence,&financial_ms()]).await?;
         transfer(
             &tx,
             &self.account,
@@ -490,8 +573,8 @@ impl Ledger {
             bail!("new exposure disabled");
         }
         tx.execute(
-            "INSERT INTO paper_orders(id,cycle_id,intent,state) VALUES($1,$2,$3,'SUBMITTING')",
-            &[&id, &cycle, &intent],
+            "INSERT INTO paper_orders(id,cycle_id,intent,state,created_at) VALUES($1,$2,$3,'SUBMITTING',COALESCE(to_timestamp($4::bigint/1000.0),now()))",
+            &[&id, &cycle, &intent, &financial_ms()],
         )
         .await?;
         tx.execute("UPDATE paper_cycles SET state='EXECUTING' WHERE id=$1 AND state IN ('RESERVED','EXECUTING')",&[&cycle]).await?;
@@ -663,8 +746,8 @@ impl Ledger {
         )
         .await?;
         tx.execute(
-            "UPDATE paper_orders SET result=$2,state='TERMINAL',completed_at=now() WHERE id=$1",
-            &[&id, &json!(result)],
+            "UPDATE paper_orders SET result=$2,state='TERMINAL',completed_at=COALESCE(to_timestamp($3::bigint/1000.0),now()) WHERE id=$1",
+            &[&id, &json!(result), &financial_ms()],
         )
         .await?;
         event(
@@ -701,7 +784,7 @@ impl Ledger {
             return Ok(());
         }
         // Pending paper intents are guaranteed to have no external effect: fills and ledger are one transaction.
-        tx.execute("UPDATE paper_orders SET state='EXPIRED',completed_at=now() WHERE cycle_id=$1 AND result IS NULL",&[&id]).await?;
+        tx.execute("UPDATE paper_orders SET state='EXPIRED',completed_at=COALESCE(to_timestamp($2::bigint/1000.0),now()) WHERE cycle_id=$1 AND result IS NULL",&[&id,&financial_ms()]).await?;
         let asset: String = row.get(0);
         let starting = d(row.get(1))?;
         let h = holdings(&row.get::<_, Value>(2))?;
@@ -735,7 +818,7 @@ impl Ledger {
             )
             .await?;
         }
-        tx.execute("UPDATE paper_cycles SET state=$2,settled=true,realized_pnl=$3::text::numeric,cash_delta=$4::text::numeric,failure_reason=$5,completed_at=now() WHERE id=$1",&[&id,&state,&pnl,&cash.to_string(),&reason]).await?;
+        tx.execute("UPDATE paper_cycles SET state=$2,settled=true,realized_pnl=$3::text::numeric,cash_delta=$4::text::numeric,failure_reason=$5,completed_at=COALESCE(to_timestamp($6::bigint/1000.0),now()) WHERE id=$1",&[&id,&state,&pnl,&cash.to_string(),&reason,&financial_ms()]).await?;
         if residual {
             tx.execute(
                 "UPDATE paper_accounts SET blocked=true,enabled=false WHERE id=$1",

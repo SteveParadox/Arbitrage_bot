@@ -10,7 +10,7 @@ type Order = { id: string; cycle_id: string; state: string; intent: { symbol: st
 type Performance = { mode: "paper"; simulated: true; closed_cycles: number; net_realized_pnl: string;
   win_rate_pct: string | null; average_win: string | null; average_loss: string | null;
   profit_factor: string | null; max_drawdown_start_asset: string; average_duration_ms: number | null };
-type Valuation = {mode: "paper"; simulated: true; estimated_equity: string | null; estimated_unrealized_pnl: string | null; start_asset: string; valued_at_ms: number};
+type Valuation = {mode: "paper"; simulated: true; estimated_equity: string | null; estimated_unrealized_pnl: string | null; start_asset: string; valued_at_ms: number | null};
 type Event = { id: number; kind: string; payload: unknown };
 export function PaperPanel() {
   const [account, setAccount] = useState("demo");
@@ -89,6 +89,7 @@ export function PaperPanel() {
       {valuation && <p>Estimated paper equity {valuation.estimated_equity ?? "Unavailable: stale or missing executable evidence"} {valuation.start_asset} · Estimated unrealized P&amp;L {valuation.estimated_unrealized_pnl ?? "Unavailable"}. Valuation assumes modeled liquidation fees; it is separate from realized P&amp;L.</p>}<div className="table-scroll"><table><thead><tr><th>Asset</th><th>Available</th><th>Committed reservation</th></tr></thead><tbody>
         {status.balances.map(b => <tr key={b.asset}><td>{b.asset}</td><td>{b.available}</td><td>{b.reserved}</td></tr>)}
       </tbody></table></div>
+      {status?.clock === "virtual" && <p>Virtual-clock replay: financial timestamps follow the fixture clock.</p>}
       <h3>Paper cycles</h3><div className="table-scroll"><table><thead><tr><th>Cycle</th><th>State</th><th>Starting capital</th><th>Expected profit</th><th>Realized paper P&amp;L</th><th>Actual holdings</th></tr></thead><tbody>
         {cycles.map(c => <tr key={c.id}><td title={c.id}>{c.id.slice(0, 12)}</td><td>{c.state}</td><td>{c.starting}</td><td>{c.expected_profit}</td><td>{c.realized_pnl ?? "Unclosed inventory"}</td><td>{Object.entries(c.holdings).map(([a,v]) => `${v} ${a}`).join(" · ")}</td></tr>)}
       </tbody></table></div>

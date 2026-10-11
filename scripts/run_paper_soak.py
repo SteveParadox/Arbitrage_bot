@@ -70,7 +70,7 @@ def main():
                                       trading_control_file=str(directory/"global-control.json"),
                                       runtime_limits_file=str(directory/"global-limits.json"))
                         (directory/"risk.json").write_text(json.dumps(config))
-                        env = dict(api_env, ARB_RISK_CONFIG=str(directory/"risk.json"), ARB_ENGINE_AUTOSTART="true", ARB_PAPER_ACCOUNT=account, ARB_ENGINE_GRPC_ADDR="127.0.0.1:55054", ARB_ENGINE_GRPC_TOKEN=internal_token,
+                        env = dict(api_env, ARB_RISK_CONFIG=str(directory/"risk.json"), ARB_REPLAY_CLOCK="wall", ARB_ENGINE_AUTOSTART="true", ARB_PAPER_ACCOUNT=account, ARB_ENGINE_GRPC_ADDR="127.0.0.1:55054", ARB_ENGINE_GRPC_TOKEN=internal_token,
                                    ARB_TRIANGLE_CONFIG=str(directory/"triangles.json"), ARB_SCANNER_CONFIG=str(directory/"scanner.json"), ARB_OBSERVER_REPLAY_FILE=str(directory/"market.jsonl"),
                                    ARB_PAPER_LATENCY_MS=str(latency), ARB_EVENT_STREAM="arb.paper.soak.api", ARB_EVENT_OUTBOX_PATH=str(directory/"outbox"), ARB_OBSERVER_LOCK=str(directory/"observer.lock"),
                                    ARB_GRPC_IDEMPOTENCY_STORE=str(directory/"commands"), ARB_CONTROL_STATE_FILE=str(directory/"control.json"), ARB_RUNTIME_LIMITS_FILE=str(directory/"limits.json"))

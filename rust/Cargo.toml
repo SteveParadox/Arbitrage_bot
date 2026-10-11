@@ -10,7 +10,8 @@ members = [
   "micro-canary",
   "event-bus",
   "engine-service",
-  "paper"
+  "paper",
+  "runtime-clock"
 ]
 resolver = "2"
 

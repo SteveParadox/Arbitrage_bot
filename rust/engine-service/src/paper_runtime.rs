@@ -24,6 +24,9 @@ use tokio::{
 
 pub struct Runtime {
     pub books: PaperBooks,
+    pub ledger: Ledger,
+    pub planner: PaperPlanner,
+    clock: runtime_clock::Clock,
     sender: mpsc::Sender<(String, ArbitrageScanRecord, TriangleRoute)>,
     stop: watch::Sender<bool>,
     worker: JoinHandle<Result<()>>,
@@ -68,7 +71,8 @@ impl Runtime {
             super::observer::configured_path(root, "ARB_RISK_CONFIG", "shared/config/risk.json");
         let mut config = load_risk_config(risk_path)?;
         // Reuse all deterministic risk checks; only paper authorization/persistent breaker state is isolated.
-        let state_dir = root.join("data/paper").join(&account);
+        let state_dir = super::observer::configured_path(root, "ARB_PAPER_STATE_DIR", "data/paper")
+            .join(&account);
         std::fs::create_dir_all(&state_dir)?;
         let global_control = config.trading_control_file.clone();
         let global_kill = config.kill_switch_file.clone();
@@ -101,7 +105,15 @@ impl Runtime {
             "data/control/strategy_reload.json",
         );
         let initial_reload = std::fs::read_to_string(&reload_path).ok();
+        let clock = runtime_clock::Clock::current();
+        let work_clock = clock.clone();
+        let published_ledger = ledger.clone();
+        let published_planner = PaperPlanner {
+            books: shared_books.clone(),
+            settings: settings.clone(),
+        };
         let worker = tokio::spawn(async move {
+            work_clock.scope(async {
             let mut risk = RiskEngine::new(config.clone())?;
             let planner = PaperPlanner {
                 books: shared_books.clone(),
@@ -119,20 +131,12 @@ impl Runtime {
                         }
                         if (StopGuard{control:global_control.clone(),kill:global_kill.clone()}).check().is_err() {ledger.disable().await?;}
                         ledger.heartbeat().await?;
-                        let (start,holdings,route)=ledger.valuation_inputs().await?;
-                        for (asset,amount) in holdings {
-                            let now=current_time_ms();
-                            let (value,details)=if asset==start || amount==Decimal::ZERO {(Some(amount),json!({"valuation_source":"paper_ledger_cash","market_timestamp_ms":now}))}
-                                else {match &route {Some(route)=>match planner.valuation(route,&asset,amount).await {Ok((value,details))=>(Some(value),details),Err(e)=>(None,json!({"missing_evidence":e.to_string()}))},None=>(None,json!({"missing_evidence":"no durable route"}))}};
-                            let mut details=details;
-                            details["start_asset"]=json!(start);
-                            details["max_age_ms"]=json!(settings.max_age_ms);
-                            ledger.record_valuation(&asset,amount,value,details).await?;
-                        }
+                        if !work_clock.is_virtual() { refresh_valuations(&ledger, &planner).await?; }
                         continue;
                     },
                     work=receiver.recv()=>match work {Some(w)=>w,None=>return Ok(())},
                 };
+                let _clock_work = work_clock.admit_work().await?;
                 let (candidate_id, record, route) = work;
                 let id = format!("{}:{}", ledger.account, candidate_id);
                 let outcome:Result<()> = async {
@@ -200,9 +204,13 @@ impl Runtime {
                         .await?;
                 }
             }
+        }).await
         });
         Ok(Self {
             books,
+            ledger: published_ledger,
+            planner: published_planner,
+            clock,
             sender,
             stop,
             worker,
@@ -220,9 +228,11 @@ impl Runtime {
         if self.worker.is_finished() {
             bail!("paper dispatcher is offline");
         }
-        self.sender
-            .try_send((id, record, route))
-            .context("paper execution queue full or closed")?;
+        self.clock.queue();
+        if let Err(error) = self.sender.try_send((id, record, route)) {
+            self.clock.unqueue();
+            return Err(error).context("paper execution queue full or closed");
+        }
         Ok(())
     }
     pub async fn shutdown(self) -> Result<()> {
@@ -253,4 +263,31 @@ fn rejection_code(reason: &str) -> &'static str {
         }
     }
     "DEPENDENCY_OR_VALIDATION_REJECTED"
+}
+
+pub async fn refresh_valuations(ledger: &Ledger, planner: &PaperPlanner) -> Result<()> {
+    let (start, holdings, route) = ledger.valuation_inputs().await?;
+    for (asset, amount) in holdings {
+        let now = current_time_ms();
+        let (value, mut details) = if asset == start || amount == Decimal::ZERO {
+            (
+                Some(amount),
+                json!({"valuation_source":"paper_ledger_cash","market_timestamp_ms":now}),
+            )
+        } else {
+            match &route {
+                Some(route) => match planner.valuation(route, &asset, amount).await {
+                    Ok((value, details)) => (Some(value), details),
+                    Err(error) => (None, json!({"missing_evidence":error.to_string()})),
+                },
+                None => (None, json!({"missing_evidence":"no durable route"})),
+            }
+        };
+        details["start_asset"] = json!(start);
+        details["max_age_ms"] = json!(planner.settings.max_age_ms);
+        ledger
+            .record_valuation(&asset, amount, value, details)
+            .await?;
+    }
+    Ok(())
 }

@@ -2,6 +2,7 @@ import Ajv from "ajv";
 import schema from "../../shared/schemas/paper-status.schema.json";
 export type PaperStatus = {
   account_id: string; mode: "paper"; simulated: true; state: string;
+  clock?: "wall" | "virtual";
   authorized: boolean; blocked: boolean; runtime_online: boolean;
   active_cycles: number; pending_orders: number;
   balances: { asset: string; available: string; reserved: string }[];

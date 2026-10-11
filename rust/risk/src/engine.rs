@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    path::Path,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, path::Path};
 
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -623,10 +619,7 @@ impl RiskEngine {
 }
 
 pub fn current_time_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    runtime_clock::now_ms()
 }
 
 fn load_state(path: &Path) -> Result<PersistentRiskState, RiskError> {
