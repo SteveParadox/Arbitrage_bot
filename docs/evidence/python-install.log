@@ -1,0 +1,63 @@
+Defaulting to user installation because normal site-packages is not writeable
+Obtaining file:///workspace/scratch/47c074b992b8/arbitrage/python
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: fastapi<1,>=0.115 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (0.143.0)
+Requirement already satisfied: uvicorn<1,>=0.30 in /root/.local/lib/python3.12/site-packages (from uvicorn[standard]<1,>=0.30->arbitrage-bot==0.1.0) (0.54.0)
+Requirement already satisfied: pydantic-settings<3,>=2.5 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (2.15.0)
+Requirement already satisfied: structlog<26,>=24.4 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (25.5.0)
+Requirement already satisfied: sqlalchemy<3,>=2.0 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (2.1.4)
+Requirement already satisfied: psycopg<4,>=3.2 in /root/.local/lib/python3.12/site-packages (from psycopg[binary]<4,>=3.2->arbitrage-bot==0.1.0) (3.3.6)
+Requirement already satisfied: alembic<2,>=1.13 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (1.20.0)
+Requirement already satisfied: grpcio<2,>=1.65 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (1.84.0)
+Requirement already satisfied: protobuf<7,>=5.27 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (6.33.6)
+Requirement already satisfied: redis<7,>=5.0 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (6.4.0)
+Requirement already satisfied: pytest<9,>=8.3 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (8.4.2)
+Requirement already satisfied: PyYAML<7,>=6 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (6.0.3)
+Requirement already satisfied: httpx<1,>=0.27 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (0.28.1)
+Requirement already satisfied: ruff<1,>=0.6 in /root/.local/lib/python3.12/site-packages (from arbitrage-bot==0.1.0) (0.17.0)
+Requirement already satisfied: Mako in /root/.local/lib/python3.12/site-packages (from alembic<2,>=1.13->arbitrage-bot==0.1.0) (1.4.3)
+Requirement already satisfied: typing-extensions>=4.12 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from alembic<2,>=1.13->arbitrage-bot==0.1.0) (4.16.0)
+Requirement already satisfied: starlette>=0.46.0 in /root/.local/lib/python3.12/site-packages (from fastapi<1,>=0.115->arbitrage-bot==0.1.0) (1.7.0)
+Requirement already satisfied: pydantic>=2.9.0 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from fastapi<1,>=0.115->arbitrage-bot==0.1.0) (2.13.5)
+Requirement already satisfied: typing-inspection>=0.4.2 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from fastapi<1,>=0.115->arbitrage-bot==0.1.0) (0.4.4)
+Requirement already satisfied: annotated-doc>=0.0.2 in /root/.local/lib/python3.12/site-packages (from fastapi<1,>=0.115->arbitrage-bot==0.1.0) (0.0.5)
+Requirement already satisfied: opentelemetry-api>=1.44.0 in /root/.local/lib/python3.12/site-packages (from fastapi<1,>=0.115->arbitrage-bot==0.1.0) (1.45.1)
+Requirement already satisfied: anyio in /root/.local/lib/python3.12/site-packages (from httpx<1,>=0.27->arbitrage-bot==0.1.0) (4.15.1)
+Requirement already satisfied: certifi in /root/.local/lib/python3.12/site-packages (from httpx<1,>=0.27->arbitrage-bot==0.1.0) (2026.7.22)
+Requirement already satisfied: httpcore==1.* in /root/.local/lib/python3.12/site-packages (from httpx<1,>=0.27->arbitrage-bot==0.1.0) (1.0.9)
+Requirement already satisfied: idna in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from httpx<1,>=0.27->arbitrage-bot==0.1.0) (3.19)
+Requirement already satisfied: h11>=0.16 in /root/.local/lib/python3.12/site-packages (from httpcore==1.*->httpx<1,>=0.27->arbitrage-bot==0.1.0) (0.16.0)
+Requirement already satisfied: psycopg-binary==3.3.6 in /root/.local/lib/python3.12/site-packages (from psycopg[binary]<4,>=3.2->arbitrage-bot==0.1.0) (3.3.6)
+Requirement already satisfied: python-dotenv>=0.21.0 in /root/.local/lib/python3.12/site-packages (from pydantic-settings<3,>=2.5->arbitrage-bot==0.1.0) (1.2.4)
+Requirement already satisfied: iniconfig>=1 in /root/.local/lib/python3.12/site-packages (from pytest<9,>=8.3->arbitrage-bot==0.1.0) (2.3.1)
+Requirement already satisfied: packaging>=20 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from pytest<9,>=8.3->arbitrage-bot==0.1.0) (26.3)
+Requirement already satisfied: pluggy<2,>=1.5 in /root/.local/lib/python3.12/site-packages (from pytest<9,>=8.3->arbitrage-bot==0.1.0) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in /root/.local/lib/python3.12/site-packages (from pytest<9,>=8.3->arbitrage-bot==0.1.0) (2.21.0)
+Requirement already satisfied: click>=7.0 in /root/.local/lib/python3.12/site-packages (from uvicorn<1,>=0.30->uvicorn[standard]<1,>=0.30->arbitrage-bot==0.1.0) (8.5.0)
+Requirement already satisfied: httptools>=0.8.0 in /root/.local/lib/python3.12/site-packages (from uvicorn[standard]<1,>=0.30->arbitrage-bot==0.1.0) (0.9.0)
+Requirement already satisfied: uvloop>=0.15.1 in /root/.local/lib/python3.12/site-packages (from uvicorn[standard]<1,>=0.30->arbitrage-bot==0.1.0) (0.23.0)
+Requirement already satisfied: watchfiles>=0.20 in /root/.local/lib/python3.12/site-packages (from uvicorn[standard]<1,>=0.30->arbitrage-bot==0.1.0) (1.3.0)
+Requirement already satisfied: websockets>=13.0 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from uvicorn[standard]<1,>=0.30->arbitrage-bot==0.1.0) (16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from pydantic>=2.9.0->fastapi<1,>=0.115->arbitrage-bot==0.1.0) (0.8.0)
+Requirement already satisfied: pydantic-core==2.46.5 in /opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/site-packages (from pydantic>=2.9.0->fastapi<1,>=0.115->arbitrage-bot==0.1.0) (2.46.5)
+Requirement already satisfied: MarkupSafe>=2.0 in /root/.local/lib/python3.12/site-packages (from Mako->alembic<2,>=1.13->arbitrage-bot==0.1.0) (3.0.4)
+Building wheels for collected packages: arbitrage-bot
+  Building editable for arbitrage-bot (pyproject.toml): started
+  Building editable for arbitrage-bot (pyproject.toml): finished with status 'done'
+  Created wheel for arbitrage-bot: filename=arbitrage_bot-0.1.0-0.editable-py3-none-any.whl size=3072 sha256=1e84650d2053c98b24755cb6944b9d637b3be0be1fed57a3ed364ecfb69c86b2
+  Stored in directory: /tmp/pip-ephem-wheel-cache-55jfanc3/wheels/80/24/b6/beadef476675b9ba9d1d00f96c7347483ff6c89009b007009b
+Successfully built arbitrage-bot
+Installing collected packages: arbitrage-bot
+  Attempting uninstall: arbitrage-bot
+    Found existing installation: arbitrage-bot 0.1.0
+    Uninstalling arbitrage-bot-0.1.0:
+      Successfully uninstalled arbitrage-bot-0.1.0
+Successfully installed arbitrage-bot-0.1.0
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
