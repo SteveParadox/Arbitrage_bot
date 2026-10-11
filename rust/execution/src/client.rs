@@ -56,16 +56,21 @@ impl BybitExecutionClient {
             .map(str::to_owned)
             .or_else(|| info["userID"].as_u64().map(|n| n.to_string()));
         let spot = info["permissions"]["Spot"].as_array();
-        let withdrawal = info["permissions"]["Wallet"].as_array().is_some_and(|v| {
-            v.iter().any(|p| {
-                p.as_str()
-                    .is_some_and(|s| s.contains("Withdraw") || s.contains("Transfer"))
+        let excessive = !info["permissions"].as_object().is_some_and(|permissions| {
+            permissions.iter().all(|(kind, values)| {
+                values.as_array().is_some_and(|values| {
+                    if kind == "Spot" {
+                        values.len() == 1 && values[0] == "SpotTrade"
+                    } else {
+                        values.is_empty()
+                    }
+                })
             })
         });
         if uid.as_deref() != Some(expected_uid)
             || info["readOnly"].as_i64() != Some(0)
             || !spot.is_some_and(|v| v.iter().any(|p| p == "SpotTrade"))
-            || withdrawal
+            || excessive
         {
             return Err(ExecutionError::Authentication(
                 "account identity or least-privilege spot permissions invalid".into(),
@@ -89,6 +94,45 @@ impl BybitExecutionClient {
             ));
         }
         Ok(())
+    }
+
+    /// Public instrument metadata does not establish an account's fee tier.
+    /// A market order uses the taker rate; a higher or unknown rate invalidates
+    /// the configured conservative profitability calculation.
+    pub async fn verify_spot_fee_rate(
+        &self,
+        symbol: &str,
+        ceiling: Decimal,
+    ) -> Result<Decimal, ExecutionError> {
+        let (evidence, _): (Value, _) = self
+            .private_get(
+                "/v5/account/fee-rate",
+                vec![
+                    ("category".into(), "spot".into()),
+                    ("symbol".into(), symbol.into()),
+                ],
+            )
+            .await?;
+        let rows = evidence["list"]
+            .as_array()
+            .ok_or_else(|| ExecutionError::MissingData("account fee rate missing".into()))?;
+        if evidence["category"] != "spot" || rows.len() != 1 || rows[0]["symbol"] != symbol {
+            return Err(ExecutionError::MissingData(
+                "account fee rate identity mismatch".into(),
+            ));
+        }
+        let rate = parse_decimal(
+            "takerFeeRate",
+            rows[0]["takerFeeRate"]
+                .as_str()
+                .ok_or_else(|| ExecutionError::MissingData("account taker fee missing".into()))?,
+        )?;
+        if rate < Decimal::ZERO || rate > ceiling {
+            return Err(ExecutionError::MissingData(
+                "account taker fee exceeds modeled ceiling".into(),
+            ));
+        }
+        Ok(rate)
     }
 
     /// Exclusive unleveraged spot-account policy. Unknown pagination means
@@ -747,6 +791,7 @@ impl BybitExecutionClient {
             order_id: order.order_id,
             order_link_id: order.order_link_id,
             symbol: order.symbol,
+            side: order.side,
             status: order.order_status,
             requested_quantity: requested,
             filled_quantity: order_filled,
@@ -787,6 +832,14 @@ impl BybitExecutionClient {
                 .await?;
 
             for raw in result.list {
+                if !raw.extra_fees.is_null()
+                    && raw.extra_fees != serde_json::json!([])
+                    && raw.extra_fees != serde_json::json!({})
+                {
+                    return Err(ExecutionError::MissingData(
+                        "unmodeled additional execution fees".into(),
+                    ));
+                }
                 output.push(ExecutionFill {
                     execution_id: raw.exec_id,
                     order_id: raw.order_id,
@@ -1186,6 +1239,8 @@ struct OrderListResult {
 #[serde(rename_all = "camelCase")]
 struct RawOrder {
     symbol: String,
+    #[serde(default)]
+    side: Option<OrderSide>,
     order_id: String,
     #[serde(default)]
     order_link_id: String,
@@ -1224,6 +1279,8 @@ struct RawExecution {
     exec_qty: String,
     exec_value: String,
     exec_fee: String,
+    #[serde(default)]
+    extra_fees: Value,
     #[serde(default)]
     fee_currency: String,
     #[serde(default)]

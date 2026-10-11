@@ -149,6 +149,19 @@ impl Ledger {
         }
         Ok(())
     }
+    pub async fn market_health(&self, ready: bool, now: u64) -> Result<()> {
+        let c = self.client.lock().await;
+        if c.execute(
+            "UPDATE execution_accounts SET market_ready=$3,market_ms=$4 WHERE id=$1 AND epoch=$2",
+            &[&self.account, &self.epoch, &ready, &(now as i64)],
+        )
+        .await?
+            != 1
+        {
+            bail!("market health owner fenced");
+        }
+        Ok(())
+    }
     pub async fn audit(&self, kind: &str, payload: Value) -> Result<()> {
         let mut c = self.client.lock().await;
         let tx = c.transaction().await?;
@@ -444,15 +457,34 @@ impl Ledger {
         let mut c = self.client.lock().await;
         let tx = c.transaction().await?;
         self.fence(&tx).await?;
-        let row=tx.query_one("SELECT cycle_id,intent,exchange_order_id FROM execution_orders WHERE account_id=$1 AND link_id=$2 FOR UPDATE", &[&self.account,&link]).await?;
+        let row=tx.query_one("SELECT cycle_id,intent,exchange_order_id,evidence,terminal,confirmed FROM execution_orders WHERE account_id=$1 AND link_id=$2 FOR UPDATE", &[&self.account,&link]).await?;
         let cycle: String = row.get(0);
         let intent: Value = row.get(1);
         let previous: Option<String> = row.get(2);
         if state.order_link_id != link
             || state.symbol != intent["symbol"].as_str().context("symbol")?
             || previous.as_ref().is_some_and(|id| id != &state.order_id)
+            || state.side != Some(serde_json::from_value(intent["side"].clone())?)
+            || state.requested_quantity
+                != Decimal::from_str_exact(intent["quantity"].as_str().context("intent quantity")?)?
+            || state.filled_quantity < Decimal::ZERO
+            || state.filled_quantity > state.requested_quantity
+            || state.remaining_quantity < Decimal::ZERO
+            || state.filled_quantity.checked_add(state.remaining_quantity)
+                != Some(state.requested_quantity)
         {
             bail!("order confirmation identity mismatch");
+        }
+        if let Some(old) = row.get::<_, Option<Value>>(3) {
+            let old: OrderExecutionState = serde_json::from_value(old)
+                .context("exchange evidence contradicts a definitive rejection")?;
+            if state.filled_quantity < old.filled_quantity
+                || row.get::<_, bool>(4) && !state.terminal
+                || row.get::<_, bool>(5) && !state.fills_confirmed
+                || old.fills.iter().any(|fill| !state.fills.contains(fill))
+            {
+                bail!("confirmed exchange evidence regressed");
+            }
         }
         let from = intent["from"].as_str().context("from")?;
         let to = intent["to"].as_str().context("to")?;
@@ -576,7 +608,7 @@ impl Ledger {
         }
         let holdings = amounts(&row.get::<_, Value>(0))?;
         let unresolved:bool=tx.query_one("SELECT EXISTS(SELECT 1 FROM execution_orders WHERE cycle_id=$1 AND (NOT terminal OR NOT confirmed))", &[&cycle]).await?.get(0);
-        let reconciled:bool=tx.query_one("SELECT EXISTS(SELECT 1 FROM execution_reconciliation r WHERE r.account_id=$1 AND r.healthy AND r.created_at>=COALESCE((SELECT max(updated_at) FROM execution_orders WHERE cycle_id=$2),'epoch'::timestamptz) AND r.created_at>now()-interval '2 seconds')", &[&self.account,&cycle]).await?.get(0);
+        let reconciled:bool=tx.query_one("SELECT COALESCE((SELECT r.healthy AND r.created_at>=COALESCE((SELECT max(updated_at) FROM execution_orders WHERE cycle_id=$2),'epoch'::timestamptz) AND r.created_at>now()-interval '2 seconds' FROM execution_reconciliation r WHERE r.account_id=$1 ORDER BY r.id DESC LIMIT 1),false)", &[&self.account,&cycle]).await?.get(0);
         let closed = reconciled
             && !unresolved
             && holdings
@@ -618,9 +650,10 @@ impl Ledger {
     }
     pub async fn flush_events(&self, events: &event_bus::EventPublisher) -> Result<()> {
         let c = self.client.lock().await;
-        for row in c.query("SELECT id,kind,payload FROM execution_events WHERE account_id=$1 AND NOT published ORDER BY id LIMIT 100", &[&self.account]).await? {
+        for row in c.query("SELECT id,kind,payload,(extract(epoch FROM created_at)*1000)::bigint FROM execution_events WHERE account_id=$1 AND NOT published ORDER BY id LIMIT 100", &[&self.account]).await? {
             let id:i64=row.get(0); let kind:String=row.get(1); let payload:Value=row.get(2);
-            events.publish_critical_at(format!("exchange:{}:{id}",self.account),&kind,risk::current_time_ms(),payload)?;
+            events.publish_critical_at(format!("exchange:{}:{id}",self.account),&kind,row.get::<_,i64>(3) as u64,payload)?;
+            if kind == "execution.settlement" { crate::checkpoint_journal("after_outbox_fsync"); }
             if c.execute("UPDATE execution_events SET published=true WHERE id=$1 AND EXISTS(SELECT 1 FROM execution_accounts WHERE id=$2 AND epoch=$3)", &[&id,&self.account,&self.epoch]).await?!=1 { bail!("outbox owner fenced"); }
         }
         Ok(())

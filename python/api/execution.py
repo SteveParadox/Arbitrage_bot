@@ -140,7 +140,8 @@ def control(account: str, action: Literal["start", "stop", "emergency-stop"], co
         deployment_allowed(row)
         age = int(datetime.now(UTC).timestamp()*1000)-(row["snapshot_ms"] or 0)
         active = query(db, "SELECT EXISTS(SELECT 1 FROM execution_cycles WHERE account_id=:a AND committed)", a=account).scalar_one()
-        if row["blocked"] or row["recovering"] or row["emergency_stop"] or active or not _runtime_online(row["heartbeat"]) or not 0<=age<=1000:
+        market_age=int(datetime.now(UTC).timestamp()*1000)-(row["market_ms"] or 0)
+        if row["blocked"] or row["recovering"] or row["emergency_stop"] or active or not row["market_ready"] or not 0<=market_age<=1000 or not _runtime_online(row["heartbeat"]) or not 0<=age<=1000:
             raise HTTPException(409, "runtime, reconciliation or capital ownership gate blocked")
     elif command.authorization != "stop":
         raise HTTPException(400, "stop authorization required")
@@ -161,10 +162,11 @@ def status(account: str, request: Request, db: ReadDB):
     evidence = row["balance_evidence"] or {}
     reserved = query(db, "SELECT COALESCE(sum(starting),0) FROM execution_cycles WHERE account_id=:a AND committed", a=account).scalar_one()
     return {"account_id": account, "mode": row["mode"], "environment": "offline_mock" if row["mock"] else row["mode"],
-            "exchange_confirmed": not row["mock"], "mock_evidence": row["mock"], "state": row["state"] if online else "STOPPED",
+            "exchange_confirmed": not row["mock"] and row["snapshot_ms"] is not None, "mock_evidence": row["mock"], "state": row["state"] if online else "STOPPED",
             "runtime_online": online, "authorized": row["enabled"] and online and not row["blocked"], "blocked": row["blocked"],
             "emergency_stop": row["emergency_stop"], "recovering": row["recovering"], "epoch": row["epoch"], "active_cycles": active,
             "can_control": request.state.execution_grant["role"] != "viewer", "snapshot_ms": row["snapshot_ms"],
+            "market_ready": row["market_ready"] and online, "market_ms":row["market_ms"],
             "balances": evidence, "committed_usdt": str(reserved), "risk_limits": row["limits"], "heartbeat": row["heartbeat"]}
 
 

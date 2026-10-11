@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
 import { API_URL } from "./api";
-import { validateExecutionStatus, type ExecutionStatus } from "./executionContracts";
-
-type Cycle = {id: string; state: string; starting: string; realized_pnl: string | null; holdings: Record<string,string>};
-type Order = {link_id: string; state: string; intent: {symbol: string; side: string}; evidence: null | {filled_quantity?: string; fees?: Record<string,string>}};
+import { validateExecutionStatus, validateExecutionCycles, validateExecutionOrders, type ExecutionStatus, type ExecutionCycle, type ExecutionOrder } from "./executionContracts";
 export function ExecutionPanel() {
   const [account,setAccount]=useState(""); const [token,setToken]=useState("");
   const [connected,setConnected]=useState(false); const [status,setStatus]=useState<ExecutionStatus|null>(null);
-  const [cycles,setCycles]=useState<Cycle[]>([]); const [orders,setOrders]=useState<Order[]>([]);
+  const [cycles,setCycles]=useState<ExecutionCycle[]>([]); const [orders,setOrders]=useState<ExecutionOrder[]>([]);
   const [error,setError]=useState(""); const [confirmation,setConfirmation]=useState(""); const [busy,setBusy]=useState(false);
   useEffect(()=>{
     if (!connected) return;
@@ -18,8 +15,8 @@ export function ExecutionPanel() {
         if (responses.some(r=>!r.ok)) throw new Error(`Execution refresh failed (${responses.find(r=>!r.ok)?.status})`);
         const [s,c,o]=await Promise.all(responses.map(r=>r.json()));
         const validated=validateExecutionStatus(s);
-        if (!Array.isArray(c) || !Array.isArray(o)) throw new Error("Invalid execution records");
-        if (active) {setStatus(validated);setCycles(c);setOrders(o);setError("");}
+        const cycleRows=validateExecutionCycles(c);const orderRows=validateExecutionOrders(o);
+        if (active) {setStatus(validated);setCycles(cycleRows);setOrders(orderRows);setError("");}
       } catch(e) {if(active){setStatus(null);setError(String(e));}}
     };
     void refresh();const interval=setInterval(()=>void refresh(),2000);
@@ -35,7 +32,7 @@ export function ExecutionPanel() {
     } catch(e){setError(String(e));} finally {setBusy(false);}
   }
   const phrase=status?.mode==="live"?"AUTHORIZE MAINNET":"AUTHORIZE TESTNET";
-  const canStart=status?.can_control===true&&status.runtime_online&&!status.blocked&&!status.recovering&&!status.emergency_stop&&!status.authorized&&confirmation===phrase;
+  const canStart=status?.can_control===true&&status.runtime_online&&status.market_ready&&!status.blocked&&!status.recovering&&!status.emergency_stop&&!status.authorized&&confirmation===phrase;
   return <section className="section-card"><div className="section-heading"><div><h2>Authenticated execution</h2><p>Separate exchange accounts, confirmed fill evidence and reconciliation. Paper results remain in the paper panel.</p></div></div>
     <div className="paper-controls"><label>Exchange account <input aria-label="Exchange account" value={account} disabled={connected} onChange={e=>setAccount(e.target.value)}/></label>
       <label>Execution credential <input aria-label="Execution credential" type="password" autoComplete="off" value={token} disabled={connected} onChange={e=>setToken(e.target.value)}/></label>

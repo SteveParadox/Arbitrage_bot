@@ -58,3 +58,12 @@ def test_paper_credential_cannot_be_promoted_to_exchange_scope():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, arb_paper_api_keys_json=json.dumps({digest: {"subject": "paper", "role": "operator", "accounts": ["mine"]}}),
                  arb_execution_api_keys_json=json.dumps({digest: {"subject": "paper", "role": "operator", "accounts": ["mine"], "modes": ["live"]}}))
+
+
+@pytest.mark.parametrize("values",[{"arb_trading_mode":"unknown"},
+    {"arb_trading_mode":"testnet","arb_live_trading_enabled":True},
+    {"arb_trading_mode":"live","arb_testnet_trading_enabled":True},
+    {"arb_trading_mode":"live","arb_paper_trading_enabled":True}])
+def test_conflicting_execution_modes_fail_api_startup(values):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None,**values)

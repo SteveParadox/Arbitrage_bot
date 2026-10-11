@@ -103,7 +103,7 @@ def production(monkeypatch):
 
 
 @pytest.mark.parametrize("override", [
-    {"arb_live_trading_enabled": True}, {"arb_trading_mode": "live"},
+    {"arb_live_trading_enabled": True}, {"arb_trading_mode": "live", "arb_paper_trading_enabled": True},
     {"arb_control_api_token": "short"}, {"arb_engine_grpc_token": ADMIN},
     {"arb_api_rate_limit_per_minute": 0}, {"bybit_api_key": "forbidden"},
     {"arb_cors_origins": "http://dashboard.example.org"}, {"arb_trusted_hosts": "*"},
@@ -116,6 +116,16 @@ def test_production_rejects_unsafe_configuration(monkeypatch, override):
 
 def test_production_accepts_explicit_paper_configuration(monkeypatch):
     assert Settings(**production(monkeypatch)).arb_live_trading_enabled is False
+
+
+def test_live_capable_api_configuration_does_not_authorize_execution(monkeypatch):
+    from fastapi import HTTPException
+    from api import execution
+    configured=Settings(**(production(monkeypatch)|{"arb_trading_mode":"live","arb_paper_trading_enabled":False}))
+    assert configured.arb_live_trading_enabled is False
+    monkeypatch.setattr(execution,"settings",configured)
+    with pytest.raises(HTTPException,match="live deployment gate remains disabled"):
+        execution.deployment_allowed({"mode":"live"})
 
 
 @pytest.mark.parametrize("name,value", [("ARB_OBSERVER_REPLAY_FILE", "fixture.jsonl"),

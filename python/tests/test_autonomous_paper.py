@@ -84,7 +84,10 @@ def fixture(directory, *, fail=False, partial=False, adverse=False, losing=False
         events[-1]["event"]["asks"] = [{"price": 6.1, "quantity": 0}, {"price": 4.1, "quantity": 100}]
     if adverse:
         move = json.loads(json.dumps(events[-2]))
-        move["delay_ms"] = 100
+        # Move after durable leg-one intent, while its matching delay is active.
+        # Publication/fsync latency must not make this an admission rejection.
+        move["wait_for_paper_leg"] = 1
+        move["delay_ms"] = 20
         move["event"].update(symbol="BTCUSDT", bids=[{"price":109,"quantity":10}],
                              asks=[{"price":110,"quantity":10}], update_id=30,
                              sequence=30, is_snapshot=True)

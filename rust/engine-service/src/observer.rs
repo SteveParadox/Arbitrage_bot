@@ -209,6 +209,7 @@ async fn run_inner(
                     &receipts, &feed_health, now, settings.max_book_age_ms);
                 if state == "scanning" && !ready { state = "stale"; reason = "readiness expired".into(); }
                 if let Some(books) = &execution_books { books.ready(ready).await; }
+                if let Some(runtime) = &exchange { runtime.ledger.market_health(ready, now).await?; }
                 publish_health(&events, state, &reason, lifecycle.generation);
                 continue;
             }
@@ -325,6 +326,9 @@ async fn run_inner(
                 .into();
                 if let Some(books) = &execution_books {
                     books.ready(ready).await;
+                }
+                if let Some(runtime) = &exchange {
+                    runtime.ledger.market_health(ready, now_ms()).await?;
                 }
                 events.publish("market.health", feed_health.clone());
             }

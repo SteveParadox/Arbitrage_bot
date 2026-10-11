@@ -161,6 +161,8 @@ pub struct OrderExecutionState {
     pub order_id: String,
     pub order_link_id: String,
     pub symbol: String,
+    #[serde(default)]
+    pub side: Option<OrderSide>,
     pub status: String,
     pub requested_quantity: Decimal,
     pub filled_quantity: Decimal,

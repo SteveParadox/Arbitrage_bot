@@ -9,6 +9,7 @@ CREATE TABLE execution_accounts (
  emergency_stop boolean NOT NULL DEFAULT false,
  state text NOT NULL DEFAULT 'STOPPED' CHECK (state IN ('STOPPED','STARTING','SYNCHRONIZING','RECOVERING','READY','RUNNING','DEGRADED','STOPPING','BLOCKED','FAILED')),
  epoch bigint NOT NULL DEFAULT 0 CHECK (epoch>=0), heartbeat timestamptz,
+ market_ready boolean NOT NULL DEFAULT false, market_ms bigint,
  snapshot_ms bigint, balance_evidence jsonb, expected_wallet jsonb,
  limits jsonb NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
@@ -30,6 +31,7 @@ CREATE TABLE execution_cycles (
 );
 -- Deliberately one active cycle per exchange account: unknown exposure owns it.
 CREATE UNIQUE INDEX execution_one_active ON execution_cycles(account_id) WHERE committed;
+CREATE UNIQUE INDEX execution_evidence_once ON execution_cycles(account_id,(risk->>'market_fingerprint')) WHERE risk ? 'market_fingerprint';
 CREATE TABLE execution_orders (
  account_id text NOT NULL, link_id text NOT NULL CHECK (link_id ~ '^[A-Za-z0-9_-]{1,36}$'),
  cycle_id text NOT NULL, intent jsonb NOT NULL,

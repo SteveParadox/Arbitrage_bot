@@ -141,8 +141,14 @@ impl Runtime {
         }
         let wallet = client.sync_balances(&[]).await?;
         let healthy = ledger.reconcile(&wallet, current_time_ms(), 1000).await?;
-        for cycle in ledger.active_cycles().await? {
-            ledger.settle(&cycle,"RECOVERED",Some("startup confirms evidence; unresolved exposure quarantined without automatic new orders")).await?;
+        if healthy {
+            for cycle in ledger.active_cycles().await? {
+                ledger.settle(&cycle,"RECOVERED",Some("startup confirms evidence; unresolved exposure quarantined without automatic new orders")).await?;
+            }
+        } else {
+            ledger
+                .quarantine("startup wallet discrepancy; commitments preserved")
+                .await?;
         }
         let unresolved = !ledger.active_cycles().await?.is_empty();
         let open = client.verify_no_open_orders().await.is_err();
@@ -229,6 +235,8 @@ impl Runtime {
                         if !ledger.reconcile(&wallet,current_time_ms(),1000).await? {bail!("balance reconciliation discrepancy");}
                         let p=ledger.portfolio(current_time_ms(),1000).await?;
                         if !p.enabled {bail!("explicit account start required");}
+                        let mut fee_rates=std::collections::BTreeMap::new();
+                        for leg in &route.legs {fee_rates.insert(leg.symbol.clone(),client.verify_spot_fee_rate(&leg.symbol,planner.0.settings.fee_rate).await?.to_string());}
                         let start=paper::decimal(record.start_amount.context("candidate start amount")?)?;
                         let mut output=start;let mut plans=Vec::new();
                         for leg in &route.legs {let plan=planner.plan_conversion(&route,&ConversionLeg::from(leg),output,"prevalidate".into(),false).await?;output=plan.estimated_output;plans.push(plan);}
@@ -240,10 +248,10 @@ impl Runtime {
                         let context=RiskContext{account_balance:p.available,current_exposure:p.exposure,daily_realized_pnl:p.daily_pnl,api_health:health.clone(),exchange_health:health};
                         let decision=risk.evaluate(&intent,&context,now)?;
                         if !decision.approved {bail!("risk denied: {}",json!(decision));}
-                        if !ledger.reserve(&id,&candidate,&route,start,json!({"decision":decision,"configuration_hash":record.configuration_hash,"market_fingerprint":record.market_fingerprint,"candidate":record,"risk_version":risk_config.version}),now,1000).await? {return Ok(());}
+                        if !ledger.reserve(&id,&candidate,&route,start,json!({"decision":decision,"verified_taker_fee_rates":fee_rates,"fee_ceiling":planner.0.settings.fee_rate.to_string(),"configuration_hash":record.configuration_hash,"market_fingerprint":record.market_fingerprint,"candidate":record,"risk_version":risk_config.version}),now,1000).await? {return Ok(());}
                         authenticated::checkpoint(&client,"after_reservation");
                         last_cycle=now;ledger.state("RUNNING",false,false).await?;
-                        let venue=Venue{client:client.clone(),ledger:ledger.clone(),cycle:id.clone(),route:route.clone(),gate:gate.clone(),balance_age_ms:1000};
+                        let venue=Venue{client:client.clone(),ledger:ledger.clone(),cycle:id.clone(),route:route.clone(),gate:gate.clone(),balance_age_ms:1000,fee_ceiling:planner.0.settings.fee_rate};
                         let provider=Provider{ledger:ledger.clone(),planner:planner.clone(),gate:gate.clone(),starting:start,edge,balance_age_ms:1000};
                         let authorizer=RiskEngineAuthorizer::new(provider,mode,mode==ExecutionMode::Live);
                         let mut coordinator=ThreeLegCoordinator::with_events(CoordinatorConfig{version:1,normal_slippage_tolerance_percent:Decimal::new(10,2),emergency_slippage_tolerance_percent:Decimal::new(50,2),max_unwind_attempts_per_asset:3,max_dust_notional_base:Decimal::ZERO},venue,planner.clone(),authorizer,events.clone())?;

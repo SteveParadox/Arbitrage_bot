@@ -345,6 +345,7 @@ impl CoordinatorVenue for MockVenue {
                     order_id: order_id.clone(),
                     order_link_id: request.order_link_id.clone(),
                     symbol: request.symbol.clone(),
+                    side: Some(request.side),
                     status: if fraction == Decimal::ONE {
                         "Filled".to_string()
                     } else {

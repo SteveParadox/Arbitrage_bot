@@ -73,8 +73,17 @@ impl DeploymentPermit {
 }
 
 pub fn checkpoint(client: &execution::BybitExecutionClient, name: &str) {
-    if client.config().is_offline_mock()
-        && std::env::var("ARB_ENV").as_deref() == Ok("development")
+    if client.config().is_offline_mock() {
+        checkpoint_journal(name);
+    }
+}
+
+/// Fault injection is restricted to the explicit credential-free offline mode.
+pub fn checkpoint_journal(name: &str) {
+    if std::env::var("ARB_ENV").as_deref() == Ok("development")
+        && std::env::var("ARB_EXECUTION_OFFLINE_MOCK").as_deref() == Ok("true")
+        && std::env::var("ARB_TRADING_MODE").as_deref() == Ok("testnet")
+        && std::env::var("ARB_LIVE_TRADING_ENABLED").as_deref() == Ok("false")
         && std::env::var("ARB_EXECUTION_CRASH_AT").as_deref() == Ok(name)
     {
         std::process::exit(89);

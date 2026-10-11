@@ -86,6 +86,14 @@ class Settings(BaseSettings):
     def validate_security(self):
         if self.arb_env not in {"development", "test", "production"}:
             raise ValueError("unknown environment")
+        if self.arb_trading_mode not in {"observe", "paper", "testnet", "live"}:
+            raise ValueError("unknown execution mode")
+        if self.arb_trading_mode in {"testnet", "live"} and self.arb_paper_trading_enabled:
+            raise ValueError("authenticated execution cannot use paper deployment authorization")
+        if self.arb_trading_mode == "live" and self.arb_testnet_trading_enabled:
+            raise ValueError("mainnet mode cannot use testnet deployment authorization")
+        if self.arb_trading_mode == "testnet" and self.arb_live_trading_enabled:
+            raise ValueError("testnet mode cannot use live deployment authorization")
         execution = json.loads(self.arb_execution_api_keys_json)
         if len(self.arb_execution_api_keys_json) > 65536 or not isinstance(execution, dict) or len(execution)>1000:
             raise ValueError("invalid execution credential catalog")

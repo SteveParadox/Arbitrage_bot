@@ -676,6 +676,7 @@ impl PaperVenue {
                     order_id: r.order_link_id.clone(),
                     order_link_id: r.order_link_id.clone(),
                     symbol: r.symbol.clone(),
+                    side: Some(r.side),
                     status: result.status,
                     requested_quantity: result.requested,
                     filled_quantity: result.quantity,

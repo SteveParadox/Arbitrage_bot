@@ -89,10 +89,14 @@ impl Gate {
             {
                 bail!("testnet deployment permission invalid");
             }
-        } else if std::env::var("ARB_LIVE_TRADING_ENABLED").as_deref() != Ok("true") {
+        } else if std::env::var("ARB_LIVE_TRADING_ENABLED").as_deref() != Ok("true")
+            || std::env::var("ARB_TESTNET_TRADING_ENABLED").as_deref() != Ok("false")
+        {
             bail!("live deployment disabled");
         }
         if !reducing {
+            risk::control::read_control(&self.stop.control)?
+                .context("global control state missing; execution permission unknown")?;
             self.stop.check()?;
         }
         Ok(())
@@ -106,6 +110,7 @@ pub struct Venue {
     pub route: TriangleRoute,
     pub gate: Gate,
     pub balance_age_ms: u64,
+    pub fee_ceiling: Decimal,
 }
 fn journal_error(e: impl std::fmt::Display) -> ExecutionAttemptError {
     // Database ambiguity is never evidence of a definitive exchange rejection.
@@ -139,8 +144,9 @@ impl CoordinatorVenue for Venue {
             let (from,to)=if request.side==execution::OrderSide::Buy {(&leg.quote_asset,&leg.base_asset)} else {(&leg.base_asset,&leg.quote_asset)};
             let holdings=self.ledger.holdings(&self.cycle).await?;
             if holdings.values().any(|v|*v<Decimal::ZERO) || holdings.get(from).copied().unwrap_or_default()<=Decimal::ZERO { bail!("unknown fees or unavailable cycle holding"); }
+            let fee_rate=self.client.verify_spot_fee_rate(&request.symbol,self.fee_ceiling).await?;
             // Private request cannot begin before the immutable intent commits.
-            self.ledger.intent(&self.cycle,&request.order_link_id,&json!({"symbol":request.symbol,"side":request.side,"from":from,"to":to,"quantity":request.requested_quantity.to_string(),"risk_approved_at_ms":prepared.risk_approved_at_ms(),"risk_reducing":prepared.is_risk_reducing(),"mode":format!("{:?}",prepared.mode())})).await?;
+            self.ledger.intent(&self.cycle,&request.order_link_id,&json!({"symbol":request.symbol,"side":request.side,"from":from,"to":to,"quantity":request.requested_quantity.to_string(),"fee_ceiling":self.fee_ceiling.to_string(),"verified_taker_fee_rate":fee_rate.to_string(),"risk_approved_at_ms":prepared.risk_approved_at_ms(),"risk_reducing":prepared.is_risk_reducing(),"mode":format!("{:?}",prepared.mode())})).await?;
             crate::checkpoint(&self.client,"after_intent");
             self.ledger.order_state(&request.order_link_id,"SUBMITTING").await?;
             Ok(())
