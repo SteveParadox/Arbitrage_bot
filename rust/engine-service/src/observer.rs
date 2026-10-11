@@ -287,10 +287,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     sequence,
                     is_snapshot,
                 };
-                if let Some(p) = &paper {
-                    p.books.update(update.clone()).await?;
-                }
-                let records = match scanner.on_book_update(update) {
+                let records = match scanner.on_book_update(update.clone()) {
                     Ok(records) => records,
                     Err(error) => {
                         if let Some(p) = &paper {
@@ -310,6 +307,11 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                         continue;
                     }
                 };
+                // Let the managed scanner perform its existing coordinated
+                // desynchronization recovery before updating execution books.
+                if let Some(p) = &paper {
+                    p.books.update(update).await?;
+                }
                 receipts.insert(receipt_symbol, std::time::Instant::now());
                 if !observer_ready(
                     &lifecycle,
@@ -440,6 +442,31 @@ async fn replay_events(path: PathBuf, sender: mpsc::Sender<MarketDataEvent>) -> 
             continue;
         }
         let mut raw: Value = serde_json::from_str(&line)?;
+        if let Some(leg) = raw["wait_for_paper_leg"].as_u64() {
+            // Replays already require development + live=false. A barrier
+            // additionally requires explicitly authorized paper deployment.
+            paper::validate_mode(
+                &std::env::var("ARB_TRADING_MODE").unwrap_or_default(),
+                std::env::var("ARB_PAPER_TRADING_ENABLED").as_deref() == Ok("true"),
+                std::env::var("ARB_LIVE_TRADING_ENABLED").as_deref() != Ok("false"),
+            )?;
+            if !(1..=3).contains(&leg) {
+                bail!("invalid paper replay leg barrier");
+            }
+            let ledger = paper::Ledger::connect(
+                &std::env::var("ARB_DATABASE_URL").context("paper replay requires database")?,
+                std::env::var("ARB_PAPER_ACCOUNT").context("paper replay requires account")?,
+            )
+            .await?;
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                while !ledger.pending_leg_exists(leg as u32).await? {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                Ok::<(), anyhow::Error>(())
+            })
+            .await
+            .context("paper replay order barrier timed out")??;
+        }
         if let Some(delay) = raw["delay_ms"].as_u64() {
             if delay > 60_000 {
                 bail!("replay delay exceeds one minute");

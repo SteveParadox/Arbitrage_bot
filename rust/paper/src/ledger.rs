@@ -106,6 +106,15 @@ impl Ledger {
             .await?
             .get(0))
     }
+    /// Read-only synchronization for development replay fixtures. Financial
+    /// authority remains with the runtime owner and its fenced transactions.
+    pub async fn pending_leg_exists(&self, leg: u32) -> Result<bool> {
+        let row = self.client.lock().await.query_one(
+            "SELECT EXISTS(SELECT 1 FROM paper_orders o JOIN paper_cycles c ON c.id=o.cycle_id WHERE c.account_id=$1 AND o.intent->>'leg_number'=$2 AND o.result IS NULL)",
+            &[&self.account, &leg.to_string()],
+        ).await?;
+        Ok(row.get(0))
+    }
     /// Session-scoped advisory ownership plus epoch fencing; connection loss loses both permission and lock.
     pub async fn claim_and_recover(&mut self) -> Result<()> {
         let mut c = self.client.lock().await;
@@ -271,6 +280,19 @@ impl Ledger {
             json!({"candidate_id":candidate,"reason_code":reason,"detail":detail}),
         )
         .await?;
+        if matches!(
+            reason,
+            "INSUFFICIENT_CAPITAL" | "CONCURRENT_EXPOSURE_LIMIT" | "CAPITAL_RESERVATION_FAILED"
+        ) {
+            event(
+                &tx,
+                &self.account,
+                None,
+                "capital.reservation_rejected",
+                json!({"candidate_id":candidate,"reason_code":reason}),
+            )
+            .await?;
+        }
         tx.commit().await?;
         Ok(())
     }
@@ -467,6 +489,16 @@ impl Ledger {
         )
         .await?;
         tx.execute("UPDATE paper_cycles SET state='EXECUTING' WHERE id=$1 AND state IN ('RESERVED','EXECUTING')",&[&cycle]).await?;
+        if risk_reducing {
+            event(
+                &tx,
+                &self.account,
+                Some(cycle),
+                "paper.cycle_unwinding",
+                json!({"order_id":id,"intent":intent}),
+            )
+            .await?;
+        }
         event(
             &tx,
             &self.account,

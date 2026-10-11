@@ -80,7 +80,7 @@ services:
       ARB_ENGINE_GRPC_TARGET: engine-control:50051
       ARB_REDIS_URL: redis://redis:6379/0
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ../data/risk:/app/data/risk:ro
       - ../data/control:/app/data/control
@@ -97,7 +97,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.frontend
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
       - api
 

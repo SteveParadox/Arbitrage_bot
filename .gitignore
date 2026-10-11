@@ -41,3 +41,7 @@ data/event-outbox/
 
 data/control/*.lock
 rust/*/data/event-outbox/
+
+# Durable runtime state belongs in PostgreSQL / persistent volumes, never in git.
+data/paper/
+python/data/

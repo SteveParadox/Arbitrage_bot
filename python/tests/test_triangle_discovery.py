@@ -95,3 +95,24 @@ def test_config_contains_structural_triangle_fields() -> None:
     route = config["routes"][0]
     assert {"pair1", "pair2", "pair3", "legs", "assets"} <= route.keys()
     assert len(route["legs"]) == 3
+
+
+def test_catalog_write_is_atomic_and_rejects_empty_or_duplicate(tmp_path) -> None:
+    import json
+    import pytest
+    from strategy.triangle_discovery import write_config
+    output = tmp_path / "triangles.json"
+    config = build_config(discover_triangles(fixture_instruments(), {"USDT"}),
+                          testnet=True, start_assets={"USDT"})
+    write_config(config, output)
+    prior = output.read_bytes()
+    saved = json.loads(prior)
+    assert len(saved["configuration_sha256"]) == 64
+    with pytest.raises(ValueError):
+        write_config({"routes": [], "route_count": 0}, output)
+    assert output.read_bytes() == prior
+    config["routes"].append(config["routes"][0])
+    config["route_count"] += 1
+    with pytest.raises(ValueError):
+        write_config(config, output)
+    assert output.read_bytes() == prior

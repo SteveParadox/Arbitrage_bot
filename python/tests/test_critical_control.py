@@ -51,11 +51,14 @@ def valid(**updates):
         valid(updated_at="2026-01-01T00:00:00"),
         valid(extra=True),
         valid(request_id="../x"),
-        valid(updated_at=(datetime.now(UTC) + timedelta(minutes=1)).isoformat()),
-        valid(updated_at=(datetime.now(UTC) - timedelta(days=2)).isoformat()),
+        lambda: valid(updated_at=(datetime.now(UTC) + timedelta(minutes=1)).isoformat()),
+        lambda: valid(updated_at=(datetime.now(UTC) - timedelta(days=2)).isoformat()),
     ],
 )
 def test_invalid_records_never_activate_and_remain_for_diagnosis(state, payload):
+    # Compute clock-relative invalid records at execution, after potentially long integrations.
+    if callable(payload):
+        payload = payload()
     state.write_text(json.dumps(payload))
     original = state.read_bytes()
     assert runtime_control.read_control_state()["enabled"] is False

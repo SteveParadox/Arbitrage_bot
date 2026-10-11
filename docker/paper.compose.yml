@@ -1,0 +1,71 @@
+# Combine with docker-compose.yml; no order-capable adapter is instantiated.
+services:
+  postgres:
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1
+  redis:
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 1
+  catalog:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.python
+    env_file: [../.env]
+    environment:
+      BYBIT_TESTNET: ${BYBIT_TESTNET:-false}
+    command: ["python", "-m", "strategy.triangle_discovery", "--start-assets", "USDT", "--output", "/catalog/triangles.json"]
+    volumes: [paper-catalog:/catalog]
+    restart: "no"
+
+  engine-control:
+    environment:
+      ARB_DATABASE_URL: postgresql://arbitrage:arbitrage@postgres:5432/arbitrage
+      ARB_TRADING_MODE: ${ARB_TRADING_MODE:-observe}
+      ARB_PAPER_TRADING_ENABLED: ${ARB_PAPER_TRADING_ENABLED:-false}
+      ARB_LIVE_TRADING_ENABLED: "false"
+      BYBIT_TESTNET: ${BYBIT_TESTNET:-false}
+      ARB_PAPER_ACCOUNT: ${ARB_PAPER_ACCOUNT:-demo}
+      ARB_TRIANGLE_CONFIG: /catalog/triangles.json
+    volumes:
+      - paper-catalog:/catalog:ro
+      - paper-state:/app/data/paper
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+      catalog: {condition: service_completed_successfully}
+    restart: unless-stopped
+    stop_signal: SIGINT
+    stop_grace_period: 20s
+    mem_limit: 768m
+    cpus: 2
+    # Liveness only; execution eligibility is reported by the authenticated paper API.
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    environment:
+      ARB_TRADING_MODE: ${ARB_TRADING_MODE:-observe}
+      ARB_PAPER_TRADING_ENABLED: ${ARB_PAPER_TRADING_ENABLED:-false}
+      ARB_LIVE_TRADING_ENABLED: "false"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    restart: unless-stopped
+    mem_limit: 128m
+
+volumes:
+  paper-catalog:
+  paper-state:
