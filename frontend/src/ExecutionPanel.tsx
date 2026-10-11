@@ -32,7 +32,7 @@ export function ExecutionPanel() {
     } catch(e){setError(String(e));} finally {setBusy(false);}
   }
   const phrase=status?.mode==="live"?"AUTHORIZE MAINNET":"AUTHORIZE TESTNET";
-  const canStart=status?.can_control===true&&status.runtime_online&&status.market_ready&&!status.blocked&&!status.recovering&&!status.emergency_stop&&!status.authorized&&confirmation===phrase;
+  const canStart=status?.can_control===true&&status.state==="READY"&&status.active_cycles===0&&status.runtime_online&&status.market_ready&&!status.blocked&&!status.recovering&&!status.emergency_stop&&!status.authorized&&confirmation===phrase;
   return <section className="section-card"><div className="section-heading"><div><h2>Authenticated execution</h2><p>Separate exchange accounts, confirmed fill evidence and reconciliation. Paper results remain in the paper panel.</p></div></div>
     <div className="paper-controls"><label>Exchange account <input aria-label="Exchange account" value={account} disabled={connected} onChange={e=>setAccount(e.target.value)}/></label>
       <label>Execution credential <input aria-label="Execution credential" type="password" autoComplete="off" value={token} disabled={connected} onChange={e=>setToken(e.target.value)}/></label>

@@ -31,6 +31,7 @@ CASES += ["db_disconnect", "redis_pause"]
 CASES += ["missing_control"]
 CASES += ["wrong_side", "wrong_quantity", "startup_discrepancy", "after_outbox_fsync", "regressed_fill"]
 CASES += ["fee_tier", "fee_change"]
+CASES += ["status_STOPPED", "status_FAILED"]
 PREFIX = uuid.uuid4().hex[:10]
 
 
@@ -557,3 +558,19 @@ def test_account_fee_evidence_is_required_before_each_order(api,tmp_path,scenari
             assert not mock.errors,mock.errors
         finally:
             stop(process,log)
+
+
+@pytest.mark.parametrize("state",["STOPPED","FAILED"])
+def test_terminal_runtime_state_is_offline_and_cannot_authorize_start(api,state):
+    name=f"status_{state}-{PREFIX}"
+    client,_=api
+    provision(api,name,str(uuid.uuid4().int % 10**15))
+    sql("UPDATE execution_accounts SET state=%s,heartbeat=now(),blocked=false,recovering=false,market_ready=true,market_ms=(extract(epoch FROM now())*1000)::bigint,snapshot_ms=(extract(epoch FROM now())*1000)::bigint WHERE id=%s",(state,name))
+    status=client.get(f"/execution/{name}/status")
+    assert status.status_code==200,status.text
+    assert status.json()["state"]==state
+    response=client.post(f"/execution/{name}/control/start",json={"request_id":"denied-terminal","reason":"terminal runtime cannot restart itself","authorization":"authorize_testnet"})
+    assert response.status_code==409,response.text
+    assert not status.json()["runtime_online"]
+    sql("UPDATE execution_accounts SET heartbeat=now()-interval '1 minute' WHERE id=%s",(name,))
+    assert client.get(f"/execution/{name}/status").json()["state"]==state

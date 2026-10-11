@@ -141,7 +141,7 @@ def control(account: str, action: Literal["start", "stop", "emergency-stop"], co
         age = int(datetime.now(UTC).timestamp()*1000)-(row["snapshot_ms"] or 0)
         active = query(db, "SELECT EXISTS(SELECT 1 FROM execution_cycles WHERE account_id=:a AND committed)", a=account).scalar_one()
         market_age=int(datetime.now(UTC).timestamp()*1000)-(row["market_ms"] or 0)
-        if row["blocked"] or row["recovering"] or row["emergency_stop"] or active or not row["market_ready"] or not 0<=market_age<=1000 or not _runtime_online(row["heartbeat"]) or not 0<=age<=1000:
+        if row["state"] != "READY" or row["blocked"] or row["recovering"] or row["emergency_stop"] or active or not row["market_ready"] or not 0<=market_age<=1000 or not _runtime_online(row["heartbeat"]) or not 0<=age<=1000:
             raise HTTPException(409, "runtime, reconciliation or capital ownership gate blocked")
     elif command.authorization != "stop":
         raise HTTPException(400, "stop authorization required")
@@ -158,12 +158,12 @@ def control(account: str, action: Literal["start", "stop", "emergency-stop"], co
 def status(account: str, request: Request, db: ReadDB):
     row = account_row(db, account, request)
     active = query(db, "SELECT count(*) FROM execution_cycles WHERE account_id=:a AND committed", a=account).scalar_one()
-    online = _runtime_online(row["heartbeat"])
+    online = _runtime_online(row["heartbeat"]) and row["state"] not in {"STOPPED", "FAILED"}
     evidence = row["balance_evidence"] or {}
     reserved = query(db, "SELECT COALESCE(sum(starting),0) FROM execution_cycles WHERE account_id=:a AND committed", a=account).scalar_one()
     return {"account_id": account, "mode": row["mode"], "environment": "offline_mock" if row["mock"] else row["mode"],
-            "exchange_confirmed": not row["mock"] and row["snapshot_ms"] is not None, "mock_evidence": row["mock"], "state": row["state"] if online else "STOPPED",
-            "runtime_online": online, "authorized": row["enabled"] and online and not row["blocked"], "blocked": row["blocked"],
+            "exchange_confirmed": not row["mock"] and row["snapshot_ms"] is not None, "mock_evidence": row["mock"], "state": row["state"] if online or row["state"] in {"STOPPED", "FAILED", "BLOCKED"} else "DEGRADED",
+            "runtime_online": online, "authorized": row["enabled"] and online and not row["blocked"] and not row["recovering"] and not row["emergency_stop"], "blocked": row["blocked"],
             "emergency_stop": row["emergency_stop"], "recovering": row["recovering"], "epoch": row["epoch"], "active_cycles": active,
             "can_control": request.state.execution_grant["role"] != "viewer", "snapshot_ms": row["snapshot_ms"],
             "market_ready": row["market_ready"] and online, "market_ms":row["market_ms"],

@@ -352,6 +352,31 @@ impl Ledger {
             .await?;
         Ok(())
     }
+    /// An exited worker must not retain a fresh eligibility heartbeat.
+    pub async fn offline(&self) -> Result<()> {
+        let mut c = self.client.lock().await;
+        let tx = c.transaction().await?;
+        if tx
+            .execute(
+                "UPDATE paper_accounts SET enabled=false,heartbeat=NULL WHERE id=$1 AND epoch=$2",
+                &[&self.account, &self.epoch],
+            )
+            .await?
+            != 1
+        {
+            bail!("offline worker fenced");
+        }
+        event(
+            &tx,
+            &self.account,
+            None,
+            "paper.runtime_offline",
+            json!({"epoch":self.epoch}),
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
     pub async fn cycle_holdings(&self, id: &str) -> Result<BTreeMap<String, Decimal>> {
         let r = self
             .client

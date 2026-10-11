@@ -113,7 +113,7 @@ impl Runtime {
             settings: settings.clone(),
         };
         let worker = tokio::spawn(async move {
-            work_clock.scope(async {
+            let result: Result<()> = work_clock.scope(async {
             let mut risk = RiskEngine::new(config.clone())?;
             let planner = PaperPlanner {
                 books: shared_books.clone(),
@@ -204,7 +204,10 @@ impl Runtime {
                         .await?;
                 }
             }
-        }).await
+        }).await;
+            let offline = ledger.offline().await;
+            result?;
+            offline
         });
         Ok(Self {
             books,

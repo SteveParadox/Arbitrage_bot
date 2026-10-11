@@ -160,7 +160,7 @@ def status(account: str, db: ReadDB, request: Request = None):
             "can_control": request is not None and getattr(request.state, "paper_role", "viewer") != "viewer",
             "state": "recovering" if row["recovering"] else "blocked" if row["blocked"] else "offline" if not online else
             "executing" if active else "running" if row["enabled"] else "stopped",
-            "authorized": row["enabled"], "blocked": row["blocked"], "runtime_online": online,
+            "authorized": row["enabled"] and online and not row["blocked"] and not row["recovering"], "blocked": row["blocked"], "runtime_online": online,
             "heartbeat": row["heartbeat"], "epoch": row["epoch"], "active_cycles": active,
             "pending_orders": pending, "balances": balances}
 

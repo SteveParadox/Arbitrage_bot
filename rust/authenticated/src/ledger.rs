@@ -125,7 +125,7 @@ impl Ledger {
         let mut c = self.client.lock().await;
         let tx = c.transaction().await?;
         self.fence(&tx).await?;
-        tx.execute("UPDATE execution_accounts SET state=$2,blocked=$3,recovering=$4,enabled=CASE WHEN $3 OR $4 THEN false ELSE enabled END,heartbeat=now() WHERE id=$1", &[&self.account,&state,&blocked,&recovering]).await?;
+        tx.execute("UPDATE execution_accounts SET state=$2,blocked=$3,recovering=$4,enabled=CASE WHEN $3 OR $4 OR $2 IN ('STOPPED','FAILED') THEN false ELSE enabled END,heartbeat=CASE WHEN $2 IN ('STOPPED','FAILED') THEN NULL ELSE now() END WHERE id=$1", &[&self.account,&state,&blocked,&recovering]).await?;
         event(
             &tx,
             &self.account,
