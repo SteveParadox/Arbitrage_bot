@@ -22,6 +22,26 @@ DB = Annotated[Session, Depends(get_db)]
 Identity = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 
 
+def get_read_db(db: DB):
+    # All queries in one response must see the same financial commit.
+    db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+    db.execute(text("SET TRANSACTION READ ONLY"))
+    _bounded_transaction(db)
+    yield db
+
+
+ReadDB = Annotated[Session, Depends(get_read_db)]
+
+
+def _runtime_online(heartbeat):
+    return heartbeat is not None and 0 <= (datetime.now(UTC) - heartbeat).total_seconds() <= 5
+
+
+def _bounded_transaction(db):
+    db.execute(text("SET LOCAL lock_timeout = '2s'"))
+    db.execute(text("SET LOCAL statement_timeout = '5s'"))
+
+
 class AccountCommand(BaseModel):
     model_config = ConfigDict(extra="forbid")
     account_id: Identity
@@ -41,6 +61,8 @@ def _query(db: Session, sql: str, **params):
 
 
 def _account(db: Session, account: str, lock: bool = False):
+    if lock:
+        _bounded_transaction(db)
     row = _query(db, "SELECT * FROM paper_accounts WHERE id=:id" +
                  (" FOR UPDATE" if lock else ""), id=account).mappings().first()
     if row is None:
@@ -75,6 +97,7 @@ def _record(db: Session, account: str, request_id: str, fingerprint: str, respon
 
 @router.post("/accounts")
 def create_account(command: AccountCommand, db: DB):
+    _bounded_transaction(db)
     # Transaction-level lock serializes first creation, including retries before account exists.
     _query(db, "SELECT pg_advisory_xact_lock(hashtextextended(:a,8148))", a=command.account_id)
     fingerprint = _fingerprint(command.model_dump(mode="json"))
@@ -109,7 +132,7 @@ def control(account: str, action: Literal["start", "stop"], command: ControlComm
             raise HTTPException(409, "paper runtime recovery is still in progress")
         if row["blocked"]:
             raise HTTPException(409, "account has reconciliation or residual inventory block")
-        if row["heartbeat"] is None or (datetime.now(UTC) - row["heartbeat"]).total_seconds() > 5:
+        if not _runtime_online(row["heartbeat"]):
             raise HTTPException(409, "authoritative paper runtime offline or recovery incomplete")
     _query(db, "UPDATE paper_accounts SET enabled=:v WHERE id=:a", a=account, v=action == "start")
     return _record(db, account, command.request_id, fingerprint,
@@ -122,7 +145,7 @@ def _decimal_rows(rows):
 
 
 @router.get("/{account}/status")
-def status(account: str, db: DB):
+def status(account: str, db: ReadDB):
     row = _account(db, account)
     balances = _decimal_rows(_query(db, "SELECT asset,available,reserved,version,reconciled_at "
                                     "FROM paper_balances WHERE account_id=:a ORDER BY asset",
@@ -131,7 +154,7 @@ def status(account: str, db: DB):
                     a=account).scalar_one()
     pending = _query(db, "SELECT count(*) FROM paper_orders o JOIN paper_cycles c ON c.id=o.cycle_id "
                      "WHERE c.account_id=:a AND o.state='SUBMITTING'", a=account).scalar_one()
-    online = row["heartbeat"] is not None and (datetime.now(UTC)-row["heartbeat"]).total_seconds() <= 5
+    online = _runtime_online(row["heartbeat"])
     return {"account_id": account, "mode": "paper", "simulated": True,
             "state": "recovering" if row["recovering"] else "blocked" if row["blocked"] else "offline" if not online else
             "executing" if active else "running" if row["enabled"] else "stopped",
@@ -141,7 +164,7 @@ def status(account: str, db: DB):
 
 
 @router.get("/{account}/cycles")
-def cycles(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
+def cycles(account: str, db: ReadDB, limit: int = Query(100, ge=1, le=500)):
     _account(db, account)
     result = _decimal_rows(_query(db, "SELECT * FROM paper_cycles WHERE account_id=:a "
                                  "ORDER BY created_at DESC LIMIT :n", a=account, n=limit).mappings())
@@ -175,7 +198,7 @@ def cycles(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
 
 
 @router.get("/{account}/orders")
-def orders(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
+def orders(account: str, db: ReadDB, limit: int = Query(100, ge=1, le=500)):
     _account(db, account)
     return _decimal_rows(_query(db, "SELECT o.* FROM paper_orders o JOIN paper_cycles c "
                                 "ON c.id=o.cycle_id WHERE c.account_id=:a "
@@ -183,14 +206,14 @@ def orders(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
 
 
 @router.get("/{account}/events")
-def events(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
+def events(account: str, db: ReadDB, limit: int = Query(100, ge=1, le=500)):
     _account(db, account)
     return _decimal_rows(_query(db, "SELECT * FROM paper_events WHERE account_id=:a "
                                 "ORDER BY id DESC LIMIT :n", a=account, n=limit).mappings())
 
 
 @router.get("/{account}/performance")
-def performance(account: str, db: DB):
+def performance(account: str, db: ReadDB):
     _account(db, account)
     rows = _query(db, "SELECT state,realized_pnl,expected_profit,starting,created_at,completed_at "
                   "FROM paper_cycles WHERE account_id=:a ORDER BY completed_at,id", a=account).mappings().all()
@@ -223,7 +246,7 @@ def performance(account: str, db: DB):
 
 
 @router.get("/{account}/fills")
-def fills(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
+def fills(account: str, db: ReadDB, limit: int = Query(100, ge=1, le=500)):
     return [{"fill_id": "paper:"+order["id"]+":fill", "order_id": order["id"],
              "cycle_id": order["cycle_id"], "simulated": True, **order["result"]}
             for order in orders(account, db, limit)
@@ -231,7 +254,7 @@ def fills(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
 
 
 @router.get("/{account}/reservations")
-def reservations(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
+def reservations(account: str, db: ReadDB, limit: int = Query(100, ge=1, le=500)):
     return [{"reservation_id": "paper:"+cycle["id"]+":reservation", "cycle_id": cycle["id"],
              "asset": cycle["start_asset"], "amount": cycle["starting"],
              "state": "SETTLED" if cycle["settled"] else "CONSUMING" if
@@ -240,15 +263,19 @@ def reservations(account: str, db: DB, limit: int = Query(100, ge=1, le=500)):
 
 
 @router.get("/{account}/reconciliation")
-def reconciliation(account: str, db: DB):
+def reconciliation(account: str, db: ReadDB):
     _account(db, account)
-    rows = _query(db, "SELECT b.asset,b.available,b.reserved,COALESCE((SELECT sum(CASE WHEN "
+    rows = _query(db, "WITH assets AS (SELECT asset FROM paper_balances WHERE account_id=:a "
+                  "UNION SELECT asset FROM paper_ledger WHERE account_id=:a "
+                  "UNION SELECT start_asset FROM paper_cycles WHERE account_id=:a AND NOT settled) "
+                  "SELECT s.asset,COALESCE(b.available,0) AS available,COALESCE(b.reserved,0) AS reserved,COALESCE((SELECT sum(CASE WHEN "
                   "credit_scope='available' THEN amount ELSE -amount END) FROM paper_ledger l "
-                  "WHERE l.account_id=b.account_id AND l.asset=b.asset AND "
+                  "WHERE l.account_id=:a AND l.asset=s.asset AND "
                   "(debit_scope='available' OR credit_scope='available')),0) AS ledger_available,"
-                  "COALESCE((SELECT sum(starting) FROM paper_cycles c WHERE c.account_id=b.account_id "
-                  "AND c.start_asset=b.asset AND NOT settled),0) AS expected_reserved "
-                  "FROM paper_balances b WHERE b.account_id=:a", a=account).mappings().all()
+                  "COALESCE((SELECT sum(starting) FROM paper_cycles c WHERE c.account_id=:a "
+                  "AND c.start_asset=s.asset AND NOT settled),0) AS expected_reserved "
+                  "FROM assets s LEFT JOIN paper_balances b ON b.account_id=:a AND b.asset=s.asset "
+                  "ORDER BY s.asset", a=account).mappings().all()
     checks = [{"asset": r["asset"], "available_difference": str(r["available"]-r["ledger_available"]),
                "reservation_difference": str(r["reserved"]-r["expected_reserved"])} for r in rows]
     return {"mode": "paper", "balanced": all(Decimal(r["available_difference"]) == 0 and
@@ -256,7 +283,7 @@ def reconciliation(account: str, db: DB):
 
 
 @router.get("/{account}/valuation")
-def valuation(account: str, db: DB):
+def valuation(account: str, db: ReadDB):
     row = _account(db, account)
     start_asset = row["config"]["start_asset"]
     actual = {r["asset"]: r["available"] for r in _query(db,

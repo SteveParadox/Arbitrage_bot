@@ -63,7 +63,7 @@ def api(tmp_path_factory):
             process.wait(timeout=10)
 
 
-def fixture(directory, *, fail=False, partial=False, adverse=False):
+def fixture(directory, *, fail=False, partial=False, adverse=False, losing=False):
     subprocess.run([sys.executable, str(ROOT/"scripts/make_observer_replay.py"), str(directory)],
                    env={**os.environ, "PYTHONPATH": str(ROOT/"python")}, check=True,
                    capture_output=True)
@@ -98,24 +98,43 @@ def fixture(directory, *, fail=False, partial=False, adverse=False):
                               asks=[{"price": .05, "quantity": 10}], update_id=30,
                               sequence=30, is_snapshot=True)
         events.insert(-1, move)
+    if losing:
+        # Positive admission edge, followed by an adverse final-leg move within
+        # the unchanged 0.1% IOC cap. Prediction buffers are explicitly zero in
+        # this fixture; all three actual taker fees remain enabled.
+        for event in events:
+            if event["event"].get("symbol") == "ETHUSDT":
+                event["event"]["bids"] = [{"price": 5.018, "quantity": 100}]
+        move = json.loads(json.dumps(events[-2]))
+        move["wait_for_paper_leg"] = 3
+        move["delay_ms"] = 20
+        move["event"].update(bids=[{"price": 5.013, "quantity": 100}],
+                              update_id=30, sequence=30, is_snapshot=True)
+        events = events[:-1] + [move]
+        profitability = json.loads((ROOT/"shared/config/profitability.json").read_text())
+        for key in ("expected_slippage_bps", "latency_buffer_bps", "safety_margin_bps"):
+            profitability[key] = "0"
+        (directory/"profitability.json").write_text(json.dumps(profitability))
     path.write_text("".join(json.dumps(e)+"\n" for e in events))
     config = json.loads((ROOT/"shared/config/scanner.json").read_text())
     config["start_amounts"] = {"USDT": 100.0}
-    if adverse or partial:
+    if adverse or partial or losing:
         config["max_book_skew_ms"] = 1000
+    if losing:
+        config["profitability_config_path"] = str(directory/"profitability.json")
     (directory/"scanner.json").write_text(json.dumps(config))
     return path
 
 
-def start_engine(directory, account, *, crash=None, fail=False, partial=False, risk_config=None, adverse=False, port=55053, expect_ready=True):
-    path = fixture(directory, fail=fail, partial=partial, adverse=adverse)
+def start_engine(directory, account, *, crash=None, fail=False, partial=False, risk_config=None, adverse=False, losing=False, port=55053, expect_ready=True):
+    path = fixture(directory, fail=fail, partial=partial, adverse=adverse, losing=losing)
     env = dict(os.environ, ARB_ENV="development", ARB_TRADING_MODE="paper",
                ARB_PAPER_TRADING_ENABLED="true", ARB_LIVE_TRADING_ENABLED="false",
                ARB_PAPER_ACCOUNT=account, ARB_ENGINE_AUTOSTART="true",
                ARB_ENGINE_GRPC_ADDR=f"127.0.0.1:{port}",
                ARB_ENGINE_GRPC_TOKEN="paper-test-internal-token-0123456789",
                ARB_OBSERVER_REPLAY_FILE=str(path), ARB_TRIANGLE_CONFIG=str(directory/"triangles.json"),
-               ARB_SCANNER_CONFIG=str(directory/"scanner.json"), ARB_PAPER_LATENCY_MS="200" if adverse or partial else "50",
+               ARB_SCANNER_CONFIG=str(directory/"scanner.json"), ARB_PAPER_LATENCY_MS="200" if adverse or partial or losing else "50",
                ARB_EVENT_OUTBOX_PATH=str(directory/"outbox"), ARB_OBSERVER_LOCK=str(directory/"observer.lock"),
                ARB_GRPC_IDEMPOTENCY_STORE=str(directory/"commands"),
                ARB_EVENT_STREAM="arb.paper.integration.api",
@@ -127,7 +146,7 @@ def start_engine(directory, account, *, crash=None, fail=False, partial=False, r
         # Each test owns its global controls, as well as its account ledger.
         # Never inherit another test's emergency-stop file through the shell.
         config = json.loads((ROOT/"shared/config/risk.json").read_text())
-        if partial:
+        if partial or losing:
             # Keep the books fresh for barrier-controlled IOC/unwind latency.
             config["max_market_data_age_ms"] = 2000
             config["emergency_max_market_data_age_ms"] = 2000
@@ -181,6 +200,9 @@ def stop(process, log):
 
 
 def check_ledger(account):
+    from paper_reference import read_snapshot, verify
+    with psycopg.connect(URL) as connection:
+        verify(read_snapshot(connection, account))
     balances = sql("SELECT asset,available,reserved FROM paper_balances WHERE account_id=%s", (account,))
     for asset, available, reserved in balances:
         assert available >= 0 and reserved >= 0
@@ -282,6 +304,24 @@ def test_mutation_auth_and_request_conflicts(api):
     command["amount"] = "600"
     assert api.post("/paper/accounts", json=command).status_code == 409
     assert api.post(f"/paper/{account}/control/start", json={"request_id": "start", "reason": "test"}).status_code == 409
+
+
+def test_completed_cycle_reports_realized_loss(api, tmp_path):
+    account = "loss-" + uuid.uuid4().hex[:12]
+    create(api, account)
+    process, log = start_engine(tmp_path, account, losing=True)
+    try:
+        enable(api, account)
+        wait(lambda: sql("SELECT id FROM paper_cycles WHERE account_id=%s AND settled", (account,)))
+        cycle = api.get(f"/paper/{account}/cycles").json()[0]
+        assert cycle["state"] == "COMPLETED", cycle
+        assert Decimal(cycle["realized_pnl"]) == Decimal("-0.04048")
+        orders = api.get(f"/paper/{account}/orders").json()
+        assert len(orders) == 3 and all(o["result"]["status"] == "Filled" for o in orders)
+        assert Decimal(api.get(f"/paper/{account}/performance").json()["net_realized_pnl"]) == Decimal("-0.04048")
+        check_ledger(account)
+    finally:
+        stop(process, log)
 
 
 @pytest.mark.parametrize("checkpoint", ["before_reservation", "after_reservation", "after_intent",
@@ -542,3 +582,36 @@ def test_restart_during_partial_fill_and_unwind_preserves_inventory(api, tmp_pat
         check_ledger(account)
     finally:
         stop(process, log)
+
+
+def test_missing_balance_blocks_runtime_recovery(api, tmp_path):
+    account = "missing-" + uuid.uuid4().hex[:12]
+    create(api, account)
+    sql("DELETE FROM paper_balances WHERE account_id=%s", (account,))
+    process, log = start_engine(tmp_path, account, expect_ready=False)
+    try:
+        process.wait(timeout=10)
+        assert process.returncode != 0
+        assert sql("SELECT blocked,enabled FROM paper_accounts WHERE id=%s", (account,))[0] == (True, False)
+        assert not api.get(f"/paper/{account}/reconciliation").json()["balanced"]
+        assert not api.get(f"/paper/{account}/orders").json()
+    finally:
+        stop(process, log)
+
+
+def test_reservation_lock_wait_is_bounded_and_rolls_back(api, tmp_path):
+    account = "locked-" + uuid.uuid4().hex[:12]
+    create(api, account)
+    fixture(tmp_path)
+    sql("UPDATE paper_accounts SET enabled=true WHERE id=%s", (account,))
+    with psycopg.connect(URL) as connection:
+        connection.execute("SELECT id FROM paper_accounts WHERE id=%s FOR UPDATE", (account,))
+        result = subprocess.run([str(ROOT/"rust/target/debug/reservation_probe"), account, "0",
+                                 str(tmp_path/"triangles.json"), "reserve", account+"-cycle"],
+                                cwd=ROOT, capture_output=True, text=True, timeout=5,
+                                env={**os.environ, "ARB_ENV": "development", "ARB_TRADING_MODE": "paper",
+                                     "ARB_PAPER_TRADING_ENABLED": "true", "ARB_LIVE_TRADING_ENABLED": "false"})
+        assert result.returncode != 0
+        assert "lock timeout" in result.stderr
+    assert not api.get(f"/paper/{account}/cycles").json()
+    assert sql("SELECT available,reserved FROM paper_balances WHERE account_id=%s", (account,))[0] == (Decimal(500), Decimal(0))

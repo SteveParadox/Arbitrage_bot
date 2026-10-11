@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { API_URL } from "./api";
 import { validatePaperStatus, type PaperStatus } from "./paperContracts";
 
@@ -24,8 +24,10 @@ export function PaperPanel() {
   const [valuation, setValuation] = useState<Valuation | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
     if (!connected) return;
+    const generation = ++refreshGeneration.current;
     try {
       const get = async (path: string) => {
         const response = await fetch(`${API_URL}/paper/${encodeURIComponent(account)}/${path}`, {
@@ -35,17 +37,20 @@ export function PaperPanel() {
         return response.json();
       };
       const [s, c, o, e, p, v] = await Promise.all([get("status"), get("cycles"), get("orders"), get("events"), get("performance"), get("valuation")]);
-      setStatus(validatePaperStatus(s));
+      if (generation !== refreshGeneration.current) return;
+      const validatedStatus = validatePaperStatus(s);
       if (!Array.isArray(c) || !Array.isArray(o) || !Array.isArray(e)) throw new Error("Invalid paper activity response");
       if (p.mode !== "paper" || p.simulated !== true || typeof p.net_realized_pnl !== "string") throw new Error("Invalid paper performance response");
       if (v.mode !== "paper" || v.simulated !== true || (typeof v.estimated_equity !== "string" && v.estimated_equity !== null)) throw new Error("Invalid paper valuation response");
+      setStatus(validatedStatus);
       setValuation(v);
       setPerformance(p); setCycles(c); setOrders(o); setEvents(e); setError("");
-    } catch (e) { setError(e instanceof Error ? e.message : "Paper API unavailable"); setStatus(null); }
+    } catch (e) { if (generation === refreshGeneration.current) { setError(e instanceof Error ? e.message : "Paper API unavailable"); setStatus(null); } }
   }, [account, token, connected]);
   useEffect(() => {
+    const generation = refreshGeneration;
     void refresh(); const interval = window.setInterval(() => void refresh(), 2000);
-    return () => window.clearInterval(interval);
+    return () => { window.clearInterval(interval); ++generation.current; };
   }, [refresh]);
   async function command(action: "start" | "stop") {
     setBusy(true);

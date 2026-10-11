@@ -47,3 +47,21 @@ it("validates the status emitted by the real-service autonomous replay", () => {
   expect(emitted.active_cycles).toBe(0);
   expect(emitted.pending_orders).toBe(0);
 });
+
+it("does not restore an account after disconnecting with a refresh in flight", async () => {
+  let resolveStatus: (value: unknown) => void = () => {};
+  const pending = new Promise(resolve => { resolveStatus = resolve; });
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => ({ ok: true, json: async () =>
+    url.endsWith("status") ? pending : url.endsWith("performance") ?
+      { mode: "paper", simulated: true, net_realized_pnl: "0" } : url.endsWith("valuation") ?
+      { mode: "paper", simulated: true, estimated_equity: "500" } : [] })));
+  render(<PaperPanel />);
+  fireEvent.click(screen.getByText("Connect paper account"));
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBe(6));
+  fireEvent.click(screen.getByText("Disconnect"));
+  resolveStatus({ ...status, authorized: false });
+  await waitFor(() => expect(screen.queryByText("Start paper trading")).toBeNull());
+  // Let every completion handler run before checking for stale controls.
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(screen.queryByText("Start paper trading")).toBeNull();
+});

@@ -99,13 +99,24 @@ impl PaperBooks {
     pub async fn update(&self, u: BookUpdate) -> Result<()> {
         let symbol = u.symbol.clone();
         let mut b = self.0.lock().await;
+        // A delta supplies new evidence only for the price levels it contains.
+        // An update to bids must not restore previously consumed asks (or vice versa).
+        let refreshed = u
+            .bids
+            .iter()
+            .map(|l| (OrderSide::Sell, l.price))
+            .chain(u.asks.iter().map(|l| (OrderSide::Buy, l.price)))
+            .map(|(side, price)| Ok(format!("{side:?}:{}", decimal(price)?)))
+            .collect::<Result<Vec<_>>>()?;
+        let snapshot = u.is_snapshot || u.update_id == 1;
         b.engine.apply(u)?;
-        let v = b.engine.top_n(&symbol, 1)?;
-        let version = format!("{symbol}:{}:{}:{}", v.timestamp, v.update_id, v.sequence);
-        let prefix = format!("{symbol}:");
-        // Retire only evidence for superseded books, never forget consumption of a current book.
-        b.consumed
-            .retain(|key, _| !key.starts_with(&prefix) || key == &version);
+        if snapshot {
+            b.consumed.remove(&symbol);
+        } else if let Some(consumed) = b.consumed.get_mut(&symbol) {
+            for key in refreshed {
+                consumed.remove(&key);
+            }
+        }
         Ok(())
     }
     async fn snapshot(&self, symbol: &str, side: OrderSide) -> Result<(Book, Instrument)> {
@@ -115,7 +126,7 @@ impl PaperBooks {
         }
         let v = b.engine.top_n(symbol, usize::MAX)?;
         let version = format!("{symbol}:{}:{}:{}", v.timestamp, v.update_id, v.sequence);
-        let consumed = b.consumed.get(&version);
+        let consumed = b.consumed.get(symbol);
         let levels = |levels: Vec<orderbook::PriceLevel>| -> Result<Vec<(Decimal, Decimal)>> {
             levels
                 .into_iter()
@@ -149,7 +160,12 @@ impl PaperBooks {
     }
     async fn consume(&self, book: &Book, side: OrderSide, result: &FillResult) {
         let mut b = self.0.lock().await;
-        let c = b.consumed.entry(book.version.clone()).or_default();
+        let symbol = book.version.split(':').next().unwrap_or_default();
+        let Some(instrument) = b.instruments.get(symbol) else {
+            return;
+        };
+        let step = instrument.step;
+        let c = b.consumed.entry(symbol.into()).or_default();
         let mut left = result.quantity;
         let levels = if side == OrderSide::Buy {
             &book.asks
@@ -157,7 +173,8 @@ impl PaperBooks {
             &book.bids
         };
         for (p, q) in levels {
-            let take = left.min(*q);
+            // Matching executes complete lots; substep liquidity was never filled.
+            let take = floor(left.min(*q), step);
             *c.entry(format!("{side:?}:{p}")).or_default() += take;
             left -= take;
             if left == Decimal::ZERO {
@@ -787,6 +804,104 @@ impl RiskIntentProvider for Provider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn settings() -> MatchSettings {
+        MatchSettings {
+            fee_rate: Decimal::ZERO,
+            latency_ms: 0,
+            max_age_ms: 1000,
+            timeout_ms: 1000,
+            slippage_percent: Decimal::from(20),
+        }
+    }
+    async fn books(asks: Vec<(f64, f64)>) -> PaperBooks {
+        let books = PaperBooks::default();
+        books.0.lock().await.instruments.insert(
+            "TEST".into(),
+            Instrument {
+                base: "B".into(),
+                quote: "A".into(),
+                step: Decimal::new(1, 3),
+                quote_step: Decimal::new(1, 5),
+                tick: Decimal::ONE,
+                min_amount: Decimal::ZERO,
+                max_quantity: Decimal::from(100),
+                timestamp: 1000,
+            },
+        );
+        books
+            .update(BookUpdate {
+                symbol: "TEST".into(),
+                bids: vec![orderbook::PriceLevel {
+                    price: 9.0,
+                    quantity: 10.0,
+                }],
+                asks: asks
+                    .into_iter()
+                    .map(|(price, quantity)| orderbook::PriceLevel { price, quantity })
+                    .collect(),
+                timestamp: 1000,
+                update_id: 1,
+                sequence: 1,
+                is_snapshot: true,
+            })
+            .await
+            .unwrap();
+        books.ready(true).await;
+        books
+    }
+    #[tokio::test]
+    async fn unrelated_delta_does_not_replenish_consumed_liquidity() {
+        let books = books(vec![(10.0, 2.0), (11.0, 4.0)]).await;
+        let (book, instrument) = books.snapshot("TEST", OrderSide::Buy).await.unwrap();
+        let fill = match_order(
+            &book,
+            &instrument,
+            OrderSide::Buy,
+            Decimal::ONE,
+            Decimal::from(100),
+            &settings(),
+            1000,
+        )
+        .unwrap();
+        books.consume(&book, OrderSide::Buy, &fill).await;
+        books
+            .update(BookUpdate {
+                symbol: "TEST".into(),
+                bids: vec![orderbook::PriceLevel {
+                    price: 9.0,
+                    quantity: 3.0,
+                }],
+                asks: vec![],
+                timestamp: 1001,
+                update_id: 2,
+                sequence: 2,
+                is_snapshot: false,
+            })
+            .await
+            .unwrap();
+        let (book, _) = books.snapshot("TEST", OrderSide::Buy).await.unwrap();
+        assert_eq!(book.asks[0].1, Decimal::ONE);
+    }
+    #[tokio::test]
+    async fn consumption_uses_executed_lots_not_substep_dust() {
+        let books = books(vec![(10.0, 0.0005), (11.0, 2.0)]).await;
+        let (book, instrument) = books.snapshot("TEST", OrderSide::Buy).await.unwrap();
+        let fill = match_order(
+            &book,
+            &instrument,
+            OrderSide::Buy,
+            Decimal::new(1, 3),
+            Decimal::from(100),
+            &settings(),
+            1000,
+        )
+        .unwrap();
+        assert_eq!(fill.price, Some(Decimal::from(11)));
+        books.consume(&book, OrderSide::Buy, &fill).await;
+        let (book, _) = books.snapshot("TEST", OrderSide::Buy).await.unwrap();
+        assert_eq!(book.asks[0].1, Decimal::new(5, 4));
+        assert_eq!(book.asks[1].1, Decimal::new(1999, 3));
+    }
     #[test]
     fn confirmed_global_stop_remains_a_paper_exposure_gate() {
         let control =

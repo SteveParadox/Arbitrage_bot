@@ -82,6 +82,12 @@ impl Ledger {
         let mut config: tokio_postgres::Config =
             url.replace("postgresql+psycopg:", "postgresql:").parse()?;
         config.application_name(format!("paper:{account}"));
+        config.connect_timeout(std::time::Duration::from_secs(3));
+        // Database contention must fail closed instead of hanging the dispatcher
+        // and graceful shutdown indefinitely. Server-side limits also roll back writes.
+        let options = format!("{} -c lock_timeout=2000 -c statement_timeout=5000 -c idle_in_transaction_session_timeout=10000",
+                              config.get_options().unwrap_or_default());
+        config.options(options);
         let (client, connection) = config.connect(NoTls).await?;
         tokio::spawn(async move {
             if let Err(e) = connection.await {
@@ -766,7 +772,7 @@ impl Ledger {
             &[&self.account],
         )
         .await?;
-        let rows=tx.query("SELECT b.asset,b.available::text,COALESCE((SELECT sum(CASE WHEN credit_scope='available' THEN amount ELSE -amount END) FROM paper_ledger l WHERE l.account_id=b.account_id AND l.asset=b.asset AND (debit_scope='available' OR credit_scope='available')),0)::text,b.reserved::text,COALESCE((SELECT sum(starting) FROM paper_cycles c WHERE c.account_id=b.account_id AND c.start_asset=b.asset AND NOT settled),0)::text FROM paper_balances b WHERE b.account_id=$1",&[&self.account]).await?;
+        let rows=tx.query("WITH assets AS (SELECT asset FROM paper_balances WHERE account_id=$1 UNION SELECT asset FROM paper_ledger WHERE account_id=$1 UNION SELECT start_asset FROM paper_cycles WHERE account_id=$1 AND NOT settled) SELECT s.asset,COALESCE(b.available,0)::text,COALESCE((SELECT sum(CASE WHEN credit_scope='available' THEN amount ELSE -amount END) FROM paper_ledger l WHERE l.account_id=$1 AND l.asset=s.asset AND (debit_scope='available' OR credit_scope='available')),0)::text,COALESCE(b.reserved,0)::text,COALESCE((SELECT sum(starting) FROM paper_cycles c WHERE c.account_id=$1 AND c.start_asset=s.asset AND NOT settled),0)::text FROM assets s LEFT JOIN paper_balances b ON b.account_id=$1 AND b.asset=s.asset ORDER BY s.asset",&[&self.account]).await?;
         let mut discrepancies = vec![];
         for r in rows {
             if d(r.get(1))? != d(r.get(2))? || d(r.get(3))? != d(r.get(4))? {
