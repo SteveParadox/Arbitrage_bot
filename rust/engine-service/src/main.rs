@@ -28,6 +28,7 @@ use uuid::Uuid;
 
 mod idempotency;
 mod observer;
+mod paper_runtime;
 
 pub mod proto {
     tonic::include_proto!("arbitrage.engine.v1");
@@ -1007,8 +1008,8 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Observation is part of the managed engine process. It never dispatches
-    // exchange orders; execution requires a separate, durable safety pipeline.
+    // Managed public observation optionally dispatches to the durable paper-only pipeline.
+    // No exchange order adapter is reachable from autonomous startup.
     let observer_enabled = env::var("ARB_ENGINE_AUTOSTART")
         .unwrap_or_else(|_| "false".into())
         .parse::<bool>()

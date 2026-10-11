@@ -26,10 +26,18 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::warn;
 
 pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublisher) -> Result<()> {
-    validate_read_only_mode(
-        std::env::var("ARB_TRADING_MODE").ok().as_deref(),
-        std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
-    )?;
+    let paper_mode = std::env::var("ARB_TRADING_MODE").as_deref() == Ok("paper");
+    if !paper_mode {
+        validate_read_only_mode(
+            std::env::var("ARB_TRADING_MODE").ok().as_deref(),
+            std::env::var("ARB_LIVE_TRADING_ENABLED").ok().as_deref(),
+        )?;
+    }
+    let mut paper = if paper_mode {
+        Some(super::paper_runtime::Runtime::start(&repo_root, events.clone()).await?)
+    } else {
+        None
+    };
     let lock_path = configured_path(
         &repo_root,
         "ARB_OBSERVER_LOCK",
@@ -45,6 +53,20 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
     lock.try_lock_exclusive()
         .context("another managed observer is running")?;
     let routes = load_triangle_config(&triangle_path)?;
+    if paper_mode {
+        let generated = chrono::DateTime::parse_from_rfc3339(
+            routes
+                .generated_at
+                .as_deref()
+                .context("paper catalog requires generation timestamp")?,
+        )?;
+        let age = chrono::Utc::now()
+            .signed_duration_since(generated)
+            .num_seconds();
+        if !(0..=86400).contains(&age) {
+            bail!("paper catalog expired or future-dated; regenerate before startup");
+        }
+    }
     let required = routes.required_symbols();
     if required.is_empty() {
         bail!("observation autostart requires at least one configured triangle");
@@ -59,6 +81,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             .with_context(|| format!("reading {}", scanner_path.display()))?,
     )?;
     settings.validate().map_err(|error| anyhow!(error))?;
+    if let Some(p) = &paper {
+        p.books.set_skew_limit(settings.max_book_skew_ms).await?;
+    }
     let profitability_path = configured_path(
         &repo_root,
         "ARB_PROFITABILITY_CONFIG",
@@ -111,9 +136,11 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             signal = tokio::signal::ctrl_c() => {
                 signal?;
                 publish_health(&events, "offline", "observer shutdown", lifecycle.generation);
+                if let Some(runtime) = paper.take() { runtime.shutdown().await?; }
                 return Ok(());
             }
             _ = health_tick.tick() => {
+                if paper.as_ref().is_some_and(|p|p.is_finished()) { bail!("paper worker ended; managed restart required"); }
                 let now = now_ms();
                 if lifecycle.connected && !lifecycle.recovering && lifecycle.metadata.values().any(|m| !metadata_fresh(m.timestamp, now)) {
                     lifecycle.invalidate(); scanner.reset_books(); receipts.clear(); feed_health = Value::Null;
@@ -123,6 +150,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                 let ready = observer_ready(&lifecycle, &routes, &required, &scanner,
                     &receipts, &feed_health, now, settings.max_book_age_ms);
                 if state == "scanning" && !ready { state = "stale"; reason = "readiness expired".into(); }
+                if let Some(p) = &paper { p.books.ready(ready).await; }
                 publish_health(&events, state, &reason, lifecycle.generation);
                 continue;
             }
@@ -140,6 +168,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
         };
         if let MarketDataEvent::Status(status) = event.as_ref() {
             if status.state == "connecting" && generation > lifecycle.generation {
+                if let Some(p) = &paper {
+                    p.books.reset().await;
+                }
                 lifecycle.begin(generation);
                 scanner.reset_books();
                 receipts.clear();
@@ -155,6 +186,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
             MarketDataEvent::Instrument(instrument) => {
                 if lifecycle.recovering {
                     continue;
+                }
+                if let Some(p) = &paper {
+                    p.books.instrument(&instrument).await?;
                 }
                 if let Err(error) = validate_instrument(&routes, &instrument) {
                     lifecycle.metadata.remove(&instrument.symbol);
@@ -177,6 +211,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                         state = "synchronizing";
                     }
                     "reconnecting" | "metadata_retry" | "disconnected" => {
+                        if let Some(p) = &paper {
+                            p.books.reset().await;
+                        }
                         lifecycle.invalidate();
                         scanner.reset_books();
                         receipts.clear();
@@ -220,6 +257,9 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     "required observation dependencies incomplete or stale"
                 }
                 .into();
+                if let Some(p) = &paper {
+                    p.books.ready(ready).await;
+                }
                 events.publish("market.health", feed_health.clone());
             }
             MarketDataEvent::OrderBook {
@@ -238,7 +278,7 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     continue;
                 }
                 let receipt_symbol = symbol.clone();
-                let records = match scanner.on_book_update(BookUpdate {
+                let update = BookUpdate {
                     symbol,
                     bids,
                     asks,
@@ -246,9 +286,16 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     update_id,
                     sequence,
                     is_snapshot,
-                }) {
+                };
+                if let Some(p) = &paper {
+                    p.books.update(update.clone()).await?;
+                }
+                let records = match scanner.on_book_update(update) {
                     Ok(records) => records,
                     Err(error) => {
+                        if let Some(p) = &paper {
+                            p.books.reset().await;
+                        }
                         lifecycle.invalidate();
                         scanner.reset_books();
                         receipts.clear();
@@ -284,8 +331,28 @@ pub async fn run(triangle_path: PathBuf, repo_root: PathBuf, events: EventPublis
                     let (candidate_id, kind, payload) =
                         candidate_event(&record, &lifecycle.metadata)?;
                     events
-                        .publish_critical_at(candidate_id, kind, record.trigger_timestamp, payload)
+                        .publish_critical_at(
+                            candidate_id.clone(),
+                            kind,
+                            record.trigger_timestamp,
+                            payload,
+                        )
                         .map_err(|error| anyhow!("candidate journal unavailable: {error}"))?;
+                    if let Some(p) = &paper {
+                        p.books.ready(true).await;
+                        let route = routes
+                            .routes
+                            .iter()
+                            .find(|r| r.id == record.route_id)
+                            .context("candidate route absent")?
+                            .clone();
+                        if let Err(error) = p.dispatch(candidate_id.clone(), record, route) {
+                            events.publish_critical(
+                                "paper.dispatch_rejected",
+                                json!({"candidate_id":candidate_id,"reason":error.to_string()}),
+                            )?;
+                        }
+                    }
                 }
             }
             _ => {}
@@ -372,7 +439,23 @@ async fn replay_events(path: PathBuf, sender: mpsc::Sender<MarketDataEvent>) -> 
         if line.trim().is_empty() {
             continue;
         }
-        let event: MarketDataEvent = serde_json::from_str(&line)
+        let mut raw: Value = serde_json::from_str(&line)?;
+        if let Some(delay) = raw["delay_ms"].as_u64() {
+            if delay > 60_000 {
+                bail!("replay delay exceeds one minute");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+        }
+        if raw["replay_clock"] == true {
+            let now = now_ms();
+            raw["event"]["timestamp"] = json!(now);
+            if let Some(symbols) = raw["event"]["symbols"].as_object_mut() {
+                for value in symbols.values_mut() {
+                    value["exchange_timestamp_ms"] = json!(now);
+                }
+            }
+        }
+        let event: MarketDataEvent = serde_json::from_value(raw)
             .with_context(|| format!("invalid replay event at line {}", index + 1))?;
         sender
             .send(event)
@@ -393,7 +476,7 @@ impl Drop for ConnectorGuard {
     }
 }
 
-fn configured_path(root: &std::path::Path, name: &str, default: &str) -> PathBuf {
+pub(crate) fn configured_path(root: &std::path::Path, name: &str, default: &str) -> PathBuf {
     let path = PathBuf::from(std::env::var(name).unwrap_or_else(|_| default.into()));
     if path.is_absolute() {
         path
@@ -491,7 +574,7 @@ fn candidate_event(
             Some((
                 symbol.to_string(),
                 json!({"status":m.status,"base_coin":m.base_coin,"quote_coin":m.quote_coin,
-            "tick_size":m.tick_size,"qty_step":m.qty_step,"min_order_amt":m.min_order_amt,
+            "tick_size":m.tick_size,"qty_step":m.qty_step,"quote_precision":m.quote_precision,"min_order_amt":m.min_order_amt,
             "max_market_order_qty":m.max_market_order_qty}),
             ))
         })
@@ -610,6 +693,7 @@ mod tests {
             qty_step: Some(0.001),
             min_order_qty: None,
             min_order_amt: Some(5.),
+            quote_precision: Some(0.01),
             max_market_order_qty: Some(100.),
             timestamp: 1000,
         };

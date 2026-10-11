@@ -40,6 +40,17 @@ where
         config.validate()?;
         let events = EventPublisher::try_from_env("coordinator")
             .map_err(|error| CoordinatorError::InvalidConfig(error.to_string()))?;
+        Self::with_events(config, venue, planner, authorizer, events)
+    }
+
+    pub fn with_events(
+        config: CoordinatorConfig,
+        venue: V,
+        planner: P,
+        authorizer: A,
+        events: EventPublisher,
+    ) -> Result<Self, CoordinatorError> {
+        config.validate()?;
         Ok(Self {
             config,
             venue,
@@ -131,7 +142,11 @@ where
         validate_route(route, trade_id, starting_amount)?;
         self.events
             .publish_critical(
-                "trade.attempted",
+                if self.venue.is_paper() {
+                    "paper.trade.attempted"
+                } else {
+                    "trade.attempted"
+                },
                 json!({
                     "trade_id": trade_id,
                     "route_id": route.id.clone(),
@@ -678,7 +693,11 @@ where
                 ) =>
             {
                 self.events.publish_critical(
-                    "trade.executed",
+                    if self.venue.is_paper() {
+                        "paper.trade.executed"
+                    } else {
+                        "trade.executed"
+                    },
                     json!({
                         "trade_id": report.trade_id.clone(),
                         "route_id": report.route_id.clone(),
@@ -699,7 +718,11 @@ where
                 )
             }
             Ok(report) => self.events.publish_critical(
-                "trade.failed",
+                if self.venue.is_paper() {
+                    "paper.trade.failed"
+                } else {
+                    "trade.failed"
+                },
                 json!({
                     "trade_id": report.trade_id.clone(),
                     "route_id": report.route_id.clone(),
@@ -720,7 +743,11 @@ where
                 }),
             ),
             Err(error) => self.events.publish_critical(
-                "trade.failed",
+                if self.venue.is_paper() {
+                    "paper.trade.failed"
+                } else {
+                    "trade.failed"
+                },
                 json!({
                     "trade_id": trade_id,
                     "route_id": route.id.clone(),

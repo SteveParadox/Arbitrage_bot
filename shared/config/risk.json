@@ -16,5 +16,10 @@
   "state_file": "../../data/risk/risk_state.json",
   "emergency_max_market_data_age_ms": 2000,
   "trading_control_file": "../../data/control/trading_state.json",
-  "runtime_limits_file": "../../data/control/risk_limits.json"
+  "runtime_limits_file": "../../data/control/risk_limits.json",
+  "paper_portfolio_limits": {
+    "max_asset_exposure": "1000",
+    "max_drawdown": "50",
+    "max_consecutive_losses": 3
+  }
 }
