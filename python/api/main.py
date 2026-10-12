@@ -94,14 +94,18 @@ app.include_router(control_router)
 
 app.include_router(metrics_router)
 
-if settings.arb_env == "production":
-    from fastapi.exceptions import RequestValidationError
+
+async def safe_validation_error(_request, error):
+    # Neither input values nor sensitive field names belong in validation responses.
     from fastapi.responses import JSONResponse
 
-    @app.exception_handler(RequestValidationError)
-    async def safe_validation_error(_request, error):
-        # Pydantic inputs may include credentials; return location and category only.
-        return JSONResponse(
-            status_code=422,
-            content={"detail": [{"loc": e["loc"], "type": e["type"]} for e in error.errors()]},
-        )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": [{"loc": redact(e["loc"]), "type": e["type"]} for e in error.errors()]},
+    )
+
+
+if settings.arb_env == "production":
+    from fastapi.exceptions import RequestValidationError
+
+    app.add_exception_handler(RequestValidationError, safe_validation_error)

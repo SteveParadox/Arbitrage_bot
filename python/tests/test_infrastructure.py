@@ -131,3 +131,21 @@ def test_rendered_exception_logs_redact_synthetic_secret(monkeypatch):
         "test", logging.ERROR, "", 1, "request rejected: %s", (secret,), None
     )
     assert secret not in SafeFormatter("%(message)s").format(record)
+
+
+def test_validation_responses_redact_sensitive_locations(monkeypatch):
+    import asyncio
+    from api.main import safe_validation_error
+    from api.settings import settings
+
+    secret = "synthetic-validation-" + str(time.time_ns())
+    monkeypatch.setattr(settings, "arb_control_api_token", secret)
+
+    class Error:
+        def errors(self):
+            return [{"loc": ("body", secret), "type": "extra_forbidden", "input": secret}]
+
+    response = asyncio.run(safe_validation_error(None, Error()))
+    assert response.status_code == 422
+    assert secret.encode() not in response.body
+    assert b"[REDACTED]" in response.body

@@ -1,4 +1,4 @@
-# Standalone production stack; live trading remains disabled.
+# Standalone production deployment; live trading is never enabled here.
 name: arbitrage-production
 x-hardening:
   read_only: true
@@ -379,8 +379,6 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      engine-control:
-        condition: service_healthy
     healthcheck:
       test:
       - CMD
@@ -500,14 +498,15 @@ services:
     security_opt: *id002
     pids_limit: 128
     restart: 'no'
-    tmpfs: *id004
+    tmpfs:
+    - /tmp:rw,nosuid,nodev,size=1g
     logging: *id003
     build:
       context: ../..
       dockerfile: docker/Dockerfile.backup
     user: 10001:10001
-    mem_limit: 256m
-    cpus: 0.5
+    mem_limit: 2g
+    cpus: 1.0
     environment: *id007
     volumes:
     - ${ARB_SECRETS_DIR}/ca.pem:/run/secrets/ca.pem:ro

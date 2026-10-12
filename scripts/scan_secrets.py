@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 import re
 import subprocess
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +20,13 @@ def main():
     args = parser.parse_args()
     try:
         scan = subprocess.run(
-            ["detect-secrets", "scan", "--no-verify"],
+            [
+                "detect-secrets",
+                "scan",
+                "--no-verify",
+                "--exclude-files",
+                r"^scripts/secrets-baseline\.json$",
+            ],
             cwd=ROOT,
             stdin=subprocess.DEVNULL,
             capture_output=True,
@@ -31,6 +36,17 @@ def main():
         )
         result = json.loads(scan.stdout)
         baseline = json.loads((ROOT / "scripts/secrets-baseline.json").read_text())
+        # The baseline contains only reviewed metadata hashes, never secret values.
+        # Validate its shape before excluding that exact file from entropy scanning.
+        if set(baseline) != {"findings", "reviewed", "policy"}:
+            raise ValueError("invalid secret baseline schema")
+        for row in baseline["findings"]:
+            if set(row) != {"path", "type", "hashed_secret", "justification"}:
+                raise ValueError("invalid secret baseline entry")
+            if not re.fullmatch(r"[0-9a-f]{40}", row["hashed_secret"]):
+                raise ValueError("invalid secret baseline digest")
+            if not row["justification"] or not row["path"] or not row["type"]:
+                raise ValueError("invalid secret baseline metadata")
         allowed = {
             (row["path"], row["type"], row["hashed_secret"])
             for row in baseline["findings"]
