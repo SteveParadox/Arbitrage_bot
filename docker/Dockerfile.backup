@@ -1,0 +1,12 @@
+FROM postgres:16.15-bookworm AS tools
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libpq5 liblz4-1 libzstd1 && rm -rf /var/lib/apt/lists/*
+COPY --from=tools /usr/lib/postgresql/16/bin/pg_dump /usr/local/bin/pg_dump
+COPY --from=tools /usr/lib/postgresql/16/bin/pg_restore /usr/local/bin/pg_restore
+WORKDIR /app/python
+COPY python /app/python
+COPY scripts /app/scripts
+COPY shared /app/shared
+RUN pip install --no-cache-dir . && groupadd --gid 10001 arbitrage && useradd --uid 10001 --gid 10001 --no-create-home arbitrage
+USER 10001:10001
+ENTRYPOINT ["python","/app/scripts/backup_restore.py"]

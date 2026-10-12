@@ -1,0 +1,87 @@
+groups:
+- name: arbitrage.operational
+  rules:
+  - alert: TradingEngineUnavailable
+    expr: arb_engine_up == 0
+    for: 30s
+    labels: {severity: critical}
+    annotations: {summary: Engine heartbeat unavailable; new exposure must remain blocked}
+  - alert: DatabaseUnavailable
+    expr: arb_dependency_up{service="postgresql"} == 0
+    for: 15s
+    labels: {severity: critical}
+    annotations: {summary: Financial database probe failed}
+  - alert: RedisUnavailable
+    expr: arb_dependency_up{service="redis"} == 0
+    for: 30s
+    labels: {severity: critical}
+    annotations: {summary: Authenticated event transport unavailable}
+  - alert: FinancialIntegrityFailure
+    expr: arb_financial_integrity_ok == 0
+    for: 60s
+    labels: {severity: critical}
+    annotations: {summary: Independent financial proof failed or is stale}
+  - alert: UnknownExchangeOrder
+    expr: arb_unresolved_orders > 0 and arb_oldest_reservation_seconds > 60
+    for: 30s
+    labels: {severity: critical}
+    annotations: {summary: Unresolved order exposure exceeds policy; reconcile stable identities}
+  - alert: CapitalInconsistency
+    expr: arb_paper_capital < 0
+    labels: {severity: critical}
+    annotations: {summary: Simulated capital violated its nonnegative invariant}
+  - alert: CriticalEventPipelineFailure
+    expr: arb_event_pipeline_ok == 0
+    for: 30s
+    labels: {severity: critical}
+    annotations: {summary: Durable critical event publisher unhealthy}
+  - alert: StaleOrderBooks
+    expr: arb_scanner_ready == 0
+    for: 30s
+    labels: {severity: high}
+    annotations: {summary: Scanner lacks current synchronized market evidence}
+  - alert: RedisBacklogGrowing
+    expr: arb_redis_stream_backlog > 1000
+    for: 2m
+    labels: {severity: high}
+    annotations: {summary: Consumer backlog exceeds bounded policy}
+  - alert: TLSCertificateExpiry
+    expr: arb_tls_certificate_expiry_seconds < 1209600
+    for: 15s
+    labels: {severity: high}
+    annotations: {summary: TLS leaf expires within fourteen days or is invalid}
+  - alert: MemoryPressure
+    expr: arb_engine_resource{kind="rss_bytes"} > 429496729
+    for: 5m
+    labels: {severity: high}
+    annotations: {summary: Engine exceeds eighty percent of the 512 MiB envelope}
+  - alert: FileDescriptorPressure
+    expr: arb_engine_resource{kind="open_fds"} > 768
+    for: 2m
+    labels: {severity: high}
+    annotations: {summary: Unexpected file descriptor growth}
+  - alert: AuthenticationAnomalies
+    expr: sum(rate(arb_api_auth_failures_total[5m])) > 0.2
+    for: 2m
+    labels: {severity: medium}
+    annotations: {summary: Authentication failures increased}
+  - alert: BackupMissingOrStale
+    expr: arb_backup_age_seconds > 90000
+    for: 10m
+    labels: {severity: high}
+    annotations: {summary: No verified backup within twenty-five hours}
+  - alert: ReconciliationAgeExceeded
+    expr: arb_reconciliation_age_seconds > 60 and sum(arb_active_cycles{mode=~"live|testnet"}) > 0
+    for: 30s
+    labels: {severity: high}
+    annotations: {summary: Active exchange execution lacks recent reconciliation}
+  - alert: RecoveryRequired
+    expr: sum(arb_recovery_required_cycles) > 0
+    for: 30s
+    labels: {severity: critical}
+    annotations: {summary: Quarantined inventory requires reconciliation; never fabricate refunds}
+  - alert: MonitoringTargetUnavailable
+    expr: up{job="arbitrage"} == 0
+    for: 30s
+    labels: {severity: critical}
+    annotations: {summary: Protected metrics unavailable; readiness proof will expire}

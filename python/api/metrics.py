@@ -36,6 +36,7 @@ RECONCILIATION = Gauge(
     "arb_reconciliation_age_seconds", "Age of latest authenticated reconciliation"
 )
 UNRESOLVED = Gauge("arb_unresolved_orders", "Orders without confirmed terminal exchange evidence")
+RECOVERY = Gauge("arb_recovery_required_cycles", "Quarantined financial inventory", ["mode"])
 CYCLES = Gauge("arb_active_cycles", "Unsettled cycles", ["mode"])
 RESERVATION_AGE = Gauge(
     "arb_oldest_reservation_seconds", "Oldest unsettled paper or exchange cycle"
@@ -90,6 +91,7 @@ def refresh():
 
     now = time.time()
     database_ok = redis_ok = False
+    recovery_count = 0
     engine_ok = scanner_ok = publisher_ok = False
     t = time.monotonic()
     try:
@@ -115,6 +117,16 @@ def refresh():
                     if mode == "paper"
                     else "NOT settled AND account_id IN (SELECT id FROM execution_accounts WHERE mode=:mode)"
                 )
+                condition_recovery = "state='RECOVERY_REQUIRED'" + (
+                    ""
+                    if mode == "paper"
+                    else " AND account_id IN (SELECT id FROM execution_accounts WHERE mode=:mode)"
+                )
+                count = connection.execute(
+                    text(f"SELECT count(*) FROM {table} WHERE {condition_recovery}"), {"mode": mode}
+                ).scalar_one()
+                RECOVERY.labels(mode).set(count)
+                recovery_count += count
                 CYCLES.labels(mode).set(
                     connection.execute(
                         text(f"SELECT count(*) FROM {table} WHERE {condition}"), {"mode": mode}
@@ -253,7 +265,15 @@ def refresh():
         )
     except (ValueError, KeyError, TypeError):
         BACKUP_AGE.set(float("inf"))
-    ready = database_ok and redis_ok and engine_ok and scanner_ok and publisher_ok and balanced
+    ready = (
+        database_ok
+        and redis_ok
+        and engine_ok
+        and scanner_ok
+        and publisher_ok
+        and balanced
+        and recovery_count == 0
+    )
     atomic_json(
         settings.arb_monitoring_readiness_file,
         {

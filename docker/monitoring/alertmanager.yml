@@ -1,0 +1,15 @@
+global: {resolve_timeout: 5m}
+route:
+  receiver: operations
+  group_by: [alertname,job]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes: [{matchers: ['severity="critical"'], receiver: operations, repeat_interval: 1h}]
+receivers:
+  - name: operations
+    webhook_configs: [{url_file: /run/secrets/monitoring-webhook-url, send_resolved: true}]
+inhibit_rules:
+  - source_matchers: ['alertname="DatabaseUnavailable"']
+    target_matchers: ['alertname=~"FinancialIntegrityFailure|CriticalEventPipelineFailure|StaleOrderBooks|ReconciliationAgeExceeded"']
+    equal: [job]

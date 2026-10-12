@@ -1,0 +1,29 @@
+name: Extended offline reliability
+'on':
+  workflow_dispatch:
+    inputs:
+      profile:
+        type: choice
+        required: true
+        options: [extended, medium, long, restart, fault]
+        default: extended
+permissions: {contents: read}
+concurrency: {group: arbitrage-reliability, cancel-in-progress: false}
+jobs:
+  soak:
+    runs-on: ${{ inputs.profile == 'long' && fromJSON('["self-hosted","linux","arb-offline-soak"]') || 'ubuntu-24.04' }}
+    timeout-minutes: 1500
+    env: {ARB_LIVE_TRADING_ENABLED: 'false', CARGO_INCREMENTAL: '0', SOAK_PROFILE: '${{ inputs.profile }}'}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-16 redis-server
+      - run: python -m pip install -e 'python[dev]'
+      - run: cargo build --manifest-path rust/Cargo.toml --workspace
+      - run: python scripts/run_disposable_validation.py soak --profile "$SOAK_PROFILE" --output ci-evidence/soak
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: '${{ inputs.profile }}-reliability', path: ci-evidence, retention-days: 30}

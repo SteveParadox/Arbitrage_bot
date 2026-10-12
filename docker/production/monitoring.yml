@@ -1,0 +1,33 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.1
+    user: '65534:65534'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 384m
+    cpus: 0.5
+    restart: unless-stopped
+    command: [--config.file=/etc/prometheus/prometheus.yml,--storage.tsdb.path=/prometheus,--storage.tsdb.retention.time=48h,--storage.tsdb.retention.size=2GB]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    volumes: [prometheus:/prometheus, '../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro', '../monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro', '${ARB_SECRETS_DIR}/metrics-token-monitor:/run/secrets/metrics-token:ro']
+    ports: ['127.0.0.1:9090:9090']
+    networks: [private]
+    depends_on: {api: {condition: service_healthy}, alertmanager: {condition: service_started}}
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    user: '65534:65534'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+    command: [--config.file=/etc/alertmanager/alertmanager.yml,--storage.path=/alertmanager]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+    volumes: [alertmanager:/alertmanager, '../monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro', '${ARB_SECRETS_DIR}/monitoring-webhook-url:/run/secrets/monitoring-webhook-url:ro']
+    ports: ['127.0.0.1:9093:9093']
+    networks: [private,egress]
+volumes: {prometheus: {},alertmanager: {}}

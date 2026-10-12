@@ -1352,6 +1352,13 @@ where
     }
 }
 
+fn sensitive_header(value: &str) -> Result<reqwest::header::HeaderValue, ExecutionError> {
+    let mut header = reqwest::header::HeaderValue::from_str(value)
+        .map_err(|_| ExecutionError::Decode("invalid authentication header".into()))?;
+    header.set_sensitive(true);
+    Ok(header)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1441,11 +1448,4 @@ mod tests {
         }
         .is_retryable());
     }
-}
-
-fn sensitive_header(value: &str) -> Result<reqwest::header::HeaderValue, ExecutionError> {
-    let mut header = reqwest::header::HeaderValue::from_str(value)
-        .map_err(|_| ExecutionError::Decode("invalid authentication header".into()))?;
-    header.set_sensitive(true);
-    Ok(header)
 }

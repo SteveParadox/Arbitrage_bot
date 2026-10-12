@@ -137,9 +137,11 @@ def provision(directory, host, assign_owners):
         + "' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;\nGRANT CONNECT ON DATABASE arbitrage TO arb_runtime;\nGRANT USAGE ON SCHEMA public TO arb_runtime;\nALTER DEFAULT PRIVILEGES FOR ROLE arb_admin IN SCHEMA public GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO arb_runtime;\nALTER DEFAULT PRIVILEGES FOR ROLE arb_admin IN SCHEMA public GRANT USAGE,SELECT ON SEQUENCES TO arb_runtime;\n",
         999,
     )
+    write("metrics-token-monitor", (directory / "metrics-token").read_text(), 65534)
     write(
         "monitoring-webhook-url",
         "https://monitoring.invalid/replace-with-approved-receiver",
+        65534,
     )
     configuration = {
         "ARB_ENV": "production",

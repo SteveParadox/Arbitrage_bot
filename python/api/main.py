@@ -11,7 +11,7 @@ from api.autonomous_paper import router as autonomous_paper_router
 from api.execution import router as execution_router
 from api.control import router as control_router
 from api.event_consumer import EngineEventConsumer
-from api.logging import configure_logging
+from api.logging import configure_logging, redact
 from api.metrics import router as metrics_router
 from api.micro_live import router as micro_live_analytics_router
 from api.opportunities import router as opportunity_analytics_router
@@ -30,11 +30,19 @@ async def lifespan(_app: FastAPI):
     if settings.arb_env == "production":
         from analytics.db import get_engine
         from sqlalchemy import text
+
         def restricted_role():
             with get_engine().connect() as connection:
-                unsafe = connection.execute(text("SELECT rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname=current_user")).scalar_one()
+                unsafe = connection.execute(
+                    text(
+                        "SELECT rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname=current_user"
+                    )
+                ).scalar_one()
                 if unsafe:
-                    raise RuntimeError("production API requires a restricted PostgreSQL runtime role")
+                    raise RuntimeError(
+                        "production API requires a restricted PostgreSQL runtime role"
+                    )
+
         await asyncio.to_thread(restricted_role)
     consumer = EngineEventConsumer()
     task = asyncio.create_task(
@@ -73,6 +81,7 @@ if settings.arb_env == "production":
 def livez():
     return {"status": "alive"}
 
+
 app.include_router(opportunity_analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(autonomous_paper_router)
@@ -88,7 +97,11 @@ app.include_router(metrics_router)
 if settings.arb_env == "production":
     from fastapi.exceptions import RequestValidationError
     from fastapi.responses import JSONResponse
+
     @app.exception_handler(RequestValidationError)
     async def safe_validation_error(_request, error):
         # Pydantic inputs may include credentials; return location and category only.
-        return JSONResponse(status_code=422, content={"detail":[{"loc":e["loc"],"type":e["type"]} for e in error.errors()]})
+        return JSONResponse(
+            status_code=422,
+            content={"detail": [{"loc": e["loc"], "type": e["type"]} for e in error.errors()]},
+        )

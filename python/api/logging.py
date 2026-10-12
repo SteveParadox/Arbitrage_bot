@@ -23,7 +23,10 @@ def redact(value):
         secret = getattr(settings, name, "")
         if secret and len(secret) >= 8:
             secrets.append(secret)
-            password = urlsplit(secret).password
+            try:
+                password = urlsplit(secret).password
+            except ValueError:
+                password = None
             if password:
                 secrets.extend((password, unquote(password)))
     if isinstance(value, str):

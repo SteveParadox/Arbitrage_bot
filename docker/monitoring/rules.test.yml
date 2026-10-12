@@ -1,0 +1,21 @@
+rule_files: [alerts.yml]
+evaluation_interval: 15s
+tests:
+- interval: 15s
+  input_series: [{series: 'arb_dependency_up{service="postgresql"}', values: '0+0x8'}]
+  alert_rule_test:
+  - eval_time: 45s
+    alertname: DatabaseUnavailable
+    exp_alerts: [{exp_labels: {service: postgresql,severity: critical},exp_annotations: {summary: Financial database probe failed}}]
+- interval: 15s
+  input_series: [{series: arb_financial_integrity_ok, values: '0+0x20'}]
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: FinancialIntegrityFailure
+    exp_alerts: [{exp_labels: {severity: critical},exp_annotations: {summary: Independent financial proof failed or is stale}}]
+- interval: 15s
+  input_series: [{series: 'arb_tls_certificate_expiry_seconds{service="grpc"}', values: '3600+0x8'}]
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: TLSCertificateExpiry
+    exp_alerts: [{exp_labels: {service: grpc,severity: high},exp_annotations: {summary: TLS leaf expires within fourteen days or is invalid}}]

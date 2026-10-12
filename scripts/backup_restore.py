@@ -4,6 +4,7 @@ Never resumes execution. Restore requires an empty database and state directory.
 """
 
 from __future__ import annotations
+from datetime import UTC, datetime
 
 import argparse
 import hashlib
@@ -275,7 +276,9 @@ def backup(args):
 def restore(args):
     started = time.monotonic()
     secret = key(args.key_file)
-    if args.state.exists() and any(args.state.iterdir()):
+    if args.state.exists() and any(
+        p.is_symlink() or not p.is_dir() for p in args.state.rglob("*")
+    ):
         raise ValueError("restore state directory must be empty")
     with psycopg.connect(
         settings.arb_database_url.replace("postgresql+psycopg:", "postgresql:"),
@@ -367,7 +370,10 @@ def restore(args):
             {
                 "enabled": False,
                 "reason": "restore requires recovery and fresh authorization",
-                "updated_at_ms": int(time.time() * 1000),
+                "version": 1,
+                "updated_at": datetime.now(UTC).isoformat(),
+                "source": "disaster_recovery",
+                "request_id": None,
             },
         )
         with psycopg.connect(

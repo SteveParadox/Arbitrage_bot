@@ -1,4 +1,4 @@
-# Standalone production stack: do not merge the development Compose file.
+# Standalone production stack; live trading remains disabled.
 name: arbitrage-production
 x-hardening:
   read_only: true
@@ -52,6 +52,7 @@ x-environment: &id005
   ARB_BACKUP_STATUS_FILE: /app/data/observability/backup.json
   ARB_RISK_CONFIG: /app/shared/config/risk.json
   ARB_TRIANGLE_CONFIG: /app/data/catalog/triangles.json
+  BYBIT_TESTNET: 'false'
 services:
   initialize:
     image: busybox:1.37.0
@@ -179,7 +180,7 @@ services:
     user: 10001:10001
     mem_limit: 256m
     cpus: 0.5
-    environment:
+    environment: &id007
       ARB_ENV: production
       ARB_TRADING_MODE: ${ARB_TRADING_MODE:-observe}
       ARB_LIVE_TRADING_ENABLED: 'false'
@@ -228,9 +229,9 @@ services:
     - alembic
     - upgrade
     - head
-    networks:
+    networks: &id008
     - private
-    depends_on:
+    depends_on: &id009
       postgres:
         condition: service_healthy
   engine-control:
@@ -310,6 +311,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      catalog:
+        condition: service_completed_successfully
     healthcheck:
       test:
       - CMD-SHELL
@@ -319,6 +322,8 @@ services:
       timeout: 3s
       retries: 6
       start_period: 10s
+    stop_signal: SIGINT
+    stop_grace_period: 30s
   api:
     read_only: true
     cap_drop: *id001
@@ -393,7 +398,7 @@ services:
     restart: unless-stopped
     tmpfs: *id004
     logging: *id003
-    build:
+    build: &id006
       context: ../..
       dockerfile: docker/Dockerfile.python
     user: 10001:10001
@@ -458,6 +463,75 @@ services:
     depends_on:
       api:
         condition: service_healthy
+  catalog:
+    read_only: true
+    cap_drop: *id001
+    security_opt: *id002
+    pids_limit: 128
+    restart: 'no'
+    tmpfs: *id004
+    logging: *id003
+    build: *id006
+    user: 10001:10001
+    mem_limit: 256m
+    cpus: 0.5
+    networks:
+    - egress
+    environment:
+      BYBIT_TESTNET: 'false'
+    command:
+    - sh
+    - -ec
+    - python -m strategy.triangle_discovery --output /app/data/catalog/triangles.json
+      --start-assets USDT && python -c "import json; assert json.load(open('/app/data/catalog/triangles.json'))['routes'],
+      'no validated routes'"
+    volumes:
+    - type: volume
+      source: state
+      target: /app/data/catalog
+      volume:
+        subpath: catalog
+    depends_on:
+      initialize:
+        condition: service_completed_successfully
+  backup:
+    read_only: true
+    cap_drop: *id001
+    security_opt: *id002
+    pids_limit: 128
+    restart: 'no'
+    tmpfs: *id004
+    logging: *id003
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.backup
+    user: 10001:10001
+    mem_limit: 256m
+    cpus: 0.5
+    environment: *id007
+    volumes:
+    - ${ARB_SECRETS_DIR}/ca.pem:/run/secrets/ca.pem:ro
+    - ${ARB_SECRETS_DIR}/redis-url:/run/secrets/redis-url:ro
+    - ${ARB_SECRETS_DIR}/control-token:/run/secrets/control-token:ro
+    - ${ARB_SECRETS_DIR}/grpc-token:/run/secrets/grpc-token:ro
+    - ${ARB_SECRETS_DIR}/metrics-token:/run/secrets/metrics-token:ro
+    - ${ARB_SECRETS_DIR}/paper-grants.json:/run/secrets/paper-grants.json:ro
+    - ${ARB_SECRETS_DIR}/execution-grants.json:/run/secrets/execution-grants.json:ro
+    - ${ARB_SECRETS_DIR}/database-admin-url:/run/secrets/database-admin-url:ro
+    - ${ARB_SECRETS_DIR}/api.pem:/run/secrets/api.pem:ro
+    - ${ARB_SECRETS_DIR}/api.key:/run/secrets/api.key:ro
+    - ${ARB_SECRETS_DIR}/backup-key:/run/secrets/backup-key:ro
+    - state:/app/data
+    - backups:/backups
+    command:
+    - --help
+    networks: *id008
+    depends_on: *id009
+    profiles:
+    - operations
+    entrypoint:
+    - python
+    - /app/scripts/backup_restore.py
 volumes:
   postgres: {}
   redis: {}
