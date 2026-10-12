@@ -11,5 +11,10 @@
   "daemon_error": "operation not permitted creating daemon Unix socket; mount propagation also denied",
   "image_build": "NOT_RUN",
   "image_vulnerability_scan": "NOT_RUN",
-  "nonroot_volumes": "UNVERIFIED"
+  "nonroot_volumes": "UNVERIFIED",
+  "final_tmpfs_mount_regression": {
+    "status": "PASS",
+    "tests": 2,
+    "note": "Prior Compose model validation did not reject split mount options; new guard does. Hardened startup remains unverified."
+  }
 }

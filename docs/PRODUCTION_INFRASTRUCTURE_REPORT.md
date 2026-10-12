@@ -1,6 +1,6 @@
 # Production infrastructure implementation report
 
-Recorded 2026-10-12. Delivery: draft [PR #11](https://github.com/SteveParadox/Arbitrage_bot/pull/11), branch `codex/production-infrastructure-hardening`. Main inspected: `712b470896842eaa272ca2c2ad5f48e3ffa7f1bc`. Final source checkpoint: `364c7dc4576b006b1a7a4bdf58fba81609a4992e`, source tree `ba0b6ff77532079d9ab10cd2664910e78bd0f4b8`. Subsequent delivery changes are documentation/evidence and reviewed secret-scan metadata only. No migration was added by this infrastructure branch; existing migration roundtrip was tested.
+Recorded 2026-10-12. Delivery: draft [PR #11](https://github.com/SteveParadox/Arbitrage_bot/pull/11), branch `codex/production-infrastructure-hardening`. Main inspected: `712b470896842eaa272ca2c2ad5f48e3ffa7f1bc`. Final source checkpoint: `9369f491ae2cb047cc07ba707a15d35c57196388`, source tree `fbc95322a0e2d79c924d86b7a4d35d7671149b2a`. Subsequent delivery changes are documentation/evidence and reviewed secret-scan metadata only. The final checkpoint also corrects split tmpfs mount options; two structural regressions passed. No migration was added by this infrastructure branch; existing migration roundtrip was tested.
 
 **Production acceptance is incomplete. Do not merge or activate real-money execution on this evidence.** No exchange orders were placed. Live is false in deployment configurations. Repeated workspace resets and an execution-service disconnect removed temporary tools and raw integration logs. The summary evidence records actual observed results; it is not a substitute for preserved raw artifacts or final-head service-level reruns.
 
@@ -29,6 +29,7 @@ Existing observer, scanner, risk, coordinator, Bybit client, ledgers, virtual re
 | HIGH | Credential values could escape through headers, events or validation | Sensitive Rust headers; log/event sanitization; `api.main.safe_validation_error` omits input/context and redacts sensitive field locations | Final Python validation/log regressions passed |
 | MEDIUM | Failed market/catalog startup prevented operator API access | Production API startup no longer waits for engine health | Configuration correction; container behavior unverified |
 | MEDIUM | Restore control JSON did not match strict Rust schema | Correct version/updated_at/source/request_id fields | Real restore regression passed |
+| HIGH | YAML represented tmpfs options as separate invalid mount paths | Joined absolute mounts with bounded options and strengthened Compose guard | Two regression tests passed; actual Docker startup still blocked |
 | MEDIUM | Small backup scratch bound could reject real dumps | Explicit bounded 1 GiB tmpfs/2 GiB memory operations service | Configuration only; production dump capacity remains unmeasured |
 | MEDIUM | Secret baseline entropy recursively flagged its own digests | Validate metadata schema and exclude only that exact metadata file; exact reviewed path/type/hash exceptions | Final detect-secrets 1.5.0 scan passed, 102 reviewed entries, no unexpected findings |
 
@@ -62,12 +63,12 @@ Counts below are separate runs and **must not be added**: overlapping tests appe
 | Ignored Rust event reliability | 3 | 0 | 0 | Explicitly executed in native full validator |
 | Production secure-services suite | 34 | 0 | 0 | 6.07 seconds; policy, 9 real TLS cases and 2 operations tests; overlaps full suite |
 | Focused final validation/security regression run | 60 | 0 | 0 | 1.10 seconds before reset; includes sensitive validation locations |
-| Final Python default suite | 246 | 0 | 164 | 1.46 seconds; raw log preserved; integration opt-ins unavailable after reset |
+| Final Python default suite | 248 | 0 | 164 | 1.35 seconds; raw log preserved; integration opt-ins unavailable after reset |
 | Final Python Ruff | Command success | 0 | 0 | Raw log preserved |
 | Frontend lint / build | Command success | 0 | 0 | Executed before reset; frontend source unchanged |
 | Frontend tests | 26 | 0 | 0 | Executed; raw log later lost |
 | Alert fixtures | 3 | 0 | 0 | Executed; 17 rules syntax-checked |
-| Final tracked-source secret scan | PASS | 0 unexpected findings | 102 exact reviewed exceptions | 4,899,294 history bytes; no committed private-key header detected |
+| Final tracked-source secret scan | PASS | 0 unexpected findings | 134 reviewed fixture/public-evidence exceptions in retained scan | 4,956,008 history bytes; no committed private-key header detected |
 
 One known Starlette/httpx deprecation warning remains. Rust dependency scan found no known vulnerability and an unmaintained rustls-pemfile advisory; Python 35-dependency runtime audit and npm audit found no known vulnerabilities in the executed scans. These are date-specific prior-run observations, not a final-head dependency certification. Container scans were not run.
 

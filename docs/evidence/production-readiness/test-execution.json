@@ -40,10 +40,10 @@
     },
     {
       "category": "final default Python",
-      "passed": 246,
+      "passed": 248,
       "failed": 0,
       "skipped": 164,
-      "seconds": 1.46
+      "seconds": 1.35
     },
     {
       "category": "frontend",
@@ -54,5 +54,12 @@
   "counts_overlap": true,
   "format_clippy_build": "PASS_OBSERVED_PRIOR_RUN; Rust source unchanged",
   "python_lint": "PASS final",
-  "frontend_lint_build": "PASS_OBSERVED_PRIOR_RUN; frontend unchanged"
+  "frontend_lint_build": "PASS_OBSERVED_PRIOR_RUN; frontend unchanged",
+  "final_default_tested_tree": "fbc95322a0e2d79c924d86b7a4d35d7671149b2a",
+  "final_default_source": "9369f491ae2cb047cc07ba707a15d35c57196388",
+  "tmpfs_regressions": {
+    "passed": 2,
+    "failed": 0,
+    "seconds": 0.04
+  }
 }
