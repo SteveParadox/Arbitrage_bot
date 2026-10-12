@@ -17,7 +17,9 @@ dependencies = [
   "alembic>=1.13,<2",
   "grpcio>=1.65,<2",
   "protobuf>=5.27,<7",
-  "redis>=5.0,<7"
+  "redis>=5.0,<7",
+  "prometheus-client>=0.26,<1",
+  "cryptography>=50.0.1,<51"
 ]
 
 [project.optional-dependencies]

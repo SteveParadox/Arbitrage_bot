@@ -13,6 +13,7 @@ from redis import Redis
 from starlette.responses import JSONResponse
 
 from api.settings import settings
+from api.infrastructure import redis_options
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ def require_paper_auth(request: Request) -> None:
 
 def _rate_count(identity: str) -> int:
     # One Redis transaction, one expiry, shared by all API workers.
-    client = Redis.from_url(settings.arb_redis_url, socket_timeout=.5, socket_connect_timeout=.5)
+    client = Redis.from_url(settings.arb_redis_url, **redis_options(settings))
     try:
         return client.eval("local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],60) end; return n",
                            1, "arb.api.rate:" + hashlib.sha256(identity.encode()).hexdigest())

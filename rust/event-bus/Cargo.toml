@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+infrastructure = { path = "../infrastructure" }
 redis = "0.27"
 serde.workspace = true
 serde_json = { version = "1", features = ["float_roundtrip"] }

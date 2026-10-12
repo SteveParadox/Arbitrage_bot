@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from api.settings import settings
+from api.infrastructure import postgres_options
 
 
 class Base(DeclarativeBase):
@@ -15,6 +16,10 @@ class Base(DeclarativeBase):
 def get_engine():
     return create_engine(
         settings.arb_database_url,
+        connect_args=postgres_options(settings),
+        pool_size=settings.arb_database_pool_size,
+        max_overflow=settings.arb_database_pool_overflow,
+        pool_timeout=settings.arb_database_pool_timeout,
         pool_pre_ping=True,
         pool_recycle=300,
     )

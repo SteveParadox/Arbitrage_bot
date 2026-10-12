@@ -907,7 +907,7 @@ impl EngineControlService {
     }
 }
 
-#[tokio::main]
+#[tokio::main(worker_threads = 4)]
 async fn main() -> Result<()> {
     security::initialize()?;
     tracing_subscriber::fmt()
@@ -917,7 +917,9 @@ async fn main() -> Result<()> {
         .json()
         .init();
 
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo_root = env::var("ARB_REPO_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
     let config = Arc::new(ServiceConfig {
         token: env::var("ARB_ENGINE_GRPC_TOKEN").unwrap_or_default(),
         master_live_enabled: env::var("ARB_LIVE_TRADING_ENABLED")
@@ -1033,7 +1035,29 @@ async fn main() -> Result<()> {
     });
 
     info!(%addr, "engine gRPC control service listening");
-    let server = Server::builder()
+    let mut server_builder = Server::builder();
+    let tls_fields = [
+        "ARB_ENGINE_GRPC_TLS_CA_CERT",
+        "ARB_ENGINE_GRPC_TLS_CERT",
+        "ARB_ENGINE_GRPC_TLS_KEY",
+    ];
+    if tls_fields.iter().any(|key| env::var(key).is_ok()) {
+        let mut bytes = Vec::new();
+        for (index, key) in tls_fields.iter().enumerate() {
+            let path = env::var(key).context("gRPC mutual TLS configuration incomplete")?;
+            bytes.push(infrastructure::read_file(
+                Path::new(&path),
+                index == 2,
+                1048576,
+            )?);
+        }
+        server_builder = server_builder.tls_config(
+            tonic::transport::ServerTlsConfig::new()
+                .identity(tonic::transport::Identity::from_pem(&bytes[1], &bytes[2]))
+                .client_ca_root(tonic::transport::Certificate::from_pem(&bytes[0])),
+        )?;
+    }
+    let server = server_builder
         .add_service(EngineControlServer::new(EngineControlService {
             config,
             events,

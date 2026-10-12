@@ -396,11 +396,13 @@ impl EventPublisher {
             ));
         }
 
-        let redis_client = redis::Client::open(config.redis_url.as_str()).map_err(|error| {
-            EventPublishError::new(format!(
-                "invalid ARB_REDIS_URL for event publisher: {error}"
-            ))
-        })?;
+        let redis_client =
+            infrastructure::redis_client(config.redis_url.as_str()).map_err(|error| {
+                EventPublishError::new(format!(
+                    "invalid event publisher transport: {}",
+                    infrastructure::redact_text(&error.to_string())
+                ))
+            })?;
         let outbox = Arc::new(Outbox::open(config.outbox_path.clone())?);
         let metrics = Arc::new(Metrics::new());
         let (sender, receiver) = sync_channel::<PublisherMessage>(config.capacity);
@@ -478,6 +480,8 @@ impl EventPublisher {
         occurred_at_ms: u64,
         payload: Value,
     ) -> Result<String, EventPublishError> {
+        let mut payload = payload;
+        infrastructure::redact_value(&mut payload);
         if event_id.trim().is_empty() || event_id.len() > 64 || !event_id.is_ascii() {
             return Err(EventPublishError::new(
                 "critical event_id must be non-empty ASCII text no longer than 64 bytes",
@@ -608,6 +612,8 @@ impl EventPublisher {
     }
 
     fn new_event(&self, event_type: &str, payload: Value) -> EngineEvent {
+        let mut payload = payload;
+        infrastructure::redact_value(&mut payload);
         EngineEvent {
             event_id: Uuid::new_v4().to_string(),
             event_type: event_type.to_string(),

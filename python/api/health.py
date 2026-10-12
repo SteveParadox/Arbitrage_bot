@@ -18,6 +18,7 @@ from api.event_consumer import consumer_metrics_snapshot
 from api.operations import _risk_status, _risk_config
 from api.runtime_control import read_control_state, read_stop_intent, confirm_stop
 from api.settings import settings
+from api.infrastructure import redis_options
 
 
 def _latest(db: Session, event_type: str):
@@ -149,8 +150,7 @@ async def _redis_status() -> dict[str, Any]:
     client = redis.from_url(
         settings.arb_redis_url,
         decode_responses=True,
-        socket_connect_timeout=0.5,
-        socket_timeout=0.5,
+        **redis_options(settings),
     )
     try:
         async with asyncio.timeout(1.0):

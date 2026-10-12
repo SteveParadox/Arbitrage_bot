@@ -29,7 +29,8 @@ pub async fn redis_ready() -> Result<()> {
     let url = std::env::var("ARB_REDIS_URL").context("paper requires Redis URL")?;
     tokio::task::spawn_blocking(move || -> Result<()> {
         let timeout = std::time::Duration::from_millis(200);
-        let mut connection = redis::Client::open(url)?.get_connection_with_timeout(timeout)?;
+        let mut connection =
+            infrastructure::redis_client(&url)?.get_connection_with_timeout(timeout)?;
         connection.set_read_timeout(Some(timeout))?;
         connection.set_write_timeout(Some(timeout))?;
         let pong: String = redis::cmd("PING").query(&mut connection)?;
