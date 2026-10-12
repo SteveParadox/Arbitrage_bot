@@ -33,10 +33,17 @@ struct ProductionConfig {
     database: String,
     redis: String,
     forbidden: bool,
+    testnet_enabled: bool,
 }
 fn validate(config: &ProductionConfig) -> Result<()> {
-    if config.live != "false" || !matches!(config.mode.as_str(), "paper" | "observe") {
-        bail!("production requires explicit paper/observe mode and live=false");
+    let valid_mode = match config.mode.as_str() {
+        "paper" | "observe" => config.live == "false" && !config.testnet_enabled,
+        "testnet" => config.live == "false" && config.testnet_enabled,
+        "live" => matches!(config.live.as_str(), "true" | "false") && !config.testnet_enabled,
+        _ => false,
+    };
+    if !valid_mode {
+        bail!("production execution mode and deployment flags inconsistent");
     }
     if config.forbidden {
         bail!("development replay/fault hooks and private exchange credentials forbidden in production");
@@ -66,6 +73,18 @@ pub fn initialize() -> Result<()> {
     for name in ["ARB_ENGINE_GRPC_TOKEN", "ARB_DATABASE_URL", "ARB_REDIS_URL"] {
         load_secret(name)?;
     }
+    let mode = env::var("ARB_TRADING_MODE").unwrap_or_else(|_| "observe".into());
+    let _: execution::ExecutionMode = mode.parse()?;
+    if matches!(mode.as_str(), "testnet" | "live") {
+        let prefix = if mode == "testnet" {
+            "BYBIT_TESTNET"
+        } else {
+            "BYBIT_LIVE"
+        };
+        for suffix in ["API_KEY", "API_SECRET"] {
+            load_secret(&format!("{prefix}_{suffix}"))?;
+        }
+    }
     let environment = env::var("ARB_ENV").unwrap_or_else(|_| "development".into());
     if !matches!(environment.as_str(), "development" | "test" | "production") {
         bail!("unknown deployment environment");
@@ -78,6 +97,9 @@ pub fn initialize() -> Result<()> {
             "ARB_PAPER_CRASH_AT",
             "ARB_PAPER_CRASH_AFTER_LEG",
             "ARB_TEST_GRPC_RESPONSE_DELAY_MS",
+            "ARB_EXECUTION_OFFLINE_MOCK",
+            "ARB_EXECUTION_MOCK_URL",
+            "ARB_EXECUTION_CRASH_AT",
         ]
         .iter()
         .any(|name| env::var(name).is_ok_and(|v| !v.is_empty()))
@@ -89,6 +111,7 @@ pub fn initialize() -> Result<()> {
             database: env::var("ARB_DATABASE_URL").unwrap_or_default(),
             redis: env::var("ARB_REDIS_URL").unwrap_or_default(),
             forbidden,
+            testnet_enabled: env::var("ARB_TESTNET_TRADING_ENABLED").as_deref() == Ok("true"),
         })?;
     }
     Ok(())
@@ -105,16 +128,21 @@ mod tests {
             database: "postgresql://runtime:strong-password-012345@db/paper".into(),
             redis: "redis://:strong-password-678901@cache/0".into(),
             forbidden: false,
+            testnet_enabled: false,
         }
     }
     #[test]
     fn production_fails_closed() {
         assert!(validate(&safe()).is_ok());
-        for mode in ["", "live", "testnet"] {
+        for mode in ["", "testnet"] {
             let mut c = safe();
             c.mode = mode.into();
             assert!(validate(&c).is_err());
         }
+        let mut testnet = safe();
+        testnet.mode = "testnet".into();
+        testnet.testnet_enabled = true;
+        assert!(validate(&testnet).is_ok());
         let mut c = safe();
         c.live = "true".into();
         assert!(validate(&c).is_err());

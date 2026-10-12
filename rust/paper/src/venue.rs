@@ -74,7 +74,7 @@ impl PaperBooks {
         if m.status != "Trading" {
             bail!("inactive instrument");
         }
-        let i = Instrument {
+        let mut i = Instrument {
             base: m.base_coin.clone(),
             quote: m.quote_coin.clone(),
             step: decimal(m.qty_step.context("basePrecision missing")?)?,
@@ -85,8 +85,21 @@ impl PaperBooks {
                 m.max_market_order_qty
                     .context("maxMarketOrderQty missing")?,
             )?,
+            max_limit_quantity: None,
             timestamp: m.timestamp,
         };
+        if let Some(exact) = &m.execution_filters {
+            i.step = Decimal::from_str_exact(&exact.base_precision)?;
+            i.quote_step = Decimal::from_str_exact(&exact.quote_precision)?;
+            i.tick = Decimal::from_str_exact(&exact.tick_size)?;
+            i.min_amount = Decimal::from_str_exact(&exact.min_order_amount)?;
+            i.max_quantity = Decimal::from_str_exact(&exact.max_market_quantity)?;
+            i.max_limit_quantity = exact
+                .max_limit_quantity
+                .as_deref()
+                .map(Decimal::from_str_exact)
+                .transpose()?;
+        }
         if i.step <= Decimal::ZERO
             || i.quote_step <= Decimal::ZERO
             || i.max_quantity <= Decimal::ZERO
@@ -119,7 +132,8 @@ impl PaperBooks {
         }
         Ok(())
     }
-    async fn snapshot(&self, symbol: &str, side: OrderSide) -> Result<(Book, Instrument)> {
+    /// One synchronized, read-only book and metadata snapshot for venue planning.
+    pub async fn snapshot(&self, symbol: &str, side: OrderSide) -> Result<(Book, Instrument)> {
         let b = self.0.lock().await;
         if !b.ready {
             bail!("scanner/subscription readiness unavailable");
@@ -669,6 +683,7 @@ impl PaperVenue {
                     order_id: r.order_link_id.clone(),
                     order_link_id: r.order_link_id.clone(),
                     symbol: r.symbol.clone(),
+                    side: Some(r.side),
                     status: result.status,
                     requested_quantity: result.requested,
                     filled_quantity: result.quantity,
@@ -834,6 +849,7 @@ mod tests {
                 tick: Decimal::ONE,
                 min_amount: Decimal::ZERO,
                 max_quantity: Decimal::from(100),
+                max_limit_quantity: None,
                 timestamp: 1000,
             },
         );

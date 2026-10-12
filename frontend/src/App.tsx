@@ -1,4 +1,5 @@
 import { PaperPanel } from "./PaperPanel";
+import { ExecutionPanel } from "./ExecutionPanel";
 import { ObserverState } from "./ObserverState";
 import { tradingState } from "./tradingState";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -815,6 +816,7 @@ export function App() {
 
 
       <PaperPanel />
+      <ExecutionPanel />
       <section className="analytics-section">
         <div className="section-heading">
           <div>

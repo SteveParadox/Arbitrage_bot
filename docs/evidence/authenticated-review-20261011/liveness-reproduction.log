@@ -1,0 +1,70 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_________ test_graceful_shutdown_immediately_revokes_runtime_liveness __________
+
+api = <httpx.Client object at 0x7fa0de7ce3c0>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-4/test_graceful_shutdown_immedia0')
+
+    def test_graceful_shutdown_immediately_revokes_runtime_liveness(api,tmp_path):
+        account="shutdown-"+uuid.uuid4().hex[:12]
+        create(api,account)
+        process,log=start_engine(tmp_path,account)
+        stop(process,log)
+        result=api.get(f"/paper/{account}/status")
+        assert result.status_code==200,result.text
+        response=api.post(f"/paper/{account}/control/start",json={"request_id":"post-shutdown","reason":"stopped worker must not be authorized"})
+>       assert response.status_code==409,response.text
+E       AssertionError: {"account_id":"shutdown-bb6e4b72e9b5","mode":"paper","enabled":true,"detail":"stop prevents new exposure; active cycle retains recovery policy"}
+E       assert 200 == 409
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_autonomous_paper.py:30: AssertionError
+__ test_terminal_runtime_state_is_offline_and_cannot_authorize_start[STOPPED] __
+
+api = (<httpx.Client object at 0x7fa0e001ddf0>, PosixPath('/tmp/pytest-of-root/pytest-4/exchange-api0'))
+state = 'STOPPED'
+
+    @pytest.mark.parametrize("state",["STOPPED","FAILED"])
+    def test_terminal_runtime_state_is_offline_and_cannot_authorize_start(api,state):
+        name=f"status_{state}-{PREFIX}"
+        client,_=api
+        provision(api,name,str(uuid.uuid4().int % 10**15))
+        sql("UPDATE execution_accounts SET state=%s,heartbeat=now(),blocked=false,recovering=false,market_ready=true,market_ms=(extract(epoch FROM now())*1000)::bigint,snapshot_ms=(extract(epoch FROM now())*1000)::bigint WHERE id=%s",(state,name))
+        status=client.get(f"/execution/{name}/status")
+        assert status.status_code==200,status.text
+        assert status.json()["state"]==state
+        response=client.post(f"/execution/{name}/control/start",json={"request_id":"denied-terminal","reason":"terminal runtime cannot restart itself","authorization":"authorize_testnet"})
+>       assert response.status_code==409,response.text
+E       AssertionError: {"account_id":"status_STOPPED-0799fb95d1","mode":"testnet","authorized":true,"durable":true,"active_cycle_stop_confirmed":false,"detail":"new exposure permission committed; risk-approved recovery remains separate"}
+E       assert 200 == 409
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_exchange_runtime.py:573: AssertionError
+__ test_terminal_runtime_state_is_offline_and_cannot_authorize_start[FAILED] ___
+
+api = (<httpx.Client object at 0x7fa0e001ddf0>, PosixPath('/tmp/pytest-of-root/pytest-4/exchange-api0'))
+state = 'FAILED'
+
+    @pytest.mark.parametrize("state",["STOPPED","FAILED"])
+    def test_terminal_runtime_state_is_offline_and_cannot_authorize_start(api,state):
+        name=f"status_{state}-{PREFIX}"
+        client,_=api
+        provision(api,name,str(uuid.uuid4().int % 10**15))
+        sql("UPDATE execution_accounts SET state=%s,heartbeat=now(),blocked=false,recovering=false,market_ready=true,market_ms=(extract(epoch FROM now())*1000)::bigint,snapshot_ms=(extract(epoch FROM now())*1000)::bigint WHERE id=%s",(state,name))
+        status=client.get(f"/execution/{name}/status")
+        assert status.status_code==200,status.text
+        assert status.json()["state"]==state
+        response=client.post(f"/execution/{name}/control/start",json={"request_id":"denied-terminal","reason":"terminal runtime cannot restart itself","authorization":"authorize_testnet"})
+>       assert response.status_code==409,response.text
+E       AssertionError: {"account_id":"status_FAILED-0799fb95d1","mode":"testnet","authorized":true,"durable":true,"active_cycle_stop_confirmed":false,"detail":"new exposure permission committed; risk-approved recovery remains separate"}
+E       assert 200 == 409
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_exchange_runtime.py:573: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_autonomous_paper.py::test_graceful_shutdown_immediately_revokes_runtime_liveness
+FAILED tests/test_exchange_runtime.py::test_terminal_runtime_state_is_offline_and_cannot_authorize_start[STOPPED]
+FAILED tests/test_exchange_runtime.py::test_terminal_runtime_state_is_offline_and_cannot_authorize_start[FAILED]
+3 failed, 91 deselected in 2.27s

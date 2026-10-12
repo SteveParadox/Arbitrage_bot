@@ -28,8 +28,13 @@ def main():
                 with psycopg.connect(isolated) as db:
                     tables = {r[0] for r in db.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")}
                     expected = {"paper_accounts","paper_balances","paper_cycles","paper_orders","paper_ledger","paper_events","paper_commands","paper_valuations"}
+                    exchange = {"execution_accounts", "execution_cycles", "execution_orders", "execution_fills", "execution_movements", "execution_reconciliation", "execution_events", "execution_commands"}
                     if action == "upgrade":
                         assert expected <= tables, tables
+                        assert exchange <= tables, tables
+                        db.execute("INSERT INTO execution_accounts(id,mode,exchange_uid,limits) VALUES('exchange-test','testnet','123','{}')")
+                        assert db.execute("SELECT enabled,blocked,recovering,market_ready FROM execution_accounts").fetchone() == (False, True, True, False)
+                        assert db.execute("SELECT 1 FROM pg_indexes WHERE indexname='execution_one_active'").fetchone() == (1,)
                         db.execute("INSERT INTO paper_accounts(id,config) VALUES('migration-test','{\"start_asset\":\"USDT\"}')")
                         assert db.execute("SELECT mode,enabled,blocked FROM paper_accounts").fetchone() == ("paper",False,False)
                         try:
@@ -41,6 +46,7 @@ def main():
                             raise AssertionError("negative balance constraint missing")
                     else:
                         assert not (expected & tables), tables
+                        assert not (exchange & tables), tables
                         assert "engine_events" in tables
             print("Migration fresh upgrade, rollback to 0007, re-upgrade and negative balance constraint: PASS")
         finally:

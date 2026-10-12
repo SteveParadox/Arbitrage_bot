@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.autonomous_paper import router as autonomous_paper_router
+from api.execution import router as execution_router
 from api.control import router as control_router
 from api.event_consumer import EngineEventConsumer
 from api.logging import configure_logging
@@ -74,6 +75,7 @@ def livez():
 app.include_router(opportunity_analytics_router)
 app.include_router(paper_trading_router)
 app.include_router(autonomous_paper_router)
+app.include_router(execution_router)
 app.include_router(performance_analytics_router)
 app.include_router(shadow_analytics_router)
 app.include_router(micro_live_analytics_router)

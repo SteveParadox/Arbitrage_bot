@@ -10,7 +10,6 @@ use rust_decimal::Decimal;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::time::sleep;
-use tracing::warn;
 
 use crate::{
     auth::sign_hmac_sha256,
@@ -33,6 +32,8 @@ impl BybitExecutionClient {
         config.validate()?;
         let http = Client::builder()
             .timeout(config.request_timeout)
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .build()
             .map_err(|error| ExecutionError::InvalidConfig(error.to_string()))?;
         let events = EventPublisher::try_from_env("execution")
@@ -46,6 +47,126 @@ impl BybitExecutionClient {
 
     pub fn config(&self) -> &ExecutionConfig {
         &self.config
+    }
+
+    pub async fn verify_account(&self, expected_uid: &str) -> Result<(), ExecutionError> {
+        let (info, _): (Value, _) = self.private_get("/v5/user/query-api", vec![]).await?;
+        let uid = info["userID"]
+            .as_str()
+            .map(str::to_owned)
+            .or_else(|| info["userID"].as_u64().map(|n| n.to_string()));
+        let spot = info["permissions"]["Spot"].as_array();
+        let excessive = !info["permissions"].as_object().is_some_and(|permissions| {
+            permissions.iter().all(|(kind, values)| {
+                values.as_array().is_some_and(|values| {
+                    if kind == "Spot" {
+                        values.len() == 1 && values[0] == "SpotTrade"
+                    } else {
+                        values.is_empty()
+                    }
+                })
+            })
+        });
+        if uid.as_deref() != Some(expected_uid)
+            || info["readOnly"].as_i64() != Some(0)
+            || !spot.is_some_and(|v| v.iter().any(|p| p == "SpotTrade"))
+            || excessive
+        {
+            return Err(ExecutionError::Authentication(
+                "account identity or least-privilege spot permissions invalid".into(),
+            ));
+        }
+        let response: Value = self
+            .http
+            .get(format!("{}/v5/market/time", self.config.base_url()))
+            .send()
+            .await
+            .map_err(|_| ExecutionError::Transport("exchange time unavailable".into()))?
+            .json()
+            .await
+            .map_err(|_| ExecutionError::Decode("exchange time invalid".into()))?;
+        let timestamp = response["time"]
+            .as_u64()
+            .ok_or_else(|| ExecutionError::MissingData("exchange timestamp".into()))?;
+        if response["retCode"] != 0 || timestamp.abs_diff(current_time_ms()) > 500 {
+            return Err(ExecutionError::EnvironmentMismatch(
+                "exchange clock skew exceeds 500ms".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Public instrument metadata does not establish an account's fee tier.
+    /// A market order uses the taker rate; a higher or unknown rate invalidates
+    /// the configured conservative profitability calculation.
+    pub async fn verify_spot_fee_rate(
+        &self,
+        symbol: &str,
+        ceiling: Decimal,
+    ) -> Result<Decimal, ExecutionError> {
+        let (evidence, _): (Value, _) = self
+            .private_get(
+                "/v5/account/fee-rate",
+                vec![
+                    ("category".into(), "spot".into()),
+                    ("symbol".into(), symbol.into()),
+                ],
+            )
+            .await?;
+        let rows = evidence["list"]
+            .as_array()
+            .ok_or_else(|| ExecutionError::MissingData("account fee rate missing".into()))?;
+        if evidence["category"] != "spot" || rows.len() != 1 || rows[0]["symbol"] != symbol {
+            return Err(ExecutionError::MissingData(
+                "account fee rate identity mismatch".into(),
+            ));
+        }
+        let rate = parse_decimal(
+            "takerFeeRate",
+            rows[0]["takerFeeRate"]
+                .as_str()
+                .ok_or_else(|| ExecutionError::MissingData("account taker fee missing".into()))?,
+        )?;
+        if rate < Decimal::ZERO || rate > ceiling {
+            return Err(ExecutionError::MissingData(
+                "account taker fee exceeds modeled ceiling".into(),
+            ));
+        }
+        Ok(rate)
+    }
+
+    /// Exclusive unleveraged spot-account policy. Unknown pagination means
+    /// outstanding commitments are not completely observed and must block.
+    pub async fn verify_no_open_orders(&self) -> Result<(), ExecutionError> {
+        let (orders, _): (Value, _) = self
+            .private_get(
+                "/v5/order/realtime",
+                vec![
+                    ("category".into(), "spot".into()),
+                    ("openOnly".into(), "0".into()),
+                    ("limit".into(), "50".into()),
+                ],
+            )
+            .await?;
+        if !orders["list"].as_array().is_some_and(|v| v.is_empty())
+            || orders["nextPageCursor"].as_str() != Some("")
+        {
+            return Err(ExecutionError::MissingData(
+                "outstanding or incompletely observed exchange orders".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn reconcile_order(
+        &self,
+        symbol: &str,
+        link: &str,
+    ) -> Result<Option<OrderExecutionState>, ExecutionError> {
+        match self.get_order_by_link_id(symbol, link).await? {
+            Some(order) => self.build_state(order, true).await.map(Some),
+            None => Ok(None),
+        }
     }
 
     pub async fn place_order(
@@ -67,76 +188,47 @@ impl BybitExecutionClient {
         let body_json = serde_json::to_string(&body)
             .map_err(|error| ExecutionError::Decode(error.to_string()))?;
 
-        let mut last_error: Option<ExecutionError> = None;
-        for attempt in 0..=self.config.max_retries {
-            if attempt > 0 {
-                if let Err(error) = risk_engine.validate_approval(
-                    &prepared.approval,
-                    prepared.trade_id(),
-                    current_time_ms(),
-                ) {
-                    let gate_error = risk_state_error(error);
-                    return Err(last_error.unwrap_or(gate_error));
+        match self
+            .private_post_once::<PlaceOrderResult>("/v5/order/create", &body_json)
+            .await
+        {
+            Ok((result, time)) => {
+                if result.order_id.is_empty() || result.order_link_id != request.order_link_id {
+                    return Err(ExecutionError::Decode(
+                        "acknowledgement identity mismatch".into(),
+                    ));
                 }
+                Ok(PlaceOrderAck {
+                    order_id: result.order_id,
+                    order_link_id: result.order_link_id,
+                    accepted_at_ms: time,
+                })
             }
-            match self
-                .private_post_once::<PlaceOrderResult>("/v5/order/create", &body_json)
-                .await
-            {
-                Ok((result, time)) => {
-                    return Ok(PlaceOrderAck {
-                        order_id: result.order_id,
-                        order_link_id: result.order_link_id,
-                        accepted_at_ms: time,
-                    });
-                }
-                Err(error) => {
-                    let ambiguous = error.is_retryable() || error.is_duplicate_request();
-                    if ambiguous {
-                        if let Ok(Some(order)) = self
-                            .get_order_by_link_id(&request.symbol, &request.order_link_id)
-                            .await
-                        {
-                            return Ok(PlaceOrderAck {
-                                order_id: order.order_id,
-                                order_link_id: order.order_link_id,
-                                accepted_at_ms: order.created_time,
-                            });
-                        }
-                    }
-
-                    if error.is_duplicate_request() {
-                        sleep(self.config.poll_interval).await;
-                        if let Ok(Some(order)) = self
-                            .get_order_by_link_id(&request.symbol, &request.order_link_id)
-                            .await
-                        {
-                            return Ok(PlaceOrderAck {
-                                order_id: order.order_id,
-                                order_link_id: order.order_link_id,
-                                accepted_at_ms: order.created_time,
-                            });
-                        }
-                        return Err(error);
-                    }
-                    if !error.is_retryable() || attempt == self.config.max_retries {
-                        return Err(error);
-                    }
-                    warn!(
-                        attempt,
-                        error = %error,
-                        order_link_id = %request.order_link_id,
-                        "ambiguous place-order failure; verified no order yet and will retry"
+            Err(error) => {
+                let ambiguous = error.is_retryable()
+                    || error.is_duplicate_request()
+                    || matches!(
+                        error,
+                        ExecutionError::Decode(_) | ExecutionError::MissingData(_)
                     );
-                    last_error = Some(error);
-                    sleep(self.backoff(attempt)).await;
+                if ambiguous {
+                    if let Ok(Some(order)) = self
+                        .get_order_by_link_id(&request.symbol, &request.order_link_id)
+                        .await
+                    {
+                        return Ok(PlaceOrderAck {
+                            order_id: order.order_id,
+                            order_link_id: order.order_link_id,
+                            accepted_at_ms: order.created_time,
+                        });
+                    }
                 }
+
+                // Empty history is eventually consistent, not proof of non-execution.
+                // Durable callers quarantine the original ID; POST is never retried here.
+                Err(error)
             }
         }
-
-        Err(last_error.unwrap_or_else(|| {
-            ExecutionError::MissingData("place-order retry loop ended unexpectedly".to_string())
-        }))
     }
 
     pub async fn cancel_order(
@@ -226,11 +318,32 @@ impl BybitExecutionClient {
             ExecutionError::MissingData("wallet-balance response contained no account".to_string())
         })?;
 
+        if account.account_type != "UNIFIED"
+            || parse_decimal("totalInitialMargin", &account.total_initial_margin)? != Decimal::ZERO
+            || parse_decimal("totalPerpUPL", &account.total_perp_upl)? != Decimal::ZERO
+        {
+            return Err(ExecutionError::MissingData(
+                "only dedicated unleveraged spot accounts are supported".into(),
+            ));
+        }
+
         let mut entries = Vec::with_capacity(account.coin.len());
         for coin in account.coin {
             let wallet = parse_decimal("walletBalance", &coin.wallet_balance)?;
             let locked = parse_decimal("locked", &coin.locked)?;
             let borrow = parse_decimal("spotBorrow", &coin.spot_borrow)?;
+            if wallet < Decimal::ZERO
+                || locked < Decimal::ZERO
+                || borrow != Decimal::ZERO
+                || parse_decimal("borrowAmount", &coin.borrow_amount)? != Decimal::ZERO
+                || parse_decimal("totalPositionIM", &coin.total_position_im)? != Decimal::ZERO
+                || parse_decimal("spotHedgingQty", &coin.spot_hedging_qty)? != Decimal::ZERO
+                || parse_decimal("bonus", &coin.bonus)? != Decimal::ZERO
+            {
+                return Err(ExecutionError::MissingData(
+                    "margin, debt or bonus capital is unsupported".into(),
+                ));
+            }
             let available = (wallet - locked - borrow).max(Decimal::ZERO);
             entries.push(BalanceEntry {
                 coin: coin.coin,
@@ -300,6 +413,17 @@ impl BybitExecutionClient {
         prepared: &PreparedExecution,
         request: &ExecutionOrderRequest,
     ) -> Result<ExecutionResult, ExecutionAttemptError> {
+        self.execute_with_journal(risk_engine, prepared, request, None)
+            .await
+    }
+
+    pub async fn execute_with_journal(
+        &self,
+        risk_engine: &mut RiskEngine,
+        prepared: &PreparedExecution,
+        request: &ExecutionOrderRequest,
+        journal: Option<&dyn crate::ExecutionJournal>,
+    ) -> Result<ExecutionResult, ExecutionAttemptError> {
         self.events
             .ensure_critical_ready()
             .map_err(|error| ExecutionAttemptError {
@@ -309,7 +433,7 @@ impl BybitExecutionClient {
             })?;
 
         let result = self
-            .execute_with_risk_tracking_detailed_inner(risk_engine, prepared, request)
+            .execute_with_risk_tracking_detailed_inner(risk_engine, prepared, request, journal)
             .await;
 
         let publish_result = match &result {
@@ -398,7 +522,18 @@ impl BybitExecutionClient {
         risk_engine: &mut RiskEngine,
         prepared: &PreparedExecution,
         request: &ExecutionOrderRequest,
+        journal: Option<&dyn crate::ExecutionJournal>,
     ) -> Result<ExecutionResult, ExecutionAttemptError> {
+        if let Some(journal) = journal {
+            journal
+                .before_submission(prepared, request)
+                .await
+                .map_err(|source| ExecutionAttemptError {
+                    stage: ExecutionStage::Submission,
+                    place_ack: None,
+                    source,
+                })?;
+        }
         let place_ack = match self.place_order(risk_engine, prepared, request).await {
             Ok(value) => value,
             Err(error) => {
@@ -417,6 +552,17 @@ impl BybitExecutionClient {
                 });
             }
         };
+
+        if let Some(journal) = journal {
+            journal
+                .acknowledged(&place_ack)
+                .await
+                .map_err(|source| ExecutionAttemptError {
+                    stage: ExecutionStage::Monitoring,
+                    place_ack: Some(place_ack.clone()),
+                    source,
+                })?;
+        }
 
         let mut monitor = match self
             .monitor_order(&request.symbol, &place_ack.order_id)
@@ -440,6 +586,15 @@ impl BybitExecutionClient {
 
         let mut cancellation = None;
         if monitor.timed_out && !monitor.state.terminal && self.config.cancel_on_timeout {
+            if let Some(journal) = journal {
+                journal.cancel_pending(&place_ack).await.map_err(|source| {
+                    ExecutionAttemptError {
+                        stage: ExecutionStage::Cancellation,
+                        place_ack: Some(place_ack.clone()),
+                        source,
+                    }
+                })?;
+            }
             let ack = match self
                 .cancel_order(
                     &request.symbol,
@@ -612,7 +767,9 @@ impl BybitExecutionClient {
             } else {
                 fill.fee_currency.clone()
             };
-            *fees.entry(currency).or_insert(Decimal::ZERO) += fill.fee;
+            if fill.fee != Decimal::ZERO {
+                *fees.entry(currency).or_insert(Decimal::ZERO) += fill.fee;
+            }
         }
 
         let order_filled = target_filled;
@@ -628,12 +785,13 @@ impl BybitExecutionClient {
         let terminal = terminal_status(&order.order_status);
         let fully_filled = order.order_status == "Filled"
             && remaining == Decimal::ZERO
-            && order_filled >= requested;
+            && order_filled == requested;
 
         Ok(OrderExecutionState {
             order_id: order.order_id,
             order_link_id: order.order_link_id,
             symbol: order.symbol,
+            side: order.side,
             status: order.order_status,
             requested_quantity: requested,
             filled_quantity: order_filled,
@@ -674,6 +832,14 @@ impl BybitExecutionClient {
                 .await?;
 
             for raw in result.list {
+                if !raw.extra_fees.is_null()
+                    && raw.extra_fees != serde_json::json!([])
+                    && raw.extra_fees != serde_json::json!({})
+                {
+                    return Err(ExecutionError::MissingData(
+                        "unmodeled additional execution fees".into(),
+                    ));
+                }
                 output.push(ExecutionFill {
                     execution_id: raw.exec_id,
                     order_id: raw.order_id,
@@ -742,7 +908,11 @@ impl BybitExecutionClient {
         let (realtime, _) = self
             .private_get::<OrderListResult>("/v5/order/realtime", params)
             .await?;
+        if realtime.list.len() > 1 {
+            return Err(ExecutionError::Decode("ambiguous order identity".into()));
+        }
         if let Some(order) = realtime.list.into_iter().next() {
+            validate_order_identity(&order, symbol, &identifier)?;
             return Ok(Some(order));
         }
 
@@ -750,11 +920,18 @@ impl BybitExecutionClient {
             ("category".to_string(), "spot".to_string()),
             ("symbol".to_string(), symbol.to_string()),
         ];
-        history_params.extend(identifier);
+        history_params.extend(identifier.clone());
         let (history, _) = self
             .private_get::<OrderListResult>("/v5/order/history", history_params)
             .await?;
-        Ok(history.list.into_iter().next())
+        if history.list.len() > 1 {
+            return Err(ExecutionError::Decode("ambiguous history identity".into()));
+        }
+        let order = history.list.into_iter().next();
+        if let Some(order) = &order {
+            validate_order_identity(order, symbol, &identifier)?;
+        }
+        Ok(order)
     }
 
     fn validate_execution_environment(
@@ -815,6 +992,11 @@ impl BybitExecutionClient {
         path: &str,
         payload: &str,
     ) -> Result<ApiEnvelope, ExecutionError> {
+        if runtime_clock::Clock::current().is_virtual() {
+            return Err(ExecutionError::EnvironmentMismatch(
+                "virtual replay cannot use private exchange methods".into(),
+            ));
+        }
         let timestamp = current_time_ms();
         let signature = sign_hmac_sha256(
             self.config.api_secret(),
@@ -886,6 +1068,25 @@ impl BybitExecutionClient {
             .map_err(risk_state_error)?;
         Ok(())
     }
+}
+
+fn validate_order_identity(
+    order: &RawOrder,
+    symbol: &str,
+    identifier: &[(String, String)],
+) -> Result<(), ExecutionError> {
+    if order.symbol != symbol
+        || order.order_id.is_empty()
+        || identifier.iter().any(|(key, value)| {
+            (key == "orderId" && &order.order_id != value)
+                || (key == "orderLinkId" && &order.order_link_id != value)
+        })
+    {
+        return Err(ExecutionError::Decode(
+            "exchange query returned a different order".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn canonical_fills(
@@ -1038,6 +1239,8 @@ struct OrderListResult {
 #[serde(rename_all = "camelCase")]
 struct RawOrder {
     symbol: String,
+    #[serde(default)]
+    side: Option<OrderSide>,
     order_id: String,
     #[serde(default)]
     order_link_id: String,
@@ -1077,6 +1280,8 @@ struct RawExecution {
     exec_value: String,
     exec_fee: String,
     #[serde(default)]
+    extra_fees: Value,
+    #[serde(default)]
     fee_currency: String,
     #[serde(default)]
     is_maker: bool,
@@ -1093,6 +1298,9 @@ struct WalletBalanceResult {
 #[serde(rename_all = "camelCase")]
 struct RawWalletAccount {
     account_type: String,
+    total_initial_margin: String,
+    #[serde(rename = "totalPerpUPL")]
+    total_perp_upl: String,
     #[serde(default)]
     total_equity: String,
     #[serde(default)]
@@ -1107,6 +1315,11 @@ struct RawWalletAccount {
 #[serde(rename_all = "camelCase")]
 struct RawWalletCoin {
     coin: String,
+    borrow_amount: String,
+    #[serde(rename = "totalPositionIM")]
+    total_position_im: String,
+    spot_hedging_qty: String,
+    bonus: String,
     #[serde(default)]
     equity: String,
     #[serde(default)]

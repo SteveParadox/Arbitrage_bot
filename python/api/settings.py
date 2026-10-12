@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     arb_live_trading_enabled: bool = False
     arb_trading_mode: str = "observe"
     arb_paper_trading_enabled: bool = False
+    arb_testnet_trading_enabled: bool = False
+    arb_execution_api_keys_json: str = "{}"
+    arb_execution_deployment_permit: str = "data/execution/deployment-permit.json"
     arb_cors_origins: str = "http://localhost:5173"
     arb_control_api_token: str = ""
     arb_paper_api_keys_json: str = "{}"
@@ -67,7 +70,7 @@ class Settings(BaseSettings):
     def secret_files(cls, values):
         values = dict(values)
         for field in ("arb_database_url", "arb_redis_url", "arb_control_api_token",
-                      "arb_engine_grpc_token", "arb_paper_api_keys_json"):
+                      "arb_engine_grpc_token", "arb_paper_api_keys_json", "arb_execution_api_keys_json"):
             source = os.getenv(field.upper()+"_FILE")
             if not source:
                 continue
@@ -83,6 +86,28 @@ class Settings(BaseSettings):
     def validate_security(self):
         if self.arb_env not in {"development", "test", "production"}:
             raise ValueError("unknown environment")
+        if self.arb_trading_mode not in {"observe", "paper", "testnet", "live"}:
+            raise ValueError("unknown execution mode")
+        if self.arb_trading_mode in {"testnet", "live"} and self.arb_paper_trading_enabled:
+            raise ValueError("authenticated execution cannot use paper deployment authorization")
+        if self.arb_trading_mode == "live" and self.arb_testnet_trading_enabled:
+            raise ValueError("mainnet mode cannot use testnet deployment authorization")
+        if self.arb_trading_mode == "testnet" and self.arb_live_trading_enabled:
+            raise ValueError("testnet mode cannot use live deployment authorization")
+        execution = json.loads(self.arb_execution_api_keys_json)
+        if len(self.arb_execution_api_keys_json) > 65536 or not isinstance(execution, dict) or len(execution)>1000:
+            raise ValueError("invalid execution credential catalog")
+        for digest, grant in execution.items():
+            if not re.fullmatch(r"[0-9a-f]{64}", digest) or not isinstance(grant, dict) or set(grant)!={"subject","role","accounts","modes"}:
+                raise ValueError("invalid execution credential grant")
+            if grant["role"] not in {"viewer","operator","admin"} or not isinstance(grant["subject"],str) or not 1<=len(grant["subject"])<=128:
+                raise ValueError("invalid execution role")
+            if not isinstance(grant["accounts"],list) or not grant["accounts"] or any(not isinstance(a,str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}",a) for a in grant["accounts"]):
+                raise ValueError("invalid execution account grant")
+            if not isinstance(grant["modes"],list) or not grant["modes"] or any(m not in {"testnet","live"} for m in grant["modes"]):
+                raise ValueError("invalid execution mode grant")
+            if digest in json.loads(self.arb_paper_api_keys_json) or digest==__import__("hashlib").sha256(self.arb_control_api_token.encode()).hexdigest():
+                raise ValueError("execution credentials must be distinct from paper/control credentials")
         if len(self.arb_paper_api_keys_json) > 65536:
             raise ValueError("paper credential catalog too large")
         grants = json.loads(self.arb_paper_api_keys_json)
@@ -101,16 +126,18 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("invalid paper account permissions")
         if self.arb_env == "production":
-            if self.arb_live_trading_enabled or os.getenv("ARB_LIVE_TRADING_ENABLED") != "false":
-                raise ValueError("production paper deployment requires explicit live=false")
-            if self.arb_trading_mode not in {"observe", "paper"}:
+            if self.arb_trading_mode not in {"observe", "paper", "testnet", "live"}:
                 raise ValueError("unsupported production execution mode")
+            if self.arb_trading_mode != "live" and (self.arb_live_trading_enabled or os.getenv("ARB_LIVE_TRADING_ENABLED") != "false"):
+                raise ValueError("production non-live deployment requires explicit live=false")
+            if self.arb_trading_mode == "testnet" and not self.arb_testnet_trading_enabled or self.arb_trading_mode != "testnet" and self.arb_testnet_trading_enabled:
+                raise ValueError("inconsistent testnet deployment permission")
             tokens = (self.arb_control_api_token, self.arb_engine_grpc_token)
             if any(len(t.encode()) < 32 or any(word in t.lower() for word in ("example", "changeme", "test-token")) for t in tokens) or tokens[0] == tokens[1]:
                 raise ValueError("production requires distinct strong control credentials")
             if self.bybit_api_key or self.bybit_api_secret:
                 raise ValueError("paper deployment must not contain private exchange credentials")
-            if any(os.getenv(k) for k in ("ARB_OBSERVER_REPLAY_FILE", "ARB_PAPER_CRASH_AT", "ARB_PAPER_CRASH_AFTER_LEG", "ARB_TEST_GRPC_RESPONSE_DELAY_MS")) or os.getenv("ARB_REPLAY_CLOCK") == "virtual":
+            if any(os.getenv(k) for k in ("ARB_OBSERVER_REPLAY_FILE", "ARB_PAPER_CRASH_AT", "ARB_PAPER_CRASH_AFTER_LEG", "ARB_TEST_GRPC_RESPONSE_DELAY_MS", "ARB_EXECUTION_OFFLINE_MOCK", "ARB_EXECUTION_MOCK_URL", "ARB_EXECUTION_CRASH_AT")) or os.getenv("ARB_REPLAY_CLOCK") == "virtual":
                 raise ValueError("development replay and fault hooks forbidden in production")
             if self.arb_api_rate_limit_per_minute <= 0:
                 raise ValueError("production requires distributed request limits")

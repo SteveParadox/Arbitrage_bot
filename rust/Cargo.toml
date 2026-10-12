@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "authenticated",
   "market-data",
   "orderbook",
   "scanner",

@@ -1,0 +1,14 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> arbitrage-bot-dashboard@0.1.0 build
+> tsc -b && vite build
+
+vite v6.4.4 building for production...
+transforming...
+✓ 181 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.40 kB │ gzip:   0.27 kB
+dist/assets/index-WMVuT_i1.css   27.62 kB │ gzip:   6.07 kB
+dist/assets/index-YOJ61ts6.js   408.20 kB │ gzip: 124.25 kB
+✓ built in 1.39s

@@ -71,7 +71,10 @@ impl ExecutionOrderRequest {
         }
         if self.order_link_id.is_empty()
             || self.order_link_id.len() > 36
-            || !self.order_link_id.is_ascii()
+            || !self
+                .order_link_id
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
         {
             return Err(ExecutionError::InvalidOrder(
                 "order_link_id must be unique ASCII text between 1 and 36 characters".to_string(),
@@ -140,7 +143,7 @@ pub struct CancelAck {
     pub already_terminal: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionFill {
     pub execution_id: String,
     pub order_id: String,
@@ -153,11 +156,13 @@ pub struct ExecutionFill {
     pub executed_at_ms: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderExecutionState {
     pub order_id: String,
     pub order_link_id: String,
     pub symbol: String,
+    #[serde(default)]
+    pub side: Option<OrderSide>,
     pub status: String,
     pub requested_quantity: Decimal,
     pub filled_quantity: Decimal,

@@ -14,11 +14,40 @@ pub use model::{
 use risk::{RiskApproval, RiskEngine, RiskError};
 use thiserror::Error;
 
+/// Durable progress hooks surround the network boundary; failure after an
+/// acknowledgement is an unknown financial outcome, never a rejected order.
+#[async_trait::async_trait]
+pub trait ExecutionJournal: Send + Sync {
+    async fn before_submission(
+        &self,
+        prepared: &PreparedExecution,
+        request: &ExecutionOrderRequest,
+    ) -> Result<(), ExecutionError>;
+    async fn acknowledged(&self, ack: &PlaceOrderAck) -> Result<(), ExecutionError>;
+    async fn cancel_pending(&self, ack: &PlaceOrderAck) -> Result<(), ExecutionError>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionMode {
+    Observe,
     Paper,
     Testnet,
     Live,
+}
+
+impl std::str::FromStr for ExecutionMode {
+    type Err = ExecutionError;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "observe" => Ok(Self::Observe),
+            "paper" => Ok(Self::Paper),
+            "testnet" => Ok(Self::Testnet),
+            "live" => Ok(Self::Live),
+            _ => Err(ExecutionError::InvalidConfig(
+                "unknown execution mode".into(),
+            )),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -101,7 +130,13 @@ impl ExecutionError {
     }
 
     pub fn is_duplicate_request(&self) -> bool {
-        matches!(self, Self::Bybit { code: 10014, .. })
+        matches!(
+            self,
+            Self::Bybit {
+                code: 10014 | 170141 | 110072,
+                ..
+            }
+        )
     }
 
     pub fn counts_as_execution_failure(&self) -> bool {
@@ -126,6 +161,9 @@ pub fn prepare_execution(
     mode: ExecutionMode,
     live_enabled: bool,
 ) -> Result<PreparedExecution, ExecutionPreparationError> {
+    if mode == ExecutionMode::Observe {
+        return Err(ExecutionPreparationError::LiveExecutionDisabled);
+    }
     risk_engine.validate_approval(&approval, trade_id, now_ms)?;
 
     if mode == ExecutionMode::Live && !live_enabled {

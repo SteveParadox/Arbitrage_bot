@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = "0.1"
+runtime-clock = { path = "../runtime-clock" }
 anyhow.workspace = true
 event-bus = { path = "../event-bus" }
 hex = "0.4"

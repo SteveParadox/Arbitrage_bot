@@ -17,6 +17,19 @@ import pytest
 
 RUN = os.getenv("ARB_RUN_PAPER_INTEGRATION") == "1"
 pytestmark = pytest.mark.skipif(not RUN, reason="requires isolated PostgreSQL, Redis and Rust binaries")
+
+
+def test_graceful_shutdown_immediately_revokes_runtime_liveness(api,tmp_path):
+    account="shutdown-"+uuid.uuid4().hex[:12]
+    create(api,account)
+    process,log=start_engine(tmp_path,account)
+    stop(process,log)
+    result=api.get(f"/paper/{account}/status")
+    assert result.status_code==200,result.text
+    response=api.post(f"/paper/{account}/control/start",json={"request_id":"post-shutdown","reason":"stopped worker must not be authorized"})
+    assert response.status_code==409,response.text
+    assert not result.json()["runtime_online"]
+    assert not result.json()["authorized"]
 ROOT = Path(__file__).resolve().parents[2]
 URL = os.getenv("ARB_DATABASE_URL", "").replace("postgresql+psycopg:", "postgresql:")
 TOKEN = "paper-test-control-token-0123456789012345"
@@ -84,7 +97,10 @@ def fixture(directory, *, fail=False, partial=False, adverse=False, losing=False
         events[-1]["event"]["asks"] = [{"price": 6.1, "quantity": 0}, {"price": 4.1, "quantity": 100}]
     if adverse:
         move = json.loads(json.dumps(events[-2]))
-        move["delay_ms"] = 100
+        # Move after durable leg-one intent, while its matching delay is active.
+        # Publication/fsync latency must not make this an admission rejection.
+        move["wait_for_paper_leg"] = 1
+        move["delay_ms"] = 20
         move["event"].update(symbol="BTCUSDT", bids=[{"price":109,"quantity":10}],
                              asks=[{"price":110,"quantity":10}], update_id=30,
                              sequence=30, is_snapshot=True)

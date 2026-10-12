@@ -23,6 +23,7 @@ frontend/dist/
 *.pfx
 credentials.*
 secrets.*
+secrets/
 
 data/scans/*.ndjson
 
@@ -44,4 +45,6 @@ rust/*/data/event-outbox/
 
 # Durable runtime state belongs in PostgreSQL / persistent volumes, never in git.
 data/paper/
+data/execution/
+data/execution-permit/
 python/data/

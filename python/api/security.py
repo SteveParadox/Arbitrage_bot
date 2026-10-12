@@ -41,6 +41,24 @@ def bearer(headers) -> str:
     return token if scheme.lower() == "bearer" else ""
 
 
+def execution_grant(token: str):
+    if len(token.encode()) < 32:
+        return None
+    return json.loads(settings.arb_execution_api_keys_json).get(hashlib.sha256(token.encode()).hexdigest())
+
+
+def require_execution_auth(request: Request) -> None:
+    grant = execution_grant(bearer(request.headers))
+    if grant is None:
+        raise HTTPException(401, "execution-scoped credential required")
+    account = request.path_params.get("account")
+    if account is not None and account not in grant["accounts"]:
+        raise HTTPException(403, "exchange account access denied")
+    if request.method != "GET" and grant["role"] == "viewer":
+        raise HTTPException(403, "execution control permission required")
+    request.state.execution_grant = grant
+
+
 def require_paper_auth(request: Request) -> None:
     user = principal(bearer(request.headers))
     if user is None:
@@ -76,6 +94,7 @@ class SecurityMiddleware:
         request = Request(scope)
         path, method = request.url.path, request.method
         user = principal(bearer(request.headers))
+        exchange_user = execution_grant(bearer(request.headers))
 
         async def safe_send(message):
             if message["type"] == "http.response.start":
@@ -89,7 +108,7 @@ class SecurityMiddleware:
             await JSONResponse({"detail": detail}, status_code=code, headers=headers)(scope, receive, safe_send)
 
         production = settings.arb_env == "production"
-        if production and path != "/livez" and not path.startswith("/paper/") and method != "OPTIONS":
+        if production and path != "/livez" and not path.startswith(("/paper/", "/execution/")) and method != "OPTIONS":
             if user is None or not user.global_admin:
                 return await reject(401, "administrator credential required")
         origin = request.headers.get("origin")
@@ -101,10 +120,14 @@ class SecurityMiddleware:
             user.global_admin and path == "/trading/stop" or
             account_stop is not None and user.role != "viewer" and
             (user.global_admin or account_stop[1] in user.accounts))
+        exchange_stop = re.fullmatch(r"/execution/([A-Za-z0-9_-]+)/control/(stop|emergency-stop)", path)
+        emergency = emergency or (method == "POST" and exchange_stop is not None and
+                                 exchange_user is not None and exchange_user["role"] != "viewer" and
+                                 exchange_stop[1] in exchange_user["accounts"])
         rate = settings.arb_api_rate_limit_per_minute
         if rate and path != "/livez" and not emergency and method != "OPTIONS":
             token = bearer(request.headers)
-            identity = "credential:" + token if user else "source:" + (request.client.host if request.client else "unknown")
+            identity = "credential:" + token if user or exchange_user else "source:" + (request.client.host if request.client else "unknown")
             try:
                 count = await asyncio.to_thread(_rate_count, identity)
             except Exception:
