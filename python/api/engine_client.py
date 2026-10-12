@@ -8,6 +8,7 @@ import grpc
 
 from api.grpc import engine_control_pb2, engine_control_pb2_grpc
 from api.settings import settings
+from api.infrastructure import grpc_channel
 
 
 class EngineCommandError(RuntimeError):
@@ -45,7 +46,7 @@ class EngineGrpcClient:
                 "INVALID_CONFIGURATION",
             )
         try:
-            async with grpc.aio.insecure_channel(self._target) as channel:
+            async with grpc_channel(settings, self._target) as channel:
                 stub = engine_control_pb2_grpc.EngineControlStub(channel)
                 method = getattr(stub, method_name)
                 return await method(
@@ -54,7 +55,7 @@ class EngineGrpcClient:
                     timeout=timeout,
                 )
         except grpc.aio.AioRpcError as error:
-            detail = error.details() or error.code().name
+            detail = error.code().name if settings.arb_env == "production" else error.details() or error.code().name
             raise EngineCommandError(
                 detail,
                 error.code().name,

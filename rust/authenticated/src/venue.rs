@@ -201,6 +201,9 @@ pub struct Gate {
 }
 impl Gate {
     pub fn check(&self, reducing: bool) -> Result<()> {
+        if !reducing {
+            infrastructure::ensure_new_exposure_allowed()?;
+        }
         let permit = DeploymentPermit::load(&self.permit_path)?;
         permit.verify(&self.account, self.mode, current_time_ms(), self.mock)?;
         if runtime_clock::Clock::current().is_virtual() {

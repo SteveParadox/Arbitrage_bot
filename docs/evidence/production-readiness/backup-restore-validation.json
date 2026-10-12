@@ -1,0 +1,22 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "status": "PASS_OBSERVED_PRIOR_RUN",
+  "postgresql": "real 16 native disposable",
+  "fill_records_preserved": 3,
+  "ledger_entries_preserved": 14,
+  "pending_reservation_preserved": {
+    "USDT": "100"
+  },
+  "authorization_after_restore": false,
+  "restore_barrier": true,
+  "production_rto_seconds": null,
+  "production_rpo_seconds": null,
+  "pitr": "NOT_IMPLEMENTED",
+  "offsite_restore": "NOT_RUN",
+  "raw_logs_available": false
+}

@@ -5,7 +5,7 @@ use scanner::TriangleRoute;
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
-use tokio_postgres::{Client, NoTls, Transaction};
+use tokio_postgres::{Client, Transaction};
 
 #[derive(Clone)]
 pub struct Ledger {
@@ -41,6 +41,8 @@ fn values(v: &BTreeMap<String, Decimal>) -> Value {
         .collect::<BTreeMap<_, _>>())
 }
 async fn event(tx: &Transaction<'_>, account: &str, kind: &str, data: Value) -> Result<()> {
+    let mut data = data;
+    infrastructure::redact_value(&mut data);
     tx.execute(
         "INSERT INTO execution_events(account_id,kind,payload) VALUES($1,$2,$3)",
         &[&account, &kind, &data],
@@ -50,17 +52,11 @@ async fn event(tx: &Transaction<'_>, account: &str, kind: &str, data: Value) -> 
 }
 impl Ledger {
     pub async fn connect(url: &str, account: String) -> Result<Self> {
-        let mut config: tokio_postgres::Config =
-            url.replace("postgresql+psycopg:", "postgresql:").parse()?;
+        let mut config: tokio_postgres::Config = infrastructure::database_config(url)?;
         config.connect_timeout(std::time::Duration::from_secs(3));
         config.application_name(format!("exchange:{account}"));
         config.options("-c lock_timeout=2000 -c statement_timeout=5000 -c idle_in_transaction_session_timeout=10000");
-        let (client, connection) = config.connect(NoTls).await?;
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("exchange journal disconnected: {e}");
-            }
-        });
+        let client = infrastructure::connect_database(config).await?;
         if std::env::var("ARB_ENV").as_deref() == Ok("production") {
             let unsafe_role: bool = client.query_one("SELECT rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname=current_user", &[]).await?.get(0);
             if unsafe_role {
@@ -272,6 +268,7 @@ impl Ledger {
         now: u64,
         max_age: u64,
     ) -> Result<bool> {
+        infrastructure::ensure_new_exposure_allowed()?;
         if amount <= Decimal::ZERO || route.start_asset != "USDT" || route.legs.len() != 3 {
             bail!("invalid exchange reservation");
         }

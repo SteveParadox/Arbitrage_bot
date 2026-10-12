@@ -1,0 +1,29 @@
+# Separate operator-supplied credentials and permit; never mainnet authorization.
+services:
+  engine-control:
+    environment:
+      ARB_TRADING_MODE: testnet
+      ARB_TESTNET_TRADING_ENABLED: 'true'
+      ARB_PAPER_TRADING_ENABLED: 'false'
+      ARB_LIVE_TRADING_ENABLED: 'false'
+      BYBIT_TESTNET: 'true'
+      BYBIT_TESTNET_API_KEY_FILE: /run/secrets/testnet-api-key
+      BYBIT_TESTNET_API_SECRET_FILE: /run/secrets/testnet-api-secret
+      ARB_EXECUTION_ACCOUNT: ${ARB_EXECUTION_ACCOUNT:?explicit account required}
+      ARB_EXECUTION_DEPLOYMENT_PERMIT: /run/secrets/testnet-permit.json
+    volumes:
+      - ${ARB_TESTNET_SECRETS_DIR:?separate authorized credential directory required}/testnet-api-key:/run/secrets/testnet-api-key:ro
+      - ${ARB_TESTNET_SECRETS_DIR}/testnet-api-secret:/run/secrets/testnet-api-secret:ro
+      - ${ARB_TESTNET_SECRETS_DIR}/deployment-permit.json:/run/secrets/testnet-permit.json:ro
+  api:
+    environment:
+      ARB_TRADING_MODE: testnet
+      ARB_TESTNET_TRADING_ENABLED: 'true'
+      ARB_PAPER_TRADING_ENABLED: 'false'
+      ARB_LIVE_TRADING_ENABLED: 'false'
+      BYBIT_TESTNET: 'true'
+      ARB_EXECUTION_DEPLOYMENT_PERMIT: /run/secrets/testnet-permit.json
+    volumes:
+      - ${ARB_TESTNET_SECRETS_DIR}/deployment-permit.json:/run/secrets/testnet-permit.json:ro
+  catalog:
+    environment: {BYBIT_TESTNET: 'true'}

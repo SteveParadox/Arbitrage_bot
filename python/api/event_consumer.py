@@ -18,6 +18,7 @@ from analytics.db import get_session_factory
 from analytics.engine_event_models import EngineEvent
 from analytics.opportunity_store import OpportunityStore
 from api.settings import settings
+from api.infrastructure import redis_options
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ class EngineEventConsumer:
         client = redis.from_url(
             settings.arb_redis_url,
             decode_responses=True,
+            **redis_options(settings),
         )
         try:
             try:

@@ -90,6 +90,21 @@ def test_forged_tokens_share_source_quota(secured, monkeypatch):
 
 
 def production(monkeypatch):
+    import tempfile
+    import os
+    certificate_descriptor, certificate = tempfile.mkstemp()
+    os.write(certificate_descriptor, b"public test certificate material")
+    os.close(certificate_descriptor)
+    key_descriptor, private_key = tempfile.mkstemp()
+    os.write(key_descriptor, b"private test key material")
+    os.close(key_descriptor)
+    for name, value in {
+        "ARB_DATABASE_SSLMODE":"verify-full", "ARB_DATABASE_TLS_CA_CERT":certificate,
+        "ARB_REDIS_TLS_CA_CERT":certificate,"ARB_ENGINE_GRPC_TLS_CA_CERT":certificate,
+        "ARB_ENGINE_GRPC_TLS_CERT":certificate,"ARB_ENGINE_GRPC_TLS_KEY":private_key,
+        "ARB_METRICS_TOKEN":"monitoring-"+"m"*40,
+    }.items():
+        monkeypatch.setenv(name,value)
     monkeypatch.setenv("ARB_LIVE_TRADING_ENABLED", "false")
     for name in ("ARB_OBSERVER_REPLAY_FILE", "ARB_PAPER_CRASH_AT", "ARB_PAPER_CRASH_AFTER_LEG",
                  "ARB_TEST_GRPC_RESPONSE_DELAY_MS", "ARB_REPLAY_CLOCK", "BYBIT_API_KEY", "BYBIT_API_SECRET"):
@@ -99,7 +114,7 @@ def production(monkeypatch):
                 arb_cors_origins="https://dashboard.example.org", arb_trusted_hosts="api.example.org",
                 arb_api_rate_limit_per_minute=100,
                 arb_database_url="postgresql+psycopg://runtime:strong-password-012345@db/paper",
-                arb_redis_url="redis://:strong-password-678901@cache/0")
+                arb_redis_url="rediss://:strong-password-678901@cache/0")
 
 
 @pytest.mark.parametrize("override", [

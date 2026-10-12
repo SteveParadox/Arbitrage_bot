@@ -1,0 +1,14 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "exporter_dependency_failure_test": "PASS_OBSERVED_PRIOR_RUN",
+  "unauthorized_metrics": "401 observed",
+  "database_failure": "dependency gauge zero and false readiness proof",
+  "alert_rule_syntax_count": 17,
+  "alert_fixtures_passed": 3,
+  "receiver_delivery": "UNVERIFIED"
+}

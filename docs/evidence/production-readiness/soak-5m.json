@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "status": "PASS_OBSERVED_PRIOR_RUN",
+  "requested_seconds": 300,
+  "actual_harness_seconds": 304.38025727000013,
+  "workload": "actual managed engine/scanner/risk/paper/coordinator/events/API with synthetic 200ms book updates; separate 50ms execution delay",
+  "clock": "wall",
+  "financial": {
+    "balanced": true,
+    "settled_cycles": 139,
+    "orders": 415,
+    "unsettled_cycles": 0,
+    "opening_USDT": "500",
+    "ending_USDT": "3178.64183000000000",
+    "realized_simulated_pnl_USDT": "2678.64183000000000",
+    "unresolved_inventory": false,
+    "shutdown_authorized": false,
+    "shutdown_state": "offline"
+  },
+  "raw_samples_available": false
+}

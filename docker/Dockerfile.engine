@@ -14,4 +14,7 @@ WORKDIR /app
 COPY --from=build /build/rust/target/release/engine-service /usr/local/bin/engine-service
 COPY shared /app/shared
 EXPOSE 50051
+RUN groupadd --gid 10001 arbitrage && useradd --uid 10001 --gid 10001 --no-create-home arbitrage \
+    && mkdir -p /app/data && chown -R 10001:10001 /app/data
+USER 10001:10001
 CMD ["engine-service"]

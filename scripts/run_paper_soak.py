@@ -3,6 +3,7 @@
 Requires migrated isolated services and a built development Rust engine. Never calls
 private Bybit APIs. Prints measured results, including failed and unresolved cycles.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,172 +21,543 @@ import httpx
 import psycopg
 from redis import Redis
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"python/tests"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python/tests"))
 from paper_reference import read_snapshot, verify
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def wait(check, seconds=20):
-    end = time.monotonic()+seconds
+    end = time.monotonic() + seconds
     while time.monotonic() < end:
         try:
             if result := check():
                 return result
         except (httpx.HTTPError, psycopg.Error):
             pass
-        time.sleep(.05)
+        time.sleep(0.05)
     raise RuntimeError("runtime or API failed readiness")
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seconds", type=int, default=60)
+    parser.add_argument("--seconds", type=int, default=None)
     parser.add_argument("--latencies", default="25,50,100,200,500")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--sample-seconds", type=float, default=10)
+    parser.add_argument(
+        "--profile",
+        choices=("smoke", "extended", "medium", "long", "restart", "fault"),
+        default="smoke",
+    )
+    parser.add_argument("--feed-interval-ms", type=int, default=200)
     args = parser.parse_args()
-    if not 3 <= args.seconds <= 3600:
-        parser.error("seconds must be 3..3600 per latency")
+    if args.seconds is None:
+        args.seconds = {
+            "smoke": 300,
+            "extended": 1800,
+            "medium": 14400,
+            "long": 86400,
+            "restart": 300,
+            "fault": 300,
+        }[args.profile]
+    if not 20 <= args.feed_interval_ms <= 1000:
+        parser.error("feed interval must be 20..1000 ms")
+    if not 3 <= args.seconds <= 86400:
+        parser.error("seconds must be 3..86400 per latency")
     if not 1 <= args.sample_seconds <= 60:
         parser.error("sample-seconds must be 1..60")
-    required = {"ARB_TRADING_MODE": "paper", "ARB_PAPER_TRADING_ENABLED": "true",
-                "ARB_LIVE_TRADING_ENABLED": "false", "ARB_ENV": "development"}
+    required = {
+        "ARB_TRADING_MODE": "paper",
+        "ARB_PAPER_TRADING_ENABLED": "true",
+        "ARB_LIVE_TRADING_ENABLED": "false",
+        "ARB_ENV": "development",
+    }
     if any(os.environ.get(k) != v for k, v in required.items()):
         parser.error("requires explicit development paper authorization and live=false")
-    database = os.environ["ARB_DATABASE_URL"].replace("postgresql+psycopg:", "postgresql:")
+    database = os.environ["ARB_DATABASE_URL"].replace(
+        "postgresql+psycopg:", "postgresql:"
+    )
     os.environ["ARB_REDIS_URL"]  # required, no implicit local service
     token = os.environ["ARB_CONTROL_API_TOKEN"]
     internal_token = os.environ["ARB_ENGINE_GRPC_TOKEN"]
     results = []
-    report = {"source":"synthetic executable-depth fixtures; not live Bybit prices",
-              "simulated":True, "clock":"wall", "runs":results}
+    report = {
+        "source": "synthetic executable-depth fixtures; not live Bybit prices",
+        "simulated": True,
+        "clock": "wall",
+        "profile": args.profile,
+        "requested_seconds": args.seconds,
+        "feed_interval_ms": args.feed_interval_ms,
+        "source_commit": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+        ).strip(),
+        "runs": results,
+    }
 
     def checkpoint():
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            staging = args.output.with_suffix(args.output.suffix+".pending")
-            staging.write_text(json.dumps(report, indent=2, default=str)+"\n")
+            staging = args.output.with_suffix(args.output.suffix + ".pending")
+            staging.write_text(json.dumps(report, indent=2, default=str) + "\n")
             staging.replace(args.output)
 
     with tempfile.TemporaryDirectory(prefix="arb-paper-soak-") as temp:
         temp = Path(temp)
-        api_env = dict(os.environ, PYTHONPATH=str(ROOT/"python"), ARB_EVENT_STREAM="arb.paper.soak.api", ARB_ENGINE_GRPC_TARGET="127.0.0.1:55054", ARB_ENGINE_GRPC_TOKEN=internal_token)
-        with (temp/"api.log").open("w") as log:
-            api = subprocess.Popen([sys.executable, "-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "58082"], cwd=ROOT/"python", env=api_env, stdout=log, stderr=subprocess.STDOUT)
+        api_env = dict(
+            os.environ,
+            PYTHONPATH=str(ROOT / "python"),
+            ARB_EVENT_STREAM="arb.paper.soak.api",
+            ARB_ENGINE_GRPC_TARGET="127.0.0.1:55054",
+            ARB_ENGINE_GRPC_TOKEN=internal_token,
+        )
+        with (temp / "api.log").open("w") as log:
+            api = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "api.main:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "58082",
+                ],
+                cwd=ROOT / "python",
+                env=api_env,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
             try:
-                with httpx.Client(base_url="http://127.0.0.1:58082", trust_env=False, headers={"Authorization": "Bearer "+token}) as client:
+                with httpx.Client(
+                    base_url="http://127.0.0.1:58082",
+                    trust_env=False,
+                    headers={"Authorization": "Bearer " + token},
+                ) as client:
                     wait(lambda: client.get("/health").status_code == 200)
                     for latency in map(int, args.latencies.split(",")):
-                        account = "soak-"+uuid.uuid4().hex[:12]
-                        directory = temp/account
-                        subprocess.run([sys.executable, str(ROOT/"scripts/make_paper_replay.py"), str(directory), "--cycles", str(min(3600, args.seconds+2))], env=api_env, check=True, stdout=subprocess.DEVNULL)
-                        response = client.post("/paper/accounts", json={"account_id":account,"amount":"500","request_id":str(uuid.uuid4())})
+                        account = "soak-" + uuid.uuid4().hex[:12]
+                        directory = temp / account
+                        subprocess.run(
+                            [
+                                sys.executable,
+                                str(ROOT / "scripts/make_paper_replay.py"),
+                                str(directory),
+                                "--cycles",
+                                str((args.seconds + 2) * 1000 // args.feed_interval_ms),
+                                "--feed-interval-ms",
+                                str(args.feed_interval_ms),
+                            ],
+                            env=api_env,
+                            check=True,
+                            stdout=subprocess.DEVNULL,
+                        )
+                        response = client.post(
+                            "/paper/accounts",
+                            json={
+                                "account_id": account,
+                                "amount": "500",
+                                "request_id": str(uuid.uuid4()),
+                            },
+                        )
                         response.raise_for_status()
-                        config = json.loads((ROOT/"shared/config/risk.json").read_text())
-                        config.update(kill_switch_file=str(directory/"GLOBAL_KILL"),
-                                      trading_control_file=str(directory/"global-control.json"),
-                                      runtime_limits_file=str(directory/"global-limits.json"))
-                        (directory/"risk.json").write_text(json.dumps(config))
-                        env = dict(api_env, ARB_RISK_CONFIG=str(directory/"risk.json"), ARB_REPLAY_CLOCK="wall", ARB_ENGINE_AUTOSTART="true", ARB_PAPER_ACCOUNT=account, ARB_ENGINE_GRPC_ADDR="127.0.0.1:55054", ARB_ENGINE_GRPC_TOKEN=internal_token,
-                                   ARB_TRIANGLE_CONFIG=str(directory/"triangles.json"), ARB_SCANNER_CONFIG=str(directory/"scanner.json"), ARB_OBSERVER_REPLAY_FILE=str(directory/"market.jsonl"),
-                                   ARB_PAPER_LATENCY_MS=str(latency), ARB_EVENT_STREAM="arb.paper.soak.api", ARB_EVENT_OUTBOX_PATH=str(directory/"outbox"), ARB_OBSERVER_LOCK=str(directory/"observer.lock"),
-                                   ARB_GRPC_IDEMPOTENCY_STORE=str(directory/"commands"), ARB_CONTROL_STATE_FILE=str(directory/"control.json"), ARB_RUNTIME_LIMITS_FILE=str(directory/"limits.json"))
-                        binary = os.environ.get("ARB_ENGINE_BINARY", str(ROOT/"rust/target/debug/engine-service"))
-                        with (directory/"engine.log").open("w") as engine_log:
-                            engine = subprocess.Popen([binary], cwd=ROOT, env=env, stdout=engine_log, stderr=subprocess.STDOUT)
+                        config = json.loads(
+                            (ROOT / "shared/config/risk.json").read_text()
+                        )
+                        config.update(
+                            kill_switch_file=str(directory / "GLOBAL_KILL"),
+                            trading_control_file=str(directory / "global-control.json"),
+                            runtime_limits_file=str(directory / "global-limits.json"),
+                        )
+                        (directory / "risk.json").write_text(json.dumps(config))
+                        env = dict(
+                            api_env,
+                            ARB_RISK_CONFIG=str(directory / "risk.json"),
+                            ARB_REPLAY_CLOCK="wall",
+                            ARB_ENGINE_AUTOSTART="true",
+                            ARB_PAPER_ACCOUNT=account,
+                            ARB_ENGINE_GRPC_ADDR="127.0.0.1:55054",
+                            ARB_ENGINE_GRPC_TOKEN=internal_token,
+                            ARB_TRIANGLE_CONFIG=str(directory / "triangles.json"),
+                            ARB_SCANNER_CONFIG=str(directory / "scanner.json"),
+                            ARB_OBSERVER_REPLAY_FILE=str(directory / "market.jsonl"),
+                            ARB_PAPER_LATENCY_MS=str(latency),
+                            ARB_EVENT_STREAM="arb.paper.soak.api",
+                            ARB_EVENT_OUTBOX_PATH=str(directory / "outbox"),
+                            ARB_OBSERVER_LOCK=str(directory / "observer.lock"),
+                            ARB_GRPC_IDEMPOTENCY_STORE=str(directory / "commands"),
+                            ARB_CONTROL_STATE_FILE=str(directory / "control.json"),
+                            ARB_RUNTIME_LIMITS_FILE=str(directory / "limits.json"),
+                            ARB_ENGINE_METRICS_FILE=str(
+                                directory / "engine-metrics.json"
+                            ),
+                        )
+                        binary = os.environ.get(
+                            "ARB_ENGINE_BINARY",
+                            str(ROOT / "rust/target/debug/engine-service"),
+                        )
+                        with (directory / "engine.log").open("w") as engine_log:
+                            engine = subprocess.Popen(
+                                [binary],
+                                cwd=ROOT,
+                                env=env,
+                                stdout=engine_log,
+                                stderr=subprocess.STDOUT,
+                            )
                             try:
-                                wait(lambda account=account: client.get(f"/paper/{account}/status").json().get("runtime_online"))
-                                response = client.post(f"/paper/{account}/control/start", json={"request_id":str(uuid.uuid4()),"reason":"explicit bounded synthetic replay"})
+                                wait(
+                                    lambda account=account: (
+                                        client.get(f"/paper/{account}/status")
+                                        .json()
+                                        .get("runtime_online")
+                                    )
+                                )
+                                response = client.post(
+                                    f"/paper/{account}/control/start",
+                                    json={
+                                        "request_id": str(uuid.uuid4()),
+                                        "reason": "explicit bounded synthetic replay",
+                                    },
+                                )
                                 response.raise_for_status()
                                 started = time.monotonic()
                                 samples = []
-                                run = {"account":account, "latency_ms":latency,
-                                       "state":"running", "samples":samples}
+                                run = {
+                                    "account": account,
+                                    "latency_ms": latency,
+                                    "state": "running",
+                                    "samples": samples,
+                                }
                                 results.append(run)
                                 next_sample = started
-                                while time.monotonic()-started < args.seconds:
+                                injected = False
+                                while time.monotonic() - started < args.seconds:
                                     if engine.poll() is not None:
-                                        raise RuntimeError((directory/"engine.log").read_text()[-4000:])
+                                        raise RuntimeError(
+                                            (directory / "engine.log").read_text()[
+                                                -4000:
+                                            ]
+                                        )
+                                    if (
+                                        not injected
+                                        and args.profile in {"restart", "fault"}
+                                        and time.monotonic() - started
+                                        >= args.seconds / 2
+                                    ):
+                                        injected = True
+                                        if args.profile == "fault":
+                                            with Redis.from_url(
+                                                os.environ["ARB_REDIS_URL"],
+                                                socket_timeout=3,
+                                            ) as service:
+                                                service.execute_command(
+                                                    "CLIENT", "PAUSE", 2000, "ALL"
+                                                )
+                                            run["fault"] = {
+                                                "type": "redis_pause",
+                                                "milliseconds": 2000,
+                                                "elapsed_seconds": time.monotonic()
+                                                - started,
+                                            }
+                                        else:
+                                            client.post(
+                                                f"/paper/{account}/control/stop",
+                                                json={
+                                                    "request_id": str(uuid.uuid4()),
+                                                    "reason": "planned safe restart",
+                                                },
+                                            ).raise_for_status()
+                                            engine.send_signal(signal.SIGINT)
+                                            engine.wait(timeout=20)
+                                            engine = subprocess.Popen(
+                                                [binary],
+                                                cwd=ROOT,
+                                                env=env,
+                                                stdout=engine_log,
+                                                stderr=subprocess.STDOUT,
+                                            )
+
+                                            def recovered():
+                                                state = client.get(
+                                                    f"/paper/{account}/status"
+                                                ).json()
+                                                return (
+                                                    state.get("runtime_online")
+                                                    and state["epoch"] >= 2
+                                                    and not state["authorized"]
+                                                )
+
+                                            wait(recovered)
+                                            client.post(
+                                                f"/paper/{account}/control/start",
+                                                json={
+                                                    "request_id": str(uuid.uuid4()),
+                                                    "reason": "explicit paper reauthorization after planned restart",
+                                                },
+                                            ).raise_for_status()
+                                            run["restart"] = {
+                                                "epoch": client.get(
+                                                    f"/paper/{account}/status"
+                                                ).json()["epoch"],
+                                                "elapsed_seconds": time.monotonic()
+                                                - started,
+                                                "automatic_authorization": False,
+                                            }
                                     if time.monotonic() >= next_sample:
-                                        with psycopg.connect(database, connect_timeout=5) as connection:
-                                            snapshot = read_snapshot(connection, account)
+                                        with psycopg.connect(
+                                            database, connect_timeout=5
+                                        ) as connection:
+                                            snapshot = read_snapshot(
+                                                connection, account
+                                            )
                                             verified = verify(snapshot)
-                                            event_count = connection.execute("SELECT count(*) FROM paper_events WHERE account_id=%s", (account,)).fetchone()[0]
+                                            event_count = connection.execute(
+                                                "SELECT count(*) FROM paper_events WHERE account_id=%s",
+                                                (account,),
+                                            ).fetchone()[0]
                                         try:
-                                            memory = Path(f"/proc/{engine.pid}/status").read_text()
-                                            resources = {line.split(":",1)[0]:line.split(":",1)[1].strip()
-                                                         for line in memory.splitlines() if line.startswith(("VmRSS:", "VmSize:", "Threads:"))}
+                                            memory = Path(
+                                                f"/proc/{engine.pid}/status"
+                                            ).read_text()
+                                            resources = {
+                                                line.split(":", 1)[0]: line.split(
+                                                    ":", 1
+                                                )[1].strip()
+                                                for line in memory.splitlines()
+                                                if line.startswith(
+                                                    ("VmRSS:", "VmSize:", "Threads:")
+                                                )
+                                            }
                                         except OSError as error:
                                             # Some sandboxes expose a different PID namespace in /proc.
                                             # Financial verification remains mandatory; metrics aren't invented.
-                                            resources = {"available":False,"source":"procfs","errno":error.errno}
-                                        with Redis.from_url(os.environ["ARB_REDIS_URL"], socket_timeout=2) as redis:
-                                            stream = redis.xinfo_stream("arb.paper.soak.api") if redis.exists("arb.paper.soak.api") else {}
-                                        samples.append({"elapsed_seconds":time.monotonic()-started,
-                                                        "ledger_balanced":verified["balanced"],
-                                                        "cycles":len(snapshot["cycles"]),"orders":len(snapshot["orders"]),
-                                                        "events":event_count,"resources":resources,
-                                                        "stream_length":stream.get("length",0),
-                                                        "outbox_pending_files":sum(1 for _ in (directory/"outbox").rglob("pending/*.json"))})
-                                        next_sample = time.monotonic()+args.sample_seconds
+                                            resources = {
+                                                "available": False,
+                                                "source": "procfs",
+                                                "errno": error.errno,
+                                            }
+                                        try:
+                                            resources = json.loads(
+                                                (
+                                                    directory / "engine-metrics.json"
+                                                ).read_text()
+                                            )
+                                            resources["source"] = (
+                                                "engine process-local procfs sample"
+                                            )
+                                        except (OSError, ValueError):
+                                            pass
+                                        with Redis.from_url(
+                                            os.environ["ARB_REDIS_URL"],
+                                            socket_timeout=3,
+                                        ) as redis:
+                                            stream = (
+                                                redis.xinfo_stream("arb.paper.soak.api")
+                                                if redis.exists("arb.paper.soak.api")
+                                                else {}
+                                            )
+                                        samples.append(
+                                            {
+                                                "elapsed_seconds": time.monotonic()
+                                                - started,
+                                                "ledger_balanced": verified["balanced"],
+                                                "cycles": len(snapshot["cycles"]),
+                                                "orders": len(snapshot["orders"]),
+                                                "events": event_count,
+                                                "resources": resources,
+                                                "stream_length": stream.get(
+                                                    "length", 0
+                                                ),
+                                                "outbox_pending_files": sum(
+                                                    1
+                                                    for _ in (
+                                                        directory / "outbox"
+                                                    ).rglob("pending/*.json")
+                                                ),
+                                            }
+                                        )
+                                        next_sample = (
+                                            time.monotonic() + args.sample_seconds
+                                        )
                                         checkpoint()
-                                    time.sleep(.25)
-                                elapsed = time.monotonic()-started
+                                    time.sleep(0.25)
+                                elapsed = time.monotonic() - started
                                 status = client.get(f"/paper/{account}/status").json()
-                                rejection_events = client.get(f"/paper/{account}/events?limit=500").json()
-                                performance = client.get(f"/paper/{account}/performance").json()
-                                cycles = client.get(f"/paper/{account}/cycles?limit=500").json()
-                                orders = client.get(f"/paper/{account}/orders?limit=500").json()
-                                if latency <= 100 and args.seconds >= 5 and sum(c["state"]=="COMPLETED" for c in cycles)<2:
-                                    raise AssertionError({"missing":"multiple autonomous cycles", "cycles":cycles,"rejections":rejection_events[:3]})
+                                rejection_events = client.get(
+                                    f"/paper/{account}/events?limit=500"
+                                ).json()
+                                performance = client.get(
+                                    f"/paper/{account}/performance"
+                                ).json()
+                                cycles = client.get(
+                                    f"/paper/{account}/cycles?limit=500"
+                                ).json()
+                                orders = client.get(
+                                    f"/paper/{account}/orders?limit=500"
+                                ).json()
+                                if (
+                                    latency <= 100
+                                    and args.seconds >= 5
+                                    and sum(c["state"] == "COMPLETED" for c in cycles)
+                                    < 2
+                                ):
+                                    raise AssertionError(
+                                        {
+                                            "missing": "multiple autonomous cycles",
+                                            "cycles": cycles,
+                                            "rejections": rejection_events[:3],
+                                        }
+                                    )
                                 with psycopg.connect(database) as connection:
                                     t = time.monotonic()
                                     connection.execute("SELECT 1").fetchone()
-                                    query_ms = (time.monotonic()-t)*1000
-                                    counts = dict(connection.execute("SELECT kind,count(*) FROM paper_events WHERE account_id=%s GROUP BY kind", (account,)).fetchall())
+                                    query_ms = (time.monotonic() - t) * 1000
+                                    counts = dict(
+                                        connection.execute(
+                                            "SELECT kind,count(*) FROM paper_events WHERE account_id=%s GROUP BY kind",
+                                            (account,),
+                                        ).fetchall()
+                                    )
                                 transport_health = client.get("/health").json()
-                                run.update({"account":account,"latency_ms":latency,"actual_seconds":elapsed,"max_rss_kib":None,"cpu_seconds":None,
-                                                "postgres_probe_ms":query_ms,"status":status,"performance":performance,"cycle_states":{s:sum(c["state"]==s for c in cycles) for s in {c["state"] for c in cycles}},
-                                                "transport_health":transport_health,"partial_orders":sum(o["result"] is not None and o["result"]["status"]=="PartiallyFilledCanceled" for o in orders),"journal_counts":counts,"rejections":[e for e in rejection_events if e["kind"]=="candidate.rejected"],
-                                                "first_cycle":cycles[-1] if cycles else None,"first_orders":[o for o in orders if cycles and o["cycle_id"]==cycles[-1]["id"]]})
-                                client.post(f"/paper/{account}/control/stop", json={"request_id":str(uuid.uuid4()),"reason":"bounded run complete"}).raise_for_status()
+                                run.update(
+                                    {
+                                        "account": account,
+                                        "latency_ms": latency,
+                                        "actual_seconds": elapsed,
+                                        "max_rss_kib": None,
+                                        "cpu_seconds": None,
+                                        "postgres_probe_ms": query_ms,
+                                        "status": status,
+                                        "performance": performance,
+                                        "cycle_states": {
+                                            s: sum(c["state"] == s for c in cycles)
+                                            for s in {c["state"] for c in cycles}
+                                        },
+                                        "transport_health": transport_health,
+                                        "partial_orders": sum(
+                                            o["result"] is not None
+                                            and o["result"]["status"]
+                                            == "PartiallyFilledCanceled"
+                                            for o in orders
+                                        ),
+                                        "journal_counts": counts,
+                                        "rejections": [
+                                            e
+                                            for e in rejection_events
+                                            if e["kind"] == "candidate.rejected"
+                                        ],
+                                        "first_cycle": cycles[-1] if cycles else None,
+                                        "first_orders": [
+                                            o
+                                            for o in orders
+                                            if cycles
+                                            and o["cycle_id"] == cycles[-1]["id"]
+                                        ],
+                                    }
+                                )
+                                client.post(
+                                    f"/paper/{account}/control/stop",
+                                    json={
+                                        "request_id": str(uuid.uuid4()),
+                                        "reason": "bounded run complete",
+                                    },
+                                ).raise_for_status()
                                 run["state"] = "stopping"
                             finally:
                                 if engine.poll() is None:
                                     engine.send_signal(signal.SIGINT)
                                     try:
-                                        deadline = time.monotonic()+20
+                                        deadline = time.monotonic() + 20
                                         while True:
-                                            pid, status_code, usage = os.wait4(engine.pid, os.WNOHANG)
+                                            pid, status_code, usage = os.wait4(
+                                                engine.pid, os.WNOHANG
+                                            )
                                             if pid:
                                                 break
                                             if time.monotonic() >= deadline:
-                                                raise subprocess.TimeoutExpired("engine shutdown", 20)
-                                            time.sleep(.05)
-                                        engine.returncode = os.waitstatus_to_exitcode(status_code)
-                                        if results and results[-1]["account"] == account:
-                                            results[-1]["cpu_seconds"] = usage.ru_utime+usage.ru_stime
+                                                raise subprocess.TimeoutExpired(
+                                                    "engine shutdown", 20
+                                                )
+                                            time.sleep(0.05)
+                                        engine.returncode = os.waitstatus_to_exitcode(
+                                            status_code
+                                        )
+                                        if (
+                                            results
+                                            and results[-1]["account"] == account
+                                        ):
+                                            results[-1]["cpu_seconds"] = (
+                                                usage.ru_utime + usage.ru_stime
+                                            )
                                             results[-1]["max_rss_kib"] = usage.ru_maxrss
-                                            results[-1]["resource_source"] = "wait4 child process resource accounting"
+                                            results[-1]["resource_source"] = (
+                                                "wait4 child process resource accounting"
+                                            )
                                     except (OSError, AttributeError):
                                         engine.wait(timeout=20)
                                     except subprocess.TimeoutExpired:
                                         engine.kill()
                                         engine.wait(timeout=5)
-                                        raise RuntimeError("engine graceful shutdown exceeded 20s")
+                                        raise RuntimeError(
+                                            "engine graceful shutdown exceeded 20s"
+                                        )
                                 if results and results[-1]["account"] == account:
-                                    with psycopg.connect(database, connect_timeout=5) as connection:
+                                    with psycopg.connect(
+                                        database, connect_timeout=5
+                                    ) as connection:
                                         final = read_snapshot(connection, account)
                                         independent = verify(final)
-                                    results[-1]["independent_final"] = {"balanced":independent["balanced"],
-                                        "cycles":len(final["cycles"]), "orders":len(final["orders"])}
+                                    results[-1]["independent_final"] = {
+                                        "balanced": independent["balanced"],
+                                        "cycles": len(final["cycles"]),
+                                        "orders": len(final["orders"]),
+                                    }
                                     results[-1]["after_graceful_shutdown"] = {
-                                        "status": client.get(f"/paper/{account}/status").json(),
-                                        "performance": client.get(f"/paper/{account}/performance").json(),
-                                        "reconciliation": client.get(f"/paper/{account}/reconciliation").json()}
-                                    results[-1]["state"] = "finished" if results[-1]["state"] == "stopping" else "incomplete"
-                                    results[-1]["engine_log_tail"] = (directory/"engine.log").read_text()[-4000:]
+                                        "status": client.get(
+                                            f"/paper/{account}/status"
+                                        ).json(),
+                                        "performance": client.get(
+                                            f"/paper/{account}/performance"
+                                        ).json(),
+                                        "reconciliation": client.get(
+                                            f"/paper/{account}/reconciliation"
+                                        ).json(),
+                                    }
+                                    results[-1]["state"] = (
+                                        "finished"
+                                        if results[-1]["state"] == "stopping"
+                                        else "incomplete"
+                                    )
+                                    final_status = results[-1][
+                                        "after_graceful_shutdown"
+                                    ]["status"]
+                                    with psycopg.connect(
+                                        database, connect_timeout=5
+                                    ) as connection:
+                                        states = dict(
+                                            connection.execute(
+                                                "SELECT state,count(*) FROM paper_cycles WHERE account_id=%s GROUP BY state",
+                                                (account,),
+                                            ).fetchall()
+                                        )
+                                        active = connection.execute(
+                                            "SELECT count(*) FROM paper_cycles WHERE account_id=%s AND NOT settled",
+                                            (account,),
+                                        ).fetchone()[0]
+                                    results[-1]["cycle_states"] = states
+                                    results[-1]["unsettled_cycles"] = active
+                                    results[-1]["result"] = (
+                                        "PASS"
+                                        if independent["balanced"]
+                                        and not active
+                                        and not final_status["authorized"]
+                                        and not final_status["runtime_online"]
+                                        and not final_status["blocked"]
+                                        else "DEGRADED"
+                                    )
+                                    results[-1]["engine_log_tail"] = (
+                                        directory / "engine.log"
+                                    ).read_text()[-4000:]
                                     checkpoint()
 
             finally:
@@ -193,6 +565,8 @@ def main():
                 api.wait(timeout=10)
     checkpoint()
     print(json.dumps(report, indent=2, default=str))
+    if any(run.get("result") != "PASS" for run in results):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

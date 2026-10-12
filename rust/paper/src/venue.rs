@@ -412,6 +412,7 @@ pub struct StopGuard {
 }
 impl StopGuard {
     pub fn check(&self) -> Result<()> {
+        infrastructure::ensure_new_exposure_allowed()?;
         let control = risk::control::read_control(&self.control)?;
         let stop = risk::control::read_stop_intent(&self.control)?;
         if risk::control::stop_pending(&self.control)

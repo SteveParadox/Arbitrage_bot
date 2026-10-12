@@ -1,0 +1,14 @@
+
+.git
+.env
+.env.*
+secrets
+**/secrets
+data
+backups
+rust/target
+frontend/node_modules
+docs/evidence
+
+**/.env
+**/.env.*

@@ -23,13 +23,7 @@ async fn main() -> Result<()> {
     let route = scanner::load_triangle_config(&args[3])?.routes.remove(0);
     let mut owner = Ledger::connect(&url, args[1].clone()).await?;
     owner.claim("testnet", &args[2], true).await?;
-    let c = tokio_postgres::connect(
-        &url.replace("postgresql+psycopg:", "postgresql:"),
-        tokio_postgres::NoTls,
-    )
-    .await?;
-    let client = c.0;
-    tokio::spawn(c.1);
+    let client = infrastructure::connect_database(infrastructure::database_config(&url)?).await?;
     let now = risk::current_time_ms();
     client.execute("UPDATE execution_accounts SET enabled=true,blocked=false,recovering=false,snapshot_ms=$2,balance_evidence=$3,expected_wallet=$4 WHERE id=$1",&[&args[1],&(now as i64),&json!({"available":{"USDT":"100"},"wallet":{"USDT":"100"}}),&json!({"USDT":"100"})]).await?;
     // Workers use separate PostgreSQL sessions under one authoritative owner.

@@ -10,6 +10,7 @@ from analytics import models  # noqa: F401
 from analytics import shadow_models  # noqa: F401
 from simulator import models as simulator_models  # noqa: F401
 from api.settings import settings
+from api.infrastructure import postgres_options
 
 config = context.config
 if config.config_file_name is not None:
@@ -38,6 +39,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=postgres_options(settings),
     )
     with connectable.connect() as connection:
         context.configure(

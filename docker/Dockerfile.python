@@ -6,4 +6,7 @@ COPY shared /app/shared
 COPY scripts /app/scripts
 RUN pip install --no-cache-dir .
 
+RUN groupadd --gid 10001 arbitrage && useradd --uid 10001 --gid 10001 --no-create-home arbitrage \
+    && mkdir -p /app/data && chown -R 10001:10001 /app/data
+USER 10001:10001
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
-use tokio_postgres::{Client, NoTls, Transaction};
+use tokio_postgres::{Client, Transaction};
 
 #[derive(Clone)]
 pub struct Ledger {
@@ -54,6 +54,8 @@ async fn event(
     kind: &str,
     payload: Value,
 ) -> Result<()> {
+    let mut payload = payload;
+    infrastructure::redact_value(&mut payload);
     tx.execute(
         "INSERT INTO paper_events(account_id,cycle_id,kind,payload,created_at) VALUES($1,$2,$3,$4,COALESCE(to_timestamp($5::bigint/1000.0),now()))",
         &[&account, &cycle, &kind, &payload, &financial_ms()],
@@ -84,8 +86,7 @@ async fn transfer(
 }
 impl Ledger {
     pub async fn connect(url: &str, account: String) -> Result<Self> {
-        let mut config: tokio_postgres::Config =
-            url.replace("postgresql+psycopg:", "postgresql:").parse()?;
+        let mut config: tokio_postgres::Config = infrastructure::database_config(url)?;
         config.application_name(format!("paper:{account}"));
         config.connect_timeout(std::time::Duration::from_secs(3));
         // Database contention must fail closed instead of hanging the dispatcher
@@ -93,12 +94,7 @@ impl Ledger {
         let options = format!("{} -c lock_timeout=2000 -c statement_timeout=5000 -c idle_in_transaction_session_timeout=10000",
                               config.get_options().unwrap_or_default());
         config.options(options);
-        let (client, connection) = config.connect(NoTls).await?;
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("paper database connection ended: {e}");
-            }
-        });
+        let client = infrastructure::connect_database(config).await?;
         if std::env::var("ARB_ENV").as_deref() == Ok("production") {
             let unsafe_role: bool = client.query_one("SELECT rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname=current_user", &[]).await?.get(0);
             if unsafe_role {
@@ -429,6 +425,7 @@ impl Ledger {
         portfolio_limits: &risk::PortfolioLimits,
         cooldown_ms: i64,
     ) -> Result<bool> {
+        infrastructure::ensure_new_exposure_allowed()?;
         if starting <= Decimal::ZERO {
             bail!("invalid starting capital");
         }

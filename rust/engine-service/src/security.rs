@@ -1,30 +1,6 @@
 //! Production paper/observer startup is fail closed; credentials are never logged.
-use anyhow::{bail, Context, Result};
-use std::{env, fs, path::Path};
-
-fn load_secret(name: &str) -> Result<()> {
-    let Ok(source) = env::var(format!("{name}_FILE")) else {
-        return Ok(());
-    };
-    if env::var(name).is_ok_and(|v| !v.is_empty()) {
-        bail!("inline and file-based secret sources conflict");
-    }
-    let path = Path::new(&source);
-    let metadata = fs::metadata(path).context("secret file unavailable")?;
-    if metadata.len() > 65536 {
-        bail!("secret file exceeds size limit");
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o022 != 0 {
-            bail!("secret file writable by another user");
-        }
-    }
-    let value = fs::read_to_string(path).context("secret file unreadable")?;
-    env::set_var(name, value.trim());
-    Ok(())
-}
+use anyhow::{bail, Result};
+use std::env;
 
 struct ProductionConfig {
     mode: String,
@@ -70,8 +46,16 @@ fn validate(config: &ProductionConfig) -> Result<()> {
 }
 
 pub fn initialize() -> Result<()> {
-    for name in ["ARB_ENGINE_GRPC_TOKEN", "ARB_DATABASE_URL", "ARB_REDIS_URL"] {
-        load_secret(name)?;
+    for name in [
+        "ARB_ENGINE_GRPC_TOKEN",
+        "ARB_DATABASE_URL",
+        "ARB_REDIS_URL",
+        "ARB_CONTROL_API_TOKEN",
+        "ARB_METRICS_TOKEN",
+        "BYBIT_API_KEY",
+        "BYBIT_API_SECRET",
+    ] {
+        infrastructure::load_secret(name)?;
     }
     let mode = env::var("ARB_TRADING_MODE").unwrap_or_else(|_| "observe".into());
     let _: execution::ExecutionMode = mode.parse()?;
@@ -82,7 +66,7 @@ pub fn initialize() -> Result<()> {
             "BYBIT_LIVE"
         };
         for suffix in ["API_KEY", "API_SECRET"] {
-            load_secret(&format!("{prefix}_{suffix}"))?;
+            infrastructure::load_secret(&format!("{prefix}_{suffix}"))?;
         }
     }
     let environment = env::var("ARB_ENV").unwrap_or_else(|_| "development".into());
@@ -90,6 +74,21 @@ pub fn initialize() -> Result<()> {
         bail!("unknown deployment environment");
     }
     if environment == "production" {
+        if env::var("ARB_DATABASE_SSLMODE").as_deref() != Ok("verify-full") {
+            bail!("production PostgreSQL requires verify-full");
+        }
+        for name in [
+            "ARB_DATABASE_TLS_CA_CERT",
+            "ARB_REDIS_TLS_CA_CERT",
+            "ARB_ENGINE_GRPC_TLS_CA_CERT",
+            "ARB_ENGINE_GRPC_TLS_CERT",
+            "ARB_ENGINE_GRPC_TLS_KEY",
+        ] {
+            if env::var(name).is_err() {
+                bail!("production verified transport configuration incomplete");
+            }
+        }
+        infrastructure::redis_client(&env::var("ARB_REDIS_URL").unwrap_or_default())?;
         let forbidden = [
             "BYBIT_API_KEY",
             "BYBIT_API_SECRET",

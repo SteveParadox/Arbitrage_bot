@@ -5,6 +5,8 @@ import os
 import re
 from urllib.parse import unquote, urlsplit
 
+from api.infrastructure import read_secret, postgres_options, redis_options, read_file
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, model_validator
 
@@ -16,6 +18,22 @@ class Settings(BaseSettings):
         extra="ignore",
         hide_input_in_errors=True,
     )
+
+    arb_database_sslmode: str = "disable"
+    arb_database_tls_ca_cert: str = ""
+    arb_database_pool_size: int = Field(default=5, ge=1, le=50)
+    arb_database_pool_overflow: int = Field(default=5, ge=0, le=50)
+    arb_database_pool_timeout: float = Field(default=3, gt=0, le=30)
+    arb_redis_tls_ca_cert: str = ""
+    arb_engine_grpc_tls_ca_cert: str = ""
+    arb_engine_grpc_tls_cert: str = ""
+    arb_engine_grpc_tls_key: str = ""
+    arb_metrics_token: str = ""
+    arb_engine_metrics_file: str = "data/observability/engine.json"
+    arb_backup_status_file: str = "data/observability/backup.json"
+    arb_restore_marker: str = "data/RESTORE_REQUIRED"
+    arb_financial_integrity_file: str = "data/observability/integrity.json"
+    arb_monitoring_readiness_file: str = "data/observability/monitoring.json"
 
     arb_env: str = "development"
     arb_log_level: str = "INFO"
@@ -70,16 +88,13 @@ class Settings(BaseSettings):
     def secret_files(cls, values):
         values = dict(values)
         for field in ("arb_database_url", "arb_redis_url", "arb_control_api_token",
-                      "arb_engine_grpc_token", "arb_paper_api_keys_json", "arb_execution_api_keys_json"):
+                      "arb_engine_grpc_token", "arb_paper_api_keys_json", "arb_execution_api_keys_json", "arb_metrics_token", "bybit_api_key", "bybit_api_secret"):
             source = os.getenv(field.upper()+"_FILE")
             if not source:
                 continue
             if values.get(field):
                 raise ValueError("inline and file-based secret sources conflict")
-            path = Path(source)
-            if path.stat().st_size > 65536 or path.stat().st_mode & 0o022:
-                raise ValueError("secret file is oversized or writable by another user")
-            values[field] = path.read_text().strip()
+            values[field] = read_secret(source)
         return values
 
     @model_validator(mode="after")
@@ -126,6 +141,15 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("invalid paper account permissions")
         if self.arb_env == "production":
+            postgres_options(self)
+            redis_options(self)
+            if not all((self.arb_engine_grpc_tls_ca_cert, self.arb_engine_grpc_tls_cert, self.arb_engine_grpc_tls_key)):
+                raise ValueError("production gRPC requires mutual TLS")
+            read_file(self.arb_engine_grpc_tls_key, private=True)
+            tokens_all = (self.arb_control_api_token, self.arb_engine_grpc_token, self.arb_metrics_token)
+            if len(self.arb_metrics_token.encode()) < 32 or len(set(tokens_all)) != 3:
+                raise ValueError("production requires a distinct strong monitoring credential")
+
             if self.arb_trading_mode not in {"observe", "paper", "testnet", "live"}:
                 raise ValueError("unsupported production execution mode")
             if self.arb_trading_mode != "live" and (self.arb_live_trading_enabled or os.getenv("ARB_LIVE_TRADING_ENABLED") != "false"):

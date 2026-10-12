@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+infrastructure = { path = "../infrastructure" }
 runtime-clock = { path = "../runtime-clock" }
 anyhow.workspace = true
 async-trait = "0.1"

@@ -1,0 +1,23 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "gates": {
+    "secure_transport": "PASS_OBSERVED_PRIOR_RUN",
+    "secrets_default_regressions": "PASS",
+    "mode_security_default_regressions": "PASS",
+    "docker_startup": "BLOCKED",
+    "monitoring_exporter_failure": "PASS_OBSERVED_PRIOR_RUN",
+    "financial_native_persistence": "PASS_OBSERVED_PRIOR_RUN",
+    "encrypted_native_backup_restore": "PASS_OBSERVED_PRIOR_RUN",
+    "five_minute_smoke": "PASS_OBSERVED_PRIOR_RUN",
+    "final_service_rerun": "NOT_RUN",
+    "sustained_resource_stability": "UNVERIFIED",
+    "extended_fault_profiles": "NOT_RUN",
+    "existing_functionality_default": "PASS"
+  },
+  "merge_ready": false
+}
