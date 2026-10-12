@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import re
+import time
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request
@@ -13,7 +14,7 @@ from redis import Redis
 from starlette.responses import JSONResponse
 
 from api.settings import settings
-from api.infrastructure import redis_options
+from api.infrastructure import redis_options, production_readiness
 
 
 @dataclass(frozen=True)
@@ -94,11 +95,19 @@ class SecurityMiddleware:
             return await self.app(scope, receive, send)
         request = Request(scope)
         path, method = request.url.path, request.method
+        from api.metrics import REQUESTS, LATENCY, AUTH_FAILURES, route_group
+        started = time.monotonic()
+        route = route_group(path)
         user = principal(bearer(request.headers))
         exchange_user = execution_grant(bearer(request.headers))
 
         async def safe_send(message):
             if message["type"] == "http.response.start":
+                status = message['status']
+                REQUESTS.labels(route, method if method in {'GET','POST','HEAD','OPTIONS','PUT','DELETE','PATCH'} else 'OTHER', str(status//100)+'xx').inc()
+                LATENCY.labels(route).observe(time.monotonic()-started)
+                if status in {401,403,429}:
+                    AUTH_FAILURES.labels(str(status)).inc()
                 headers = list(message.get("headers", []))
                 headers.extend([(b"x-content-type-options", b"nosniff"), (b"x-frame-options", b"DENY"),
                                 (b"cache-control", b"no-store"), (b"referrer-policy", b"no-referrer")])
@@ -109,7 +118,7 @@ class SecurityMiddleware:
             await JSONResponse({"detail": detail}, status_code=code, headers=headers)(scope, receive, safe_send)
 
         production = settings.arb_env == "production"
-        if production and path != "/livez" and not path.startswith(("/paper/", "/execution/")) and method != "OPTIONS":
+        if production and path not in {"/livez","/metrics"} and not path.startswith(("/paper/", "/execution/")) and method != "OPTIONS":
             if user is None or not user.global_admin:
                 return await reject(401, "administrator credential required")
         origin = request.headers.get("origin")
@@ -125,8 +134,12 @@ class SecurityMiddleware:
         emergency = emergency or (method == "POST" and exchange_stop is not None and
                                  exchange_user is not None and exchange_user["role"] != "viewer" and
                                  exchange_stop[1] in exchange_user["accounts"])
+        if method == 'POST' and path.endswith('/start') and (user or exchange_user):
+            ready, reason = production_readiness(settings)
+            if not ready:
+                return await reject(409, reason)
         rate = settings.arb_api_rate_limit_per_minute
-        if rate and path != "/livez" and not emergency and method != "OPTIONS":
+        if rate and path not in {"/livez","/metrics"} and not emergency and method != "OPTIONS":
             token = bearer(request.headers)
             identity = "credential:" + token if user or exchange_user else "source:" + (request.client.host if request.client else "unknown")
             try:

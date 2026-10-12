@@ -54,6 +54,8 @@ async fn event(
     kind: &str,
     payload: Value,
 ) -> Result<()> {
+    let mut payload = payload;
+    infrastructure::redact_value(&mut payload);
     tx.execute(
         "INSERT INTO paper_events(account_id,cycle_id,kind,payload,created_at) VALUES($1,$2,$3,$4,COALESCE(to_timestamp($5::bigint/1000.0),now()))",
         &[&account, &cycle, &kind, &payload, &financial_ms()],

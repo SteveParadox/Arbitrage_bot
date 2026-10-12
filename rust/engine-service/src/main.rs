@@ -86,6 +86,9 @@ impl EngineControl for EngineControlService {
         request: Request<ControlRequest>,
     ) -> Result<Response<CommandReply>, Status> {
         self.authorize(&request)?;
+        infrastructure::ensure_new_exposure_allowed().map_err(|_| {
+            Status::failed_precondition("infrastructure recovery or readiness gate blocked")
+        })?;
         validate_request_id(&request.get_ref().request_id)?;
         let message = request.into_inner();
         let normalized_reason = clean_reason(&message.reason, "gRPC start_trading");
@@ -991,6 +994,11 @@ async fn main() -> Result<()> {
             let healthy = base_healthy
                 && event_health.event_pipeline_status == "healthy"
                 && idempotency_health.healthy;
+            if let Ok(path) = env::var("ARB_ENGINE_METRICS_FILE") {
+                if infrastructure::write_process_sample(Path::new(&path)).is_err() {
+                    tracing::error!("process telemetry persistence failed");
+                }
+            }
             heartbeat_events.publish(
                 "engine.health",
                 json!({

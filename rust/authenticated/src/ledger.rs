@@ -41,6 +41,8 @@ fn values(v: &BTreeMap<String, Decimal>) -> Value {
         .collect::<BTreeMap<_, _>>())
 }
 async fn event(tx: &Transaction<'_>, account: &str, kind: &str, data: Value) -> Result<()> {
+    let mut data = data;
+    infrastructure::redact_value(&mut data);
     tx.execute(
         "INSERT INTO execution_events(account_id,kind,payload) VALUES($1,$2,$3)",
         &[&account, &kind, &data],

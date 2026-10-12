@@ -52,6 +52,8 @@ pub fn initialize() -> Result<()> {
         "ARB_REDIS_URL",
         "ARB_CONTROL_API_TOKEN",
         "ARB_METRICS_TOKEN",
+        "BYBIT_API_KEY",
+        "BYBIT_API_SECRET",
     ] {
         infrastructure::load_secret(name)?;
     }

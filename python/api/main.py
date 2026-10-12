@@ -12,6 +12,7 @@ from api.execution import router as execution_router
 from api.control import router as control_router
 from api.event_consumer import EngineEventConsumer
 from api.logging import configure_logging
+from api.metrics import router as metrics_router
 from api.micro_live import router as micro_live_analytics_router
 from api.opportunities import router as opportunity_analytics_router
 from api.operations import router as operations_router
@@ -81,3 +82,13 @@ app.include_router(shadow_analytics_router)
 app.include_router(micro_live_analytics_router)
 app.include_router(operations_router)
 app.include_router(control_router)
+
+app.include_router(metrics_router)
+
+if settings.arb_env == "production":
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+    @app.exception_handler(RequestValidationError)
+    async def safe_validation_error(_request, error):
+        # Pydantic inputs may include credentials; return location and category only.
+        return JSONResponse(status_code=422, content={"detail":[{"loc":e["loc"],"type":e["type"]} for e in error.errors()]})

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     arb_engine_grpc_tls_cert: str = ""
     arb_engine_grpc_tls_key: str = ""
     arb_metrics_token: str = ""
+    arb_engine_metrics_file: str = "data/observability/engine.json"
+    arb_backup_status_file: str = "data/observability/backup.json"
     arb_restore_marker: str = "data/RESTORE_REQUIRED"
     arb_financial_integrity_file: str = "data/observability/integrity.json"
     arb_monitoring_readiness_file: str = "data/observability/monitoring.json"

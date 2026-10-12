@@ -48,3 +48,7 @@ data/paper/
 data/execution/
 data/execution-permit/
 python/data/
+
+secrets/
+*.arbbackup
+*.pending

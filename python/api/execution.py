@@ -14,6 +14,7 @@ from sqlalchemy import text
 from api.autonomous_paper import DB, Identity, ReadDB, _bounded_transaction, _decimal_rows, _fingerprint, _runtime_online
 from api.security import require_execution_auth
 from api.settings import settings
+from api.infrastructure import production_readiness
 
 router = APIRouter(prefix="/execution", tags=["authenticated-execution"], dependencies=[Depends(require_execution_auth)])
 
@@ -135,6 +136,9 @@ def control(account: str, action: Literal["start", "stop", "emergency-stop"], co
     if prior:
         return prior
     if action == "start":
+        ready, reason = production_readiness(settings)
+        if not ready:
+            raise HTTPException(409, reason)
         if command.authorization != ("authorize_mainnet" if row["mode"] == "live" else "authorize_testnet"):
             raise HTTPException(403, "explicit mode-specific execution authorization required")
         deployment_allowed(row)
@@ -158,12 +162,13 @@ def control(account: str, action: Literal["start", "stop", "emergency-stop"], co
 def status(account: str, request: Request, db: ReadDB):
     row = account_row(db, account, request)
     active = query(db, "SELECT count(*) FROM execution_cycles WHERE account_id=:a AND committed", a=account).scalar_one()
+    infrastructure_ready, infrastructure_reason = production_readiness(settings)
     online = _runtime_online(row["heartbeat"]) and row["state"] not in {"STOPPED", "FAILED"}
     evidence = row["balance_evidence"] or {}
     reserved = query(db, "SELECT COALESCE(sum(starting),0) FROM execution_cycles WHERE account_id=:a AND committed", a=account).scalar_one()
     return {"account_id": account, "mode": row["mode"], "environment": "offline_mock" if row["mock"] else row["mode"],
-            "exchange_confirmed": not row["mock"] and row["snapshot_ms"] is not None, "mock_evidence": row["mock"], "state": row["state"] if online or row["state"] in {"STOPPED", "FAILED", "BLOCKED"} else "DEGRADED",
-            "runtime_online": online, "authorized": row["enabled"] and online and not row["blocked"] and not row["recovering"] and not row["emergency_stop"], "blocked": row["blocked"],
+            "exchange_confirmed": not row["mock"] and row["snapshot_ms"] is not None, "mock_evidence": row["mock"], "state": "BLOCKED" if not infrastructure_ready else row["state"] if online or row["state"] in {"STOPPED", "FAILED", "BLOCKED"} else "DEGRADED",
+            "runtime_online": online, "authorized": infrastructure_ready and row["enabled"] and online and not row["blocked"] and not row["recovering"] and not row["emergency_stop"], "blocked": row["blocked"] or not infrastructure_ready, "infrastructure_ready": infrastructure_ready, "infrastructure_reason": infrastructure_reason,
             "emergency_stop": row["emergency_stop"], "recovering": row["recovering"], "epoch": row["epoch"], "active_cycles": active,
             "can_control": request.state.execution_grant["role"] != "viewer", "snapshot_ms": row["snapshot_ms"],
             "market_ready": row["market_ready"] and online, "market_ms":row["market_ms"],

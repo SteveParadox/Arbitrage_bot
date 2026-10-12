@@ -20,7 +20,7 @@ pub fn read_file(path: &Path, private: bool, limit: u64) -> Result<Vec<u8>> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     }
     let file = options
         .open(path)
@@ -195,6 +195,11 @@ fn secrets() -> &'static Vec<String> {
                     if let Ok(uri) = url::Url::parse(&value) {
                         if let Some(password) = uri.password() {
                             values.push(password.to_owned());
+                            if let Ok(decoded) =
+                                percent_encoding::percent_decode_str(password).decode_utf8()
+                            {
+                                values.push(decoded.into_owned());
+                            }
                         }
                     }
                     values.push(value);
@@ -264,4 +269,138 @@ pub fn ensure_new_exposure_allowed() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Process-local resource reporting also works in separate PID namespaces.
+pub fn process_sample() -> Value {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or_default();
+    let mut sample = serde_json::json!({"checked_at":now});
+    if let Ok(status) = fs::read_to_string("/proc/self/status") {
+        for (field, key, multiplier) in [
+            ("VmRSS:", "rss_bytes", 1024),
+            ("VmHWM:", "peak_rss_bytes", 1024),
+            ("Threads:", "threads", 1),
+        ] {
+            if let Some(value) = status
+                .lines()
+                .find(|line| line.starts_with(field))
+                .and_then(|line| line.split_whitespace().nth(1))
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                sample[key] = Value::from(value * multiplier);
+            }
+        }
+    }
+    if let Ok(entries) = fs::read_dir("/proc/self/fd") {
+        sample["open_fds"] = Value::from(entries.count());
+    }
+    if let Ok(stat) = fs::read_to_string("/proc/self/stat") {
+        if let Some((_, fields)) = stat.rsplit_once(") ") {
+            let fields: Vec<_> = fields.split_whitespace().collect();
+            if let (Some(user), Some(system)) = (
+                fields.get(11).and_then(|s| s.parse::<u64>().ok()),
+                fields.get(12).and_then(|s| s.parse::<u64>().ok()),
+            ) {
+                sample["cpu_ticks"] = Value::from(user + system);
+            }
+        }
+    }
+    if let Ok(io) = fs::read_to_string("/proc/self/io") {
+        for field in ["read_bytes", "write_bytes"] {
+            if let Some(value) = io
+                .lines()
+                .find_map(|line| line.strip_prefix(&format!("{field}: ")))
+                .and_then(|v| v.parse::<u64>().ok())
+            {
+                sample[field] = Value::from(value);
+            }
+        }
+    }
+    sample["exchange_rest"] = rest_stats();
+    sample
+}
+pub fn write_process_sample(path: &Path) -> Result<()> {
+    use std::io::Write;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let pending = path.with_extension("pending");
+    let mut file = fs::File::create(&pending)?;
+    file.write_all(&serde_json::to_vec(&process_sample())?)?;
+    file.sync_all()?;
+    fs::rename(pending, path)?;
+    Ok(())
+}
+use std::sync::atomic::{AtomicU64, Ordering};
+static REST: [[AtomicU64; 5]; 9] = [const { [const { AtomicU64::new(0) }; 5] }; 9];
+const ENDPOINTS: [&str; 9] = [
+    "create",
+    "cancel",
+    "realtime",
+    "history",
+    "executions",
+    "wallet",
+    "account",
+    "time",
+    "other",
+];
+pub struct RestProbe {
+    index: usize,
+    started: std::time::Instant,
+    failed: bool,
+}
+impl RestProbe {
+    pub fn start(path: &str) -> Self {
+        let index = match path {
+            "/v5/order/create" => 0,
+            "/v5/order/cancel" => 1,
+            "/v5/order/realtime" => 2,
+            "/v5/order/history" => 3,
+            "/v5/execution/list" => 4,
+            "/v5/account/wallet-balance" => 5,
+            "/v5/account/info" => 6,
+            "/v5/market/time" => 7,
+            _ => 8,
+        };
+        Self {
+            index,
+            started: std::time::Instant::now(),
+            failed: true,
+        }
+    }
+    pub fn response(&mut self, http: u16, code: i64) {
+        if http == 429 || code == 10006 {
+            REST[self.index][2].fetch_add(1, Ordering::Relaxed);
+        }
+        if http == 401 || (10003..=10005).contains(&code) {
+            REST[self.index][3].fetch_add(1, Ordering::Relaxed);
+        }
+        self.failed = !(200..300).contains(&http) || code != 0;
+    }
+}
+impl Drop for RestProbe {
+    fn drop(&mut self) {
+        REST[self.index][0].fetch_add(1, Ordering::Relaxed);
+        if self.failed {
+            REST[self.index][1].fetch_add(1, Ordering::Relaxed);
+        }
+        REST[self.index][4].fetch_add(
+            self.started.elapsed().as_micros().min(u64::MAX as u128) as u64,
+            Ordering::Relaxed,
+        );
+    }
+}
+pub fn rest_stats() -> Value {
+    let mut result = serde_json::Map::new();
+    for (index, endpoint) in ENDPOINTS.iter().enumerate() {
+        let values: Vec<u64> = REST[index]
+            .iter()
+            .map(|v| v.load(Ordering::Relaxed))
+            .collect();
+        result.insert((*endpoint).into(),serde_json::json!({"requests":values[0],"errors":values[1],"rate_limits":values[2],"auth_errors":values[3],"latency_us":values[4]}));
+    }
+    Value::Object(result)
 }

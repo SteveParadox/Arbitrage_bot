@@ -1011,13 +1011,14 @@ impl BybitExecutionClient {
             format!("{}{}", self.config.base_url(), path)
         };
 
+        let mut probe = infrastructure::RestProbe::start(path);
         let mut request = self
             .http
             .request(method.clone(), &url)
-            .header("X-BAPI-API-KEY", self.config.api_key())
+            .header("X-BAPI-API-KEY", sensitive_header(self.config.api_key())?)
             .header("X-BAPI-TIMESTAMP", timestamp.to_string())
             .header("X-BAPI-RECV-WINDOW", self.config.recv_window_ms.to_string())
-            .header("X-BAPI-SIGN", signature);
+            .header("X-BAPI-SIGN", sensitive_header(&signature)?);
 
         if method == Method::POST {
             request = request
@@ -1036,18 +1037,20 @@ impl BybitExecutionClient {
             .map_err(|error| ExecutionError::Transport(error.to_string()))?;
 
         if !status.is_success() {
+            probe.response(status.as_u16(), 0);
             return Err(ExecutionError::HttpStatus {
                 status: status.as_u16(),
-                body,
+                body: infrastructure::redact_text(&body),
             });
         }
 
         let envelope: ApiEnvelope = serde_json::from_str(&body)
             .map_err(|error| ExecutionError::Decode(error.to_string()))?;
+        probe.response(status.as_u16(), envelope.ret_code);
         if envelope.ret_code != 0 {
             return Err(ExecutionError::Bybit {
                 code: envelope.ret_code,
-                message: envelope.ret_msg,
+                message: infrastructure::redact_text(&envelope.ret_msg),
             });
         }
         Ok(envelope)
@@ -1438,4 +1441,11 @@ mod tests {
         }
         .is_retryable());
     }
+}
+
+fn sensitive_header(value: &str) -> Result<reqwest::header::HeaderValue, ExecutionError> {
+    let mut header = reqwest::header::HeaderValue::from_str(value)
+        .map_err(|_| ExecutionError::Decode("invalid authentication header".into()))?;
+    header.set_sensitive(true);
+    Ok(header)
 }

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from analytics.db import get_db
 from api.security import require_paper_auth
 from api.settings import settings
+from api.infrastructure import production_readiness
 
 router = APIRouter(prefix="/paper", tags=["autonomous-paper"],
                    dependencies=[Depends(require_paper_auth)])
@@ -125,6 +126,9 @@ def control(account: str, action: Literal["start", "stop"], command: ControlComm
     if prior:
         return prior
     if action == "start":
+        ready, reason = production_readiness(settings)
+        if not ready:
+            raise HTTPException(409, reason)
         if (settings.arb_trading_mode != "paper" or not settings.arb_paper_trading_enabled
                 or settings.arb_live_trading_enabled):
             raise HTTPException(409, "deployment must explicitly authorize paper and disable live")
@@ -154,13 +158,14 @@ def status(account: str, db: ReadDB, request: Request = None):
                     a=account).scalar_one()
     pending = _query(db, "SELECT count(*) FROM paper_orders o JOIN paper_cycles c ON c.id=o.cycle_id "
                      "WHERE c.account_id=:a AND o.state='SUBMITTING'", a=account).scalar_one()
+    infrastructure_ready, infrastructure_reason = production_readiness(settings)
     online = _runtime_online(row["heartbeat"])
     return {"account_id": account, "mode": "paper", "simulated": True,
             "clock": row["config"].get("runtime_clock", "wall"),
             "can_control": request is not None and getattr(request.state, "paper_role", "viewer") != "viewer",
-            "state": "recovering" if row["recovering"] else "blocked" if row["blocked"] else "offline" if not online else
+            "state": "recovering" if row["recovering"] else "blocked" if row["blocked"] or not infrastructure_ready else "offline" if not online else
             "executing" if active else "running" if row["enabled"] else "stopped",
-            "authorized": row["enabled"] and online and not row["blocked"] and not row["recovering"], "blocked": row["blocked"], "runtime_online": online,
+            "authorized": infrastructure_ready and row["enabled"] and online and not row["blocked"] and not row["recovering"], "blocked": row["blocked"] or not infrastructure_ready, "infrastructure_ready": infrastructure_ready, "infrastructure_reason": infrastructure_reason, "runtime_online": online,
             "heartbeat": row["heartbeat"], "epoch": row["epoch"], "active_cycles": active,
             "pending_orders": pending, "balances": balances}
 
