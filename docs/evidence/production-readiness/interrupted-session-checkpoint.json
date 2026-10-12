@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "report_date_utc": "2026-10-12",
+  "repository": "SteveParadox/Arbitrage_bot",
+  "inspected_main_sha": "712b470896842eaa272ca2c2ad5f48e3ffa7f1bc",
+  "intended_implementation_branch": "codex/production-infrastructure-hardening",
+  "status": "BLOCKED_SOURCE_DELIVERY",
+  "source_delivery": {
+    "final_commit_sha": null,
+    "pushed_implementation": false,
+    "implementation_pr": null,
+    "local_checkout": "/workspace/scratch/029697e70c9a/Arbitrage_bot",
+    "reason": "Exec server disconnected with the source edits still uncommitted. Recovery attempts failed or remained pending. This checkpoint preserves session observations; it does not contain or deliver the implementation."
+  },
+  "live_trading": {
+    "enabled": false,
+    "mainnet_orders_placed": 0,
+    "testnet_orders_placed": 0
+  },
+  "provenance": {
+    "basis": "Executed test outputs recorded earlier in this working session, preserved through context compaction.",
+    "raw_logs_retrievable": false,
+    "exact_tested_source_sha": null,
+    "tested_source_description": "Uncommitted working tree derived from inspected_main_sha. Later source changes were not fully revalidated."
+  },
+  "validation": [
+    {
+      "category": "Policy/security/secret-file/encryption/logging regression",
+      "status": "PASS_BEFORE_FINAL_EDITS",
+      "passed": 49,
+      "failed": 0,
+      "duration_seconds": 4.33,
+      "local_log": "/tmp/arb-policy-final.log"
+    },
+    {
+      "category": "PostgreSQL/Redis verified TLS and Rust gRPC mutual TLS",
+      "status": "PASS_BEFORE_FINAL_EDITS",
+      "passed": 9,
+      "failed": 0,
+      "duration_seconds": 29.39,
+      "local_log": "/tmp/arb-tls-tests.log",
+      "checks": [
+        "Encrypted PostgreSQL sessions from Rust and Python",
+        "Untrusted, missing, malformed, expired and hostname-mismatched certificates rejected",
+        "Production insecure PostgreSQL configuration rejected",
+        "Redis authenticated verified TLS",
+        "Rust gRPC accepts trusted client certificate and rejects absent, untrusted and plaintext clients"
+      ]
+    },
+    {
+      "category": "Encrypted PostgreSQL and runtime-state backup/restore",
+      "status": "PASS_BEFORE_FINAL_EDITS",
+      "passed": 1,
+      "failed": 0,
+      "duration_seconds": 11.01,
+      "local_log": "/tmp/arb-backup-tests.log",
+      "fixture": {
+        "fill_records": 3,
+        "ledger_entries": 14,
+        "pending_reservation_preserved": true,
+        "restored_authorization_disabled": true,
+        "restore_barrier_created": true,
+        "independent_integrity_balanced": true
+      },
+      "limitations": [
+        "Seeded numerical fixture, not an authenticated exchange execution",
+        "No point-in-time recovery or off-site disaster recovery verified"
+      ]
+    },
+    {
+      "category": "Rust workspace",
+      "status": "EARLIER_RUN_PASSED_FINAL_BUILD_FAILED",
+      "default_tests": "Earlier workspace run passed; exact count is not recoverable here",
+      "final_build_exit_code": 101,
+      "final_build_log": "/tmp/arb-build-final.log",
+      "reason": "Final build log inaccessible after disconnect; cause not established"
+    },
+    {
+      "category": "Rust strict Clippy",
+      "status": "PASS_BEFORE_FINAL_EDITS",
+      "local_log": "/tmp/arb-clippy.log"
+    },
+    {
+      "category": "Python Ruff",
+      "status": "PASS_BEFORE_FINAL_EDITS",
+      "local_log": "/tmp/arb-ruff-final.log"
+    },
+    {
+      "category": "Frontend",
+      "status": "PARTIAL",
+      "executed": [
+        "npm ci",
+        "npm audit"
+      ],
+      "not_run": [
+        "Final lint",
+        "Final test",
+        "Final build"
+      ]
+    },
+    {
+      "category": "Production Compose merged configuration",
+      "status": "CONFIGURATION_ONLY_PASS",
+      "checked_services": 9,
+      "container_startup_verified": false
+    },
+    {
+      "category": "Docker build/startup",
+      "status": "BLOCKED",
+      "reason": "Docker daemon could not create /tmp/arb-docker.sock: socket operation not permitted; mount propagation also denied"
+    },
+    {
+      "category": "Secret scanner",
+      "status": "FAILED_BEFORE_BASELINE_CORRECTION",
+      "findings": 2,
+      "disposition": "Known synthetic historical test literals were added to an exact path/hash baseline; corrected scanner not rerun",
+      "post_correction_verified": false
+    },
+    {
+      "category": "Rust dependency audit",
+      "status": "NO_KNOWN_VULNERABILITIES_WITH_WARNING",
+      "tool": "cargo-audit 0.22.2",
+      "known_vulnerabilities": 0,
+      "warning": "RUSTSEC-2025-0134: rustls-pemfile 2.2.0 unmaintained",
+      "local_log": "/tmp/arb-cargo-audit.json"
+    },
+    {
+      "category": "Python runtime dependency audit",
+      "status": "NO_KNOWN_VULNERABILITIES",
+      "tool": "pip-audit 2.10.1",
+      "distributions_audited": 35,
+      "known_vulnerabilities": 0,
+      "local_log": "/tmp/arb-pip-audit.json"
+    },
+    {
+      "category": "Node dependency audit",
+      "status": "NO_KNOWN_VULNERABILITIES",
+      "known_vulnerabilities": 0,
+      "local_log": "/tmp/arb-npm-audit.json"
+    },
+    {
+      "category": "Container vulnerability scan",
+      "status": "NOT_RUN"
+    },
+    {
+      "category": "Prometheus alert rule tests",
+      "status": "UNVERIFIED",
+      "reason": "Test fixtures created; promtool installation/result not recovered"
+    },
+    {
+      "category": "Final integrated regression and migration roundtrip",
+      "status": "NOT_RUN"
+    }
+  ],
+  "reliability": [
+    {
+      "profile": "smoke",
+      "requested_seconds": 300,
+      "actual_seconds": 300.017981426,
+      "status": "DEGRADED",
+      "financial_verification": "BALANCED",
+      "latency_ms": 50,
+      "market_feed_interval_ms": 1000,
+      "cycle_states": {
+        "COMPLETED": 17,
+        "RECOVERED": 1,
+        "RECOVERY_REQUIRED": 1
+      },
+      "root_cause": "Leg 3 market age reached 539 ms, exceeding the unchanged 500 ms policy. Residual ETH inventory was preserved and new execution halted.",
+      "correction_uncommitted": "Wall-clock soak fixture now emits snapshots every 200 ms. Security redaction catalog cached; failure reporting clarified. Risk freshness limit unchanged.",
+      "local_log": "/tmp/arb-soak-5m.json"
+    },
+    {
+      "profile": "smoke_fixed_fixture",
+      "requested_seconds": 300,
+      "actual_seconds": null,
+      "status": "RESULT_UNAVAILABLE",
+      "financial_verification": "UNVERIFIED_FINAL",
+      "reason": "Rerun exited 1; redirected result/log inaccessible after workspace disconnect. It used an earlier binary and cannot validate final source.",
+      "local_log": "/tmp/arb-soak-5m-fixed.json"
+    },
+    {
+      "profile": "extended",
+      "requested_seconds": 1800,
+      "actual_seconds": 0,
+      "status": "NOT_RUN",
+      "financial_verification": "UNVERIFIED"
+    },
+    {
+      "profile": "medium",
+      "requested_seconds": 14400,
+      "actual_seconds": 0,
+      "status": "NOT_RUN",
+      "financial_verification": "UNVERIFIED"
+    },
+    {
+      "profile": "long",
+      "requested_seconds": 86400,
+      "actual_seconds": 0,
+      "status": "NOT_RUN",
+      "financial_verification": "UNVERIFIED"
+    },
+    {
+      "profile": "restart",
+      "actual_seconds": 0,
+      "status": "NOT_RUN",
+      "financial_verification": "UNVERIFIED"
+    },
+    {
+      "profile": "fault_injection",
+      "actual_seconds": 0,
+      "status": "NOT_RUN",
+      "financial_verification": "UNVERIFIED"
+    }
+  ],
+  "local_uncommitted_work": [
+    "Shared Rust infrastructure transport, secret loading, redaction and admission checks",
+    "Python verified transport and mounted-secret configuration",
+    "Engine gRPC mutual TLS and bounded runtime resources",
+    "Protected Prometheus aggregate metrics and readiness evidence",
+    "Independent persisted financial verifier",
+    "Encrypted consistent backup/restore and restore authorization barrier",
+    "Hardened non-root Compose, private service networks, TLS/auth Redis and PostgreSQL",
+    "Certificate/secret provisioning and immutable image digest resolver",
+    "Wall-clock soak profiles and resource sampling",
+    "CI security/reliability workflows"
+  ],
+  "unresolved_review_items": [
+    "Move restore barrier creation before any restore side effect",
+    "Complete final admission/metrics integration and production status consistency tests",
+    "Verify bounded integrity-worker retries and mount ownership",
+    "Rerun secret scanner after staging all source",
+    "Execute hardened Docker startup/persistence and container vulnerability scans on supported host",
+    "Run final full Rust, Python and frontend suites",
+    "Run corrected final-source smoke, 30-minute, restart and fault profiles",
+    "Publish the actual source and reproducible operator documentation",
+    "Validate off-site backup, extended operational security and long-duration stability"
+  ],
+  "production_readiness": "NOT_VERIFIED",
+  "merge_ready": false
+}
