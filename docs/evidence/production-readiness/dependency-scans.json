@@ -1,0 +1,18 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "status": "PASS_OBSERVED_PRIOR_RUN_WITH_WARNING",
+  "rust_tool": "cargo-audit 0.22.2",
+  "rust_known_vulnerabilities": 0,
+  "rust_warning": "unmaintained rustls-pemfile RUSTSEC-2025-0134",
+  "python_runtime_dependencies": 35,
+  "python_known_vulnerabilities": 0,
+  "npm_known_vulnerabilities": 0,
+  "container_scan": "NOT_RUN",
+  "final_dependency_audit": "NOT_RUN",
+  "raw_logs_available": false
+}

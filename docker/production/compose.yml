@@ -9,10 +9,7 @@ x-hardening:
   pids_limit: 128
   restart: unless-stopped
   tmpfs: &id004
-  - /tmp:rw
-  - nosuid
-  - nodev
-  - size=64m
+  - /tmp:rw,nosuid,nodev,size=64m,mode=1777
   logging: &id003
     driver: json-file
     options:
@@ -86,16 +83,8 @@ services:
     pids_limit: 128
     restart: unless-stopped
     tmpfs:
-    - /tmp:rw
-    - nosuid
-    - nodev
-    - size=64m
-    - /var/run/postgresql:rw
-    - nosuid
-    - nodev
-    - uid=999
-    - gid=999
-    - size=16m
+    - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    - /var/run/postgresql:rw,nosuid,nodev,uid=999,gid=999,size=16m
     logging: *id003
     image: postgres:16.15-bookworm
     user: 999:999
@@ -499,7 +488,7 @@ services:
     pids_limit: 128
     restart: 'no'
     tmpfs:
-    - /tmp:rw,nosuid,nodev,size=1g
+    - /tmp:rw,nosuid,nodev,size=1g,mode=1777
     logging: *id003
     build:
       context: ../..

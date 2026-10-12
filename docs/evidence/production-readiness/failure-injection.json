@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "status": "PARTIAL_OBSERVED_PRIOR_RUN",
+  "executed_categories": [
+    "TLS bad trust/hostname/expired leaf",
+    "database exporter unavailable",
+    "Redis durability reliability",
+    "fill/order timeout and partial recovery native regression",
+    "restore barrier and tamper/path regressions"
+  ],
+  "exhaustive_coverage": false,
+  "restart_fault_soak_profiles": "NOT_RUN",
+  "final_integrated_rerun": "NOT_RUN"
+}

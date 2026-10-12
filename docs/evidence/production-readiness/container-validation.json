@@ -1,0 +1,15 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "configuration_status": "PASS_OBSERVED_PRIOR_RUN",
+  "resolved_services": 11,
+  "startup_status": "BLOCKED",
+  "daemon_error": "operation not permitted creating daemon Unix socket; mount propagation also denied",
+  "image_build": "NOT_RUN",
+  "image_vulnerability_scan": "NOT_RUN",
+  "nonroot_volumes": "UNVERIFIED"
+}

@@ -22,6 +22,11 @@ def check(model):
             failures.append(name + ": no-new-privileges required")
         if not service.get("mem_limit") or not service.get("pids_limit"):
             failures.append(name + ": resource bounds required")
+        for mount in service.get("tmpfs", []):
+            if not isinstance(mount, str) or not mount.startswith("/"):
+                failures.append(name + ": tmpfs requires an absolute mount path with joined options")
+            elif ":" not in mount or "size=" not in mount:
+                failures.append(name + ": tmpfs must have explicit bounded options")
         environment = service.get("environment", {})
         if environment.get("ARB_LIVE_TRADING_ENABLED") not in (None, "false"):
             failures.append(name + ": live must remain false")

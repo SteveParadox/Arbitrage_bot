@@ -1,0 +1,58 @@
+{
+  "recorded_at": "2026-10-12T12:24:06.604149+00:00",
+  "source_commit": "364c7dc4576b006b1a7a4bdf58fba81609a4992e",
+  "source_tree": "ba0b6ff77532079d9ab10cd2664910e78bd0f4b8",
+  "live_trading_enabled": false,
+  "environment": "restricted local sandbox; native disposable development PG/Redis and separate secure-server tests",
+  "provenance": "Observed execution summaries; earlier temporary raw logs lost during reset. Final default Python/secret logs retained. Do not treat earlier integrations as final-head reruns.",
+  "runs": [
+    {
+      "category": "Rust workspace default",
+      "passed": 115,
+      "failed": 0,
+      "ignored": 3,
+      "final_source_rerun": false
+    },
+    {
+      "category": "full native Python",
+      "passed": 398,
+      "failed": 0,
+      "skipped": 11,
+      "seconds": 322.27,
+      "final_source_rerun": false
+    },
+    {
+      "category": "explicit ignored Rust reliability",
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "category": "secure-services",
+      "passed": 34,
+      "failed": 0,
+      "seconds": 6.07
+    },
+    {
+      "category": "focused validation/security",
+      "passed": 60,
+      "failed": 0,
+      "seconds": 1.1
+    },
+    {
+      "category": "final default Python",
+      "passed": 246,
+      "failed": 0,
+      "skipped": 164,
+      "seconds": 1.46
+    },
+    {
+      "category": "frontend",
+      "passed": 26,
+      "failed": 0
+    }
+  ],
+  "counts_overlap": true,
+  "format_clippy_build": "PASS_OBSERVED_PRIOR_RUN; Rust source unchanged",
+  "python_lint": "PASS final",
+  "frontend_lint_build": "PASS_OBSERVED_PRIOR_RUN; frontend unchanged"
+}
